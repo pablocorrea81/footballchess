@@ -11,6 +11,10 @@ export function middleware(request: NextRequest) {
   if (hostname === WWW_HOST) {
     const url = request.nextUrl.clone();
     url.hostname = APEX_DOMAIN;
+    // Preserve code parameter in case the host redirect is the first hop
+    if (url.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+      url.pathname = "/auth/callback";
+    }
     return NextResponse.redirect(url, { status: 308 });
   }
 
