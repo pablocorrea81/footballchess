@@ -43,7 +43,16 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
           const { data } = (await supabase
             .from("games")
             .select(
-              "id, status, created_at, player_1_id, player_2_id, score, profiles!games_player_1_id_fkey(username), profiles!games_player_2_id_fkey(username)",
+              `id,
+              status,
+              created_at,
+              player_1_id,
+              player_2_id,
+              game_state,
+              score,
+              winner_id,
+              player_1_username:profiles!games_player_1_id_fkey(username),
+              player_2_username:profiles!games_player_2_id_fkey(username)`,
             )
             .in("status", ["waiting", "in_progress"])
             .order("created_at", { ascending: true })) as PostgrestSingleResponse<
@@ -71,7 +80,16 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
         const { data } = (await supabase
           .from("games")
           .select(
-            "id, status, created_at, player_1_id, player_2_id, score, game_state, profiles!games_player_1_id_fkey(username), profiles!games_player_2_id_fkey(username)",
+            `id,
+            status,
+            created_at,
+            player_1_id,
+            player_2_id,
+            game_state,
+            score,
+            winner_id,
+            player_1_username:profiles!games_player_1_id_fkey(username),
+            player_2_username:profiles!games_player_2_id_fkey(username)`,
           )
           .in("status", ["waiting", "in_progress"])
           .order("created_at", { ascending: true })) as PostgrestSingleResponse<
