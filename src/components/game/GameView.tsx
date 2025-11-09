@@ -219,7 +219,7 @@ export function GameView({
 
       const { error } = await supabase
         .from("games")
-        .update(updatePayload)
+        .update(updatePayload as Database["public"]["Tables"]["games"]["Update"])
         .eq("id", initialGameId)
         .neq("status", "finished");
 
