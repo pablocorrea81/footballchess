@@ -41,7 +41,10 @@ export function SupabaseProvider({
   }
 
   const [supabaseClient] = useState(() =>
-    createBrowserClient<Database>(supabaseUrl, supabaseAnonKey),
+    createBrowserClient<Database, "public">(
+      supabaseUrl,
+      supabaseAnonKey,
+    ),
   );
 
   useEffect(() => {

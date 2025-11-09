@@ -217,7 +217,7 @@ export function GameView({
           score: outcome.nextState.score as unknown as Json,
           status: nextStatus,
           winner_id: nextWinnerId,
-        } satisfies Database["public"]["Tables"]["games"]["Update"])
+        } as Database["public"]["Tables"]["games"]["Update"])
         .eq("id", initialGameId)
         .neq("status", "finished");
 

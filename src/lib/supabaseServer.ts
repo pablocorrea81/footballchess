@@ -17,7 +17,7 @@ if (!supabaseAnonKey) {
 const withCookies = () => {
   const cookieStore = cookies();
 
-  return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
+  return createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name) {
         return cookieStore.get(name)?.value;
