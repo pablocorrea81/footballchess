@@ -210,16 +210,14 @@ export function GameView({
       setStatus(nextStatus);
       setWinnerId(nextWinnerId);
 
-      const updatePayload: Database["public"]["Tables"]["games"]["Update"] = {
-        game_state: outcome.nextState as unknown as Json,
-        score: outcome.nextState.score as unknown as Json,
-        status: nextStatus,
-        winner_id: nextWinnerId,
-      };
-
       const { error } = await supabase
         .from("games")
-        .update(updatePayload as Database["public"]["Tables"]["games"]["Update"])
+        .update({
+          game_state: outcome.nextState as unknown as Json,
+          score: outcome.nextState.score as unknown as Json,
+          status: nextStatus,
+          winner_id: nextWinnerId,
+        } as Database["public"]["Tables"]["games"]["Update"])
         .eq("id", initialGameId)
         .neq("status", "finished");
 
