@@ -27,6 +27,16 @@ Set the following values obtained from the Supabase dashboard:
 npm install
 ```
 
+## Supabase Types Generation
+
+We keep `src/lib/database.types.ts` in sync with Supabase by running:
+
+```bash
+SUPABASE_ACCESS_TOKEN=... SUPABASE_PROJECT_ID=... npm run supabase:types
+```
+
+This requires the [Supabase CLI](https://supabase.com/docs/guides/cli) authenticated with an access token. The command regenerates the TypeScript types for the `public` schema.
+
 ## Local Development
 
 ```bash
@@ -41,6 +51,12 @@ Then visit [http://localhost:3000](http://localhost:3000).
 2. Connect the repository to Vercel (if not already).
 3. Configure the Supabase environment variables in Vercel.
 4. Deploy from the `main` branch (or the branch of your choice).
+
+Before pushing, run the combined check:
+
+```bash
+npm run verify
+```
 
 ## Next Steps
 
