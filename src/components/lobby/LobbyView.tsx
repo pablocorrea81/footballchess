@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
@@ -43,7 +43,19 @@ type LobbyViewProps = {
 const GAME_CHANNEL = "games:lobby";
 
 export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
-  const supabase = createClientComponentClient<Database>();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    );
+  }
+
+  const supabase = useMemo(
+    () => createBrowserClient<Database>(supabaseUrl, supabaseAnonKey),
+    [supabaseUrl, supabaseAnonKey],
+  );
 
   const [games, setGames] = useState<GameRow[]>(initialGames);
   const [loading, setLoading] = useState(false);
