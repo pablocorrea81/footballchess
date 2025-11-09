@@ -3,11 +3,12 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { createBrowserSupabaseClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
@@ -30,9 +31,24 @@ export function SupabaseProvider({
   children,
   initialSession,
 }: SupabaseProviderProps) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    );
+  }
+
   const [supabaseClient] = useState(() =>
-    createBrowserSupabaseClient<Database>(),
+    createBrowserClient<Database>(supabaseUrl, supabaseAnonKey),
   );
+
+  useEffect(() => {
+    if (initialSession) {
+      void supabaseClient.auth.setSession(initialSession);
+    }
+  }, [initialSession, supabaseClient]);
 
   const value = useMemo(
     () => ({ supabase: supabaseClient, session: initialSession }),
