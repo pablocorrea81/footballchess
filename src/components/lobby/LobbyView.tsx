@@ -193,7 +193,8 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
           const isOpponent = game.player_2_id === profileId;
           const hasOpponent = Boolean(game.player_2_id);
           const startingPlayer =
-            (game.game_state as GameState)?.startingPlayer ?? "home";
+            ((game.game_state as unknown) as GameState)?.startingPlayer ??
+            "home";
           const startsLabel =
             startingPlayer === "home"
               ? game.player_1_id === profileId

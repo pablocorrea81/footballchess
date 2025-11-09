@@ -210,19 +210,25 @@ export function GameView({
       setStatus(nextStatus);
       setWinnerId(nextWinnerId);
 
-      const { error } = await supabase
-        .from("games")
-        .update({
-          game_state: outcome.nextState as unknown as Json,
-          score: outcome.nextState.score as unknown as Json,
-          status: nextStatus,
-          winner_id: nextWinnerId,
-        } as Database["public"]["Tables"]["games"]["Update"])
-        .eq("id", initialGameId)
-        .neq("status", "finished");
+      const response = await fetch("/api/games/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameId: initialGameId,
+          update: {
+            game_state: outcome.nextState as unknown as Json,
+            score: outcome.nextState.score as unknown as Json,
+            status: nextStatus,
+            winner_id: nextWinnerId,
+          },
+        }),
+      });
 
-      if (error) {
-        setFeedback(error.message);
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        setFeedback(data.error ?? "Error al actualizar la partida.");
       }
     } catch (error) {
       setFeedback(

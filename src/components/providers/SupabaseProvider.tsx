@@ -14,7 +14,7 @@ import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 
 type SupabaseContextType = {
-  supabase: SupabaseClient<Database>;
+  supabase: SupabaseClient<Database, "public">;
   session: Session | null;
 };
 

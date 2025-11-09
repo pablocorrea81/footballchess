@@ -14,31 +14,52 @@ if (!supabaseAnonKey) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable");
 }
 
-const withCookies = () => {
-  const cookieStore = cookies();
+type CookieStore = {
+  get: (name: string) => { value: string } | undefined;
+  set: (options: Record<string, unknown>) => void;
+  delete: (options: Record<string, unknown>) => void;
+};
 
-  return createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
+const readCookieStore = (): CookieStore | null => {
+  const store = cookies() as unknown;
+
+  if (
+    store &&
+    typeof (store as { get?: unknown }).get === "function" &&
+    typeof (store as { set?: unknown }).set === "function" &&
+    typeof (store as { delete?: unknown }).delete === "function"
+  ) {
+    return store as CookieStore;
+  }
+
+  return null;
+};
+
+const withCookies = () =>
+  createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name) {
-        return cookieStore.get(name)?.value;
+        const store = readCookieStore();
+        return store?.get(name)?.value;
       },
       set(name, value, options) {
         try {
-          cookieStore.set({ name, value, ...options });
+          const store = readCookieStore();
+          store?.set({ name, value, ...options });
         } catch {
-          // noop - cookies are read-only in this context
+          // noop - cookies are read-only in some contexts
         }
       },
       remove(name, options) {
         try {
-          cookieStore.delete({ name, ...options });
+          const store = readCookieStore();
+          store?.delete({ name, ...options });
         } catch {
-          // noop - cookies are read-only in this context
+          // noop - cookies are read-only in some contexts
         }
       },
     },
   });
-};
 
 export const createServerSupabaseClient = () => withCookies();
 

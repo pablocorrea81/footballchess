@@ -443,6 +443,7 @@ export class RuleEngine {
       turn: validation.goal ? nextTurn : nextTurn,
       score: nextScore,
       lastMove: moveRecord,
+      startingPlayer: state.startingPlayer,
       history: [...state.history, moveRecord],
     };
 
