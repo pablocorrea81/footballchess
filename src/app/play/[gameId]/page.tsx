@@ -3,11 +3,35 @@ import { notFound, redirect } from "next/navigation";
 import { GameView } from "@/components/game/GameView";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import { RuleEngine, type GameState } from "@/lib/ruleEngine";
+import type { Database } from "@/lib/database.types";
+import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
 type PlayPageProps = {
   params: {
     gameId: string;
   };
+};
+
+type GameRow = Database["public"]["Tables"]["games"]["Row"];
+
+type RawGame = GameRow & {
+  player_one?:
+    | { username: string }
+    | { username: string }[];
+  player_two?:
+    | { username: string }
+    | { username: string }[];
+};
+
+const extractUsername = (
+  profile:
+    | RawGame["player_one"]
+    | RawGame["player_two"],
+): string | null => {
+  if (Array.isArray(profile)) {
+    return profile[0]?.username ?? null;
+  }
+  return profile?.username ?? null;
 };
 
 export default async function PlayPage({ params }: PlayPageProps) {
@@ -20,7 +44,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
     redirect("/login");
   }
 
-  const { data: game, error } = await supabase
+  const { data: rawGame, error } = (await supabase
     .from("games")
     .select(
       `
@@ -36,11 +60,17 @@ export default async function PlayPage({ params }: PlayPageProps) {
       `,
     )
     .eq("id", params.gameId)
-    .single();
+    .single()) as PostgrestSingleResponse<RawGame>;
 
-  if (error || !game) {
+  if (error || !rawGame) {
     notFound();
   }
+
+  const game = {
+    ...rawGame,
+    player_one_username: extractUsername(rawGame.player_one),
+    player_two_username: extractUsername(rawGame.player_two),
+  };
 
   const isPlayer =
     game.player_1_id === session.user.id ||
@@ -67,8 +97,8 @@ export default async function PlayPage({ params }: PlayPageProps) {
   const opponentRole = playerRole === "home" ? "away" : "home";
 
   const playerLabels = {
-    home: game.player_one?.username ?? "Jugador 1",
-    away: game.player_two?.username ?? "Jugador 2",
+    home: game.player_one_username ?? "Jugador 1",
+    away: game.player_two_username ?? "Jugador 2",
   };
 
   return (
