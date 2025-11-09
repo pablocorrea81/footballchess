@@ -25,6 +25,8 @@ export interface GameState {
   turn: PlayerId;
   score: Record<PlayerId, number>;
   lastMove?: MoveRecord | null;
+  history: MoveRecord[];
+  startingPlayer: PlayerId;
 }
 
 export interface Move {
@@ -34,6 +36,8 @@ export interface Move {
 }
 
 export interface MoveRecord {
+  moveNumber: number;
+  player: PlayerId;
   from: Position;
   to: Position;
   pieceId: string;
@@ -41,6 +45,7 @@ export interface MoveRecord {
   goal?: {
     scoringPlayer: PlayerId;
   };
+  timestamp: string;
 }
 
 export type MoveValidationResult =
@@ -327,24 +332,18 @@ const applyPieceMovement = (
   };
 };
 
-const resetBoardAfterGoal = (prevState: GameState): GameState => {
-  const initialState = RuleEngine.createInitialState();
-  return {
-    ...initialState,
-    score: { ...prevState.score },
-  };
-};
-
 export class RuleEngine {
-  static createInitialState(): GameState {
+  static createInitialState(startingPlayer: PlayerId = "home"): GameState {
     return {
       board: seedBoard(),
-      turn: "home",
+      turn: startingPlayer,
       score: {
         home: 0,
         away: 0,
       },
       lastMove: null,
+      history: [],
+      startingPlayer,
     };
   }
 
@@ -418,8 +417,7 @@ export class RuleEngine {
 
     if (validation.goal) {
       nextScore[move.player] += 1;
-      const resetState = resetBoardAfterGoal(state);
-      updatedBoardState = resetState.board;
+      updatedBoardState = seedBoard();
       nextTurn = opponent(move.player);
 
       goalPayload = {
@@ -427,19 +425,25 @@ export class RuleEngine {
       };
     }
 
+    const moveRecord: MoveRecord = {
+      moveNumber: state.history.length + 1,
+      player: move.player,
+      from: move.from,
+      to: move.to,
+      pieceId: originPiece.id,
+      capturedPieceId: capturedPiece?.id,
+      goal: goalPayload
+        ? { scoringPlayer: goalPayload.scoringPlayer }
+        : undefined,
+      timestamp: new Date().toISOString(),
+    };
+
     const nextState: GameState = {
       board: updatedBoardState,
       turn: validation.goal ? nextTurn : nextTurn,
       score: nextScore,
-      lastMove: {
-        from: move.from,
-        to: move.to,
-        pieceId: originPiece.id,
-        capturedPieceId: capturedPiece?.id,
-        goal: goalPayload
-          ? { scoringPlayer: goalPayload.scoringPlayer }
-          : undefined,
-      },
+      lastMove: moveRecord,
+      history: [...state.history, moveRecord],
     };
 
     return {

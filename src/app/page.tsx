@@ -1,3 +1,8 @@
+import Link from "next/link";
+
+import { SignOutButton } from "@/components/auth/SignOutButton";
+import { createServerSupabaseClient } from "@/lib/supabaseServer";
+
 const setupSteps = [
   {
     title: "1. Configura Supabase",
@@ -21,7 +26,12 @@ const setupSteps = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const supabase = createServerSupabaseClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-sky-100 py-24">
       <main className="mx-auto flex max-w-4xl flex-col gap-16 px-6">
@@ -38,6 +48,26 @@ export default function Home() {
             real. Sigue los pasos para conectar todo y lanzar la primera
             versión jugable.
           </p>
+          <div className="mt-8 flex flex-wrap items-center gap-4">
+            {session ? (
+              <>
+                <Link
+                  href="/lobby"
+                  className="inline-flex items-center rounded-full bg-emerald-600 px-5 py-2 text-white transition hover:bg-emerald-700"
+                >
+                  Ir al lobby
+                </Link>
+                <SignOutButton />
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex items-center rounded-full bg-emerald-600 px-5 py-2 text-white transition hover:bg-emerald-700"
+              >
+                Iniciar sesión con Magic Link
+              </Link>
+            )}
+          </div>
         </header>
 
         <section className="grid gap-6 md:grid-cols-2">

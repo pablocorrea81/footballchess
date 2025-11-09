@@ -1,6 +1,10 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import type { Metadata } from "next";
+
+import { SupabaseListener } from "@/components/providers/SupabaseListener";
+import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
+import { createServerSupabaseClient } from "@/lib/supabaseServer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,17 +22,25 @@ export const metadata: Metadata = {
     "Juego web multijugador de Football Chess con Supabase y Next.js.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = createServerSupabaseClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   return (
     <html lang="es">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <SupabaseProvider initialSession={session}>
+          <SupabaseListener accessToken={session?.access_token ?? undefined} />
+          {children}
+        </SupabaseProvider>
       </body>
     </html>
   );
