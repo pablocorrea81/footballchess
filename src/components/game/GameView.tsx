@@ -211,7 +211,7 @@ export function GameView({
       setWinnerId(nextWinnerId);
 
       const { error } = await supabase
-        .from<Database["public"]["Tables"]["games"]["Row"]>("games")
+        .from("games")
         .update({
           game_state: outcome.nextState as unknown as Json,
           score: outcome.nextState.score as unknown as Json,
