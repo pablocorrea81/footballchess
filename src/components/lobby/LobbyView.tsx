@@ -14,6 +14,27 @@ type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_2_username?: string | null;
 };
 
+type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
+  player1?: { username: string } | { username: string }[];
+  player2?: { username: string } | { username: string }[];
+};
+
+const extractUsername = (
+  profile: RawGameRow["player1"],
+): string | null => {
+  if (Array.isArray(profile)) {
+    return profile[0]?.username ?? null;
+  }
+  return profile?.username ?? null;
+};
+
+const normalizeGames = (rows: RawGameRow[]): GameRow[] =>
+  rows.map(({ player1, player2, ...rest }) => ({
+    ...rest,
+    player_1_username: extractUsername(player1),
+    player_2_username: extractUsername(player2),
+  }));
+
 type LobbyViewProps = {
   profileId: string;
   initialGames: GameRow[];
@@ -51,16 +72,16 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
               game_state,
               score,
               winner_id,
-              player_1_username:profiles!games_player_1_id_fkey(username),
-              player_2_username:profiles!games_player_2_id_fkey(username)`,
+              player1:profiles!games_player_1_id_fkey(username),
+              player2:profiles!games_player_2_id_fkey(username)`,
             )
             .in("status", ["waiting", "in_progress"])
             .order("created_at", { ascending: true })) as PostgrestSingleResponse<
-            GameRow[]
+            RawGameRow[]
           >;
 
           if (data) {
-            setGames(data);
+            setGames(normalizeGames(data));
           }
         },
       )
@@ -88,15 +109,15 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
             game_state,
             score,
             winner_id,
-            player_1_username:profiles!games_player_1_id_fkey(username),
-            player_2_username:profiles!games_player_2_id_fkey(username)`,
+            player1:profiles!games_player_1_id_fkey(username),
+            player2:profiles!games_player_2_id_fkey(username)`,
           )
           .in("status", ["waiting", "in_progress"])
           .order("created_at", { ascending: true })) as PostgrestSingleResponse<
-          GameRow[]
+          RawGameRow[]
         >;
         if (data) {
-          setGames(data);
+          setGames(normalizeGames(data));
         }
       } catch (actionError) {
         setError(

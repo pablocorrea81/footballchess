@@ -3,6 +3,21 @@ import { redirect } from "next/navigation";
 
 import { LobbyView } from "@/components/lobby/LobbyView";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
+import type { Database } from "@/lib/database.types";
+
+type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
+  player1?: { username: string } | { username: string }[];
+  player2?: { username: string } | { username: string }[];
+};
+
+const getUsername = (
+  profile: RawGameRow["player1"],
+): string | null => {
+  if (Array.isArray(profile)) {
+    return profile[0]?.username ?? null;
+  }
+  return profile?.username ?? null;
+};
 
 export default async function LobbyPage() {
   const supabase = createServerSupabaseClient();
@@ -20,7 +35,7 @@ export default async function LobbyPage() {
     .eq("id", session.user.id)
     .single();
 
-  const { data: games } = await supabase
+  const { data: rawGames } = await supabase
     .from("games")
     .select(
       `id,
@@ -31,11 +46,18 @@ export default async function LobbyPage() {
       game_state,
       score,
       winner_id,
-      player_1_username:profiles!games_player_1_id_fkey(username),
-      player_2_username:profiles!games_player_2_id_fkey(username)`,
+      player1:profiles!games_player_1_id_fkey(username),
+      player2:profiles!games_player_2_id_fkey(username)`,
     )
     .in("status", ["waiting", "in_progress"])
     .order("created_at", { ascending: true });
+
+  const games =
+    rawGames?.map((game) => ({
+      ...game,
+      player_1_username: getUsername(game.player1),
+      player_2_username: getUsername(game.player2),
+    })) ?? [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950 py-16">
@@ -61,7 +83,7 @@ export default async function LobbyPage() {
           </div>
         </header>
 
-        <LobbyView profileId={session.user.id} initialGames={games ?? []} />
+        <LobbyView profileId={session.user.id} initialGames={games} />
       </main>
     </div>
   );
