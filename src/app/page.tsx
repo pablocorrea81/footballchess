@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
@@ -26,7 +27,16 @@ const setupSteps = [
   },
 ];
 
-export default async function Home() {
+type HomeProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+export default async function Home({ searchParams }: HomeProps) {
+  const codeParam = searchParams?.code;
+  if (typeof codeParam === "string" && codeParam.length > 0) {
+    redirect(`/auth/callback?code=${codeParam}`);
+  }
+
   const supabase = createServerSupabaseClient();
   const {
     data: { session },
