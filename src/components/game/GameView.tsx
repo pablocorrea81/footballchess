@@ -5,7 +5,7 @@ import type { RealtimePostgresUpdatePayload } from "@supabase/supabase-js";
 import Link from "next/link";
 
 import { useSupabase } from "@/components/providers/SupabaseProvider";
-import type { Database } from "@/lib/database.types";
+import type { Database, Json } from "@/lib/database.types";
 import {
   BOARD_COLS,
   BOARD_ROWS,
@@ -210,14 +210,16 @@ export function GameView({
       setStatus(nextStatus);
       setWinnerId(nextWinnerId);
 
+      const updatePayload: Database["public"]["Tables"]["games"]["Update"] = {
+        game_state: outcome.nextState as unknown as Json,
+        score: outcome.nextState.score as unknown as Json,
+        status: nextStatus,
+        winner_id: nextWinnerId,
+      };
+
       const { error } = await supabase
         .from("games")
-        .update({
-          game_state: outcome.nextState,
-          score: outcome.nextState.score,
-          status: nextStatus,
-          winner_id: nextWinnerId,
-        })
+        .update(updatePayload)
         .eq("id", initialGameId)
         .neq("status", "finished");
 
