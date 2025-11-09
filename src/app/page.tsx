@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+
 const setupSteps = [
   {
     title: "1. Configura Supabase",
