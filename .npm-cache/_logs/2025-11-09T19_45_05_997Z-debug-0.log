@@ -1,0 +1,21 @@
+0 verbose cli /opt/homebrew/Cellar/node/24.10.0/bin/node /opt/homebrew/lib/node_modules/npm/bin/npm-cli.js
+1 info using npm@11.6.0
+2 info using node@v24.10.0
+3 silly config load:file:/opt/homebrew/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/pablocorrea/Documents/GitHub/footballchess/.npmrc
+5 silly config load:file:/opt/homebrew/etc/npmrc
+6 verbose title npm exec create-next-app@latest . --ts --tailwind --eslint --src-dir --import-alias @/*
+7 verbose argv "exec" "--" "create-next-app@latest" "." "--ts" "--tailwind" "--eslint" "--src-dir" "--import-alias" "@/*"
+8 verbose logfile logs-max:10 dir:/Users/pablocorrea/Documents/GitHub/footballchess/.npm-cache/_logs/2025-11-09T19_45_05_997Z-
+9 verbose logfile /Users/pablocorrea/Documents/GitHub/footballchess/.npm-cache/_logs/2025-11-09T19_45_05_997Z-debug-0.log
+10 silly logfile done cleaning log files
+11 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+12 http fetch GET 200 https://registry.npmjs.org/create-next-app 171ms (cache revalidated)
+13 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+14 silly packumentCache heap:4496293888 maxSize:1124073472 maxEntrySize:562036736
+15 verbose cwd /Users/pablocorrea/Documents/GitHub/footballchess
+16 verbose os Darwin 23.6.0
+17 verbose node v24.10.0
+18 verbose npm  v11.6.0
+19 verbose exit 1
+20 verbose code 1
