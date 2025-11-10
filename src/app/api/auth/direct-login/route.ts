@@ -38,6 +38,10 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SITE_URL ??
     `${requestUrl.protocol}//${requestUrl.host}`;
 
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    `${requestUrl.protocol}//${requestUrl.host}`;
+
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
@@ -46,9 +50,9 @@ export async function POST(request: Request) {
     },
   });
 
-  const actionLink = data?.properties?.action_link;
+  const emailOtp = data?.properties?.email_otp;
 
-  if (error || !actionLink) {
+  if (error || !emailOtp) {
     return NextResponse.json(
       { error: error?.message ?? "No se pudo generar el acceso" },
       { status: 500 },
@@ -56,7 +60,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    actionLink,
+    emailOtp,
   });
 }
 
