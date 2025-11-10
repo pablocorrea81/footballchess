@@ -15,6 +15,8 @@ export async function POST(request: Request) {
     | DirectLoginPayload
     | null;
 
+  const requestUrl = new URL(request.url);
+
   const email = body?.email;
   const accessCode = body?.accessCode;
 
@@ -32,15 +34,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    `${requestUrl.protocol}//${requestUrl.host}`;
+
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/callback`,
+      redirectTo: `${siteUrl}/auth/callback`,
     },
   });
 
-  if (error || !data?.properties?.email_otp) {
+  const actionLink = data?.properties?.action_link;
+
+  if (error || !actionLink) {
     return NextResponse.json(
       { error: error?.message ?? "No se pudo generar el acceso" },
       { status: 500 },
@@ -48,7 +56,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    emailOtp: data.properties.email_otp,
+    actionLink,
   });
 }
 
