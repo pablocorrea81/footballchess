@@ -33,16 +33,19 @@ type SupabaseCookieOptions = {
 
 const normalizeOptions = (
   options?: SupabaseCookieOptions,
-): SupabaseCookieOptions | undefined => {
+): Partial<ResponseCookie> | undefined => {
   if (!options) {
     return undefined;
   }
 
-  const normalized: SupabaseCookieOptions = {
+  const normalized: Partial<ResponseCookie> = {
     ...options,
   };
 
-  if (typeof normalized.expires === "string") {
+  if (
+    "expires" in normalized &&
+    typeof normalized.expires === "string"
+  ) {
     normalized.expires = new Date(normalized.expires);
   }
 
