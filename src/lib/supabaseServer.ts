@@ -16,12 +16,6 @@ if (!supabaseAnonKey) {
   throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable");
 }
 
-type CookieStore = {
-  get: (name: string) => { value: string } | undefined;
-  set: (options: Record<string, unknown>) => void;
-  delete: (options: Record<string, unknown>) => void;
-};
-
 type SupabaseCookieOptions = {
   domain?: string;
   path?: string;
@@ -53,29 +47,20 @@ const normalizeOptions = (
   return normalized;
 };
 
-const readCookieStore = (): CookieStore | null => {
-  const store = cookies() as unknown;
-
-  if (
-    store &&
-    typeof (store as { get?: unknown }).get === "function" &&
-    typeof (store as { set?: unknown }).set === "function" &&
-    typeof (store as { delete?: unknown }).delete === "function"
-  ) {
-    return store as CookieStore;
-  }
-
-  return null;
-};
-
 const withCookies = (response?: NextResponse) =>
   createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name) {
-        const store = readCookieStore();
-        const value = store?.get(name)?.value;
-        console.log("[supabaseServer:get]", name, value ? "found" : "missing");
-        return value;
+        try {
+          const store = cookies();
+          const getter = (store as { get?: (key: string) => { value: string } | undefined }).get;
+          const value = getter ? getter.call(store, name)?.value : undefined;
+          console.log("[supabaseServer:get]", name, value ? "found" : "missing");
+          return value;
+        } catch (error) {
+          console.error("[supabaseServer:get:error]", name, error);
+          return undefined;
+        }
       },
       set(name, value, options) {
         try {
@@ -83,13 +68,12 @@ const withCookies = (response?: NextResponse) =>
             console.log("[supabaseServer:set]", name, "via response", options);
             response.cookies.set(name, value, normalizeOptions(options));
           } else {
-            console.log("[supabaseServer:set]", name, "directly", options);
-            const store = readCookieStore();
-            store?.set({ name, value, ...options });
+            console.warn(
+              "[supabaseServer:set]", name, "skipped (read-only request context)",
+            );
           }
         } catch (error) {
-          console.error("[supabaseServer:set:error]", error);
-          // noop - cookies are read-only in some contexts
+          console.error("[supabaseServer:set:error]", name, error);
         }
       },
       remove(name, options) {
@@ -101,13 +85,12 @@ const withCookies = (response?: NextResponse) =>
               maxAge: 0,
             });
           } else {
-            console.log("[supabaseServer:remove]", name, "directly", options);
-            const store = readCookieStore();
-            store?.delete({ name, ...options });
+            console.warn(
+              "[supabaseServer:remove]", name, "skipped (read-only request context)",
+            );
           }
         } catch (error) {
-          console.error("[supabaseServer:remove:error]", error);
-          // noop - cookies are read-only in some contexts
+          console.error("[supabaseServer:remove:error]", name, error);
         }
       },
     },
