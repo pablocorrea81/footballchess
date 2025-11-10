@@ -3,10 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import { useSupabase } from "@/components/providers/SupabaseProvider";
-
 export function HashSessionHandler() {
-  const { supabase } = useSupabase();
   const router = useRouter();
 
   useEffect(() => {
@@ -33,17 +30,30 @@ export function HashSessionHandler() {
     }
 
     void (async () => {
-      console.log("[hash-handler] setting session");
-      await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
+      console.log("[hash-handler] setting session via API");
+      const response = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          accessToken,
+          refreshToken,
+        }),
       });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        console.error("[hash-handler] failed to set session", payload);
+        return;
+      }
+
       console.log("[hash-handler] session set, cleaning hash");
       window.history.replaceState(null, "", window.location.pathname);
       router.replace("/lobby");
       router.refresh();
     })();
-  }, [router, supabase]);
+  }, [router]);
 
   return null;
 }
