@@ -39,15 +39,15 @@ const normalizeOptions = (
     return undefined;
   }
 
+  const { expires, ...rest } = options;
   const normalized: Partial<ResponseCookie> = {
-    ...options,
+    ...rest,
   };
 
-  if (
-    "expires" in normalized &&
-    typeof normalized.expires === "string"
-  ) {
-    normalized.expires = new Date(normalized.expires);
+  if (typeof expires === "string") {
+    normalized.expires = new Date(expires);
+  } else if (expires instanceof Date) {
+    normalized.expires = expires;
   }
 
   return normalized;
