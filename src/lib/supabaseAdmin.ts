@@ -21,6 +21,11 @@ export const supabaseAdmin = createClient<Database, "public">(
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: {
+      headers: {
+        apikey: serviceRoleKey,
+      },
+    },
   },
 );
 
