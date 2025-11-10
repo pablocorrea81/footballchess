@@ -15,7 +15,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createRouteSupabaseClient();
+  const cookieCarrier = NextResponse.next();
+  const supabase = createRouteSupabaseClient(cookieCarrier);
 
   const { data, error } = await supabase.auth.setSession({
     access_token: accessToken,
@@ -29,10 +30,20 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({
+  const cookiesToSet = cookieCarrier.cookies.getAll();
+  const response = NextResponse.json({
     success: true,
     session: data.session,
   });
+
+  cookiesToSet.forEach((cookie) => {
+    response.cookies.set({
+      ...cookie,
+    });
+  });
+
+  return response;
 }
+
 
 

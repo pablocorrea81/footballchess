@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import type { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 import type { Database } from "./database.types";
@@ -20,6 +21,34 @@ type CookieStore = {
   delete: (options: Record<string, unknown>) => void;
 };
 
+type SupabaseCookieOptions = {
+  domain?: string;
+  path?: string;
+  maxAge?: number;
+  expires?: string | Date;
+  sameSite?: "lax" | "strict" | "none";
+  secure?: boolean;
+  httpOnly?: boolean;
+};
+
+const normalizeOptions = (
+  options?: SupabaseCookieOptions,
+): SupabaseCookieOptions | undefined => {
+  if (!options) {
+    return undefined;
+  }
+
+  const normalized: SupabaseCookieOptions = {
+    ...options,
+  };
+
+  if (typeof normalized.expires === "string") {
+    normalized.expires = new Date(normalized.expires);
+  }
+
+  return normalized;
+};
+
 const readCookieStore = (): CookieStore | null => {
   const store = cookies() as unknown;
 
@@ -35,7 +64,7 @@ const readCookieStore = (): CookieStore | null => {
   return null;
 };
 
-const withCookies = () =>
+const withCookies = (response?: NextResponse) =>
   createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name) {
@@ -44,16 +73,27 @@ const withCookies = () =>
       },
       set(name, value, options) {
         try {
-          const store = readCookieStore();
-          store?.set({ name, value, ...options });
+          if (response) {
+            response.cookies.set(name, value, normalizeOptions(options));
+          } else {
+            const store = readCookieStore();
+            store?.set({ name, value, ...options });
+          }
         } catch {
           // noop - cookies are read-only in some contexts
         }
       },
       remove(name, options) {
         try {
-          const store = readCookieStore();
-          store?.delete({ name, ...options });
+          if (response) {
+            response.cookies.set(name, "", {
+              ...(normalizeOptions(options) ?? {}),
+              maxAge: 0,
+            });
+          } else {
+            const store = readCookieStore();
+            store?.delete({ name, ...options });
+          }
         } catch {
           // noop - cookies are read-only in some contexts
         }
@@ -63,7 +103,8 @@ const withCookies = () =>
 
 export const createServerSupabaseClient = () => withCookies();
 
-export const createRouteSupabaseClient = () => withCookies();
+export const createRouteSupabaseClient = (response?: NextResponse) =>
+  withCookies(response);
 
 export const createServerActionSupabaseClient = () => withCookies();
 
