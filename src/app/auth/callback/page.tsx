@@ -1,8 +1,11 @@
+import { HashSessionHandler } from "@/components/auth/HashSessionHandler";
+
 export const dynamic = "force-dynamic";
 
 export default function AuthCallbackPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950 p-6 text-white">
+      <HashSessionHandler redirectTo="/lobby" />
       <div className="flex max-w-md flex-col items-center gap-4 text-center">
         <span className="text-sm uppercase tracking-widest text-emerald-200">
           Football Chess

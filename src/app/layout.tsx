@@ -1,21 +1,9 @@
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import type { Metadata } from "next";
 
-import { HashSessionHandler } from "@/components/auth/HashSessionHandler";
 import { SupabaseListener } from "@/components/providers/SupabaseListener";
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Football Chess",
@@ -35,12 +23,9 @@ export default async function RootLayout({
 
   return (
     <html lang="es">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <SupabaseProvider initialSession={session}>
           <SupabaseListener accessToken={session?.access_token ?? undefined} />
-          <HashSessionHandler />
           {children}
         </SupabaseProvider>
       </body>

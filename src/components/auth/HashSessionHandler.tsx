@@ -3,7 +3,11 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export function HashSessionHandler() {
+type HashSessionHandlerProps = {
+  redirectTo?: string;
+};
+
+export function HashSessionHandler({ redirectTo = "/lobby" }: HashSessionHandlerProps) {
   const router = useRouter();
 
   useEffect(() => {
@@ -12,7 +16,6 @@ export function HashSessionHandler() {
     }
 
     const hash = window.location.hash.replace("#", "");
-    console.log("[hash-handler] hash detected", hash);
     if (!hash) {
       return;
     }
@@ -22,43 +25,56 @@ export function HashSessionHandler() {
     const refreshToken = params.get("refresh_token");
 
     if (!accessToken || !refreshToken) {
-      console.warn("[hash-handler] missing tokens", {
-        accessToken,
-        refreshToken,
-      });
       return;
     }
 
-    void (async () => {
-      console.log("[hash-handler] setting session via API");
-      const response = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          accessToken,
-          refreshToken,
-        }),
-      });
+    let cancelled = false;
 
-      let payload: unknown = null;
-      if (!response.ok) {
-        payload = await response.json().catch(() => null);
-        console.error("[hash-handler] failed to set session", payload);
-        return;
+    const establishSession = async () => {
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accessToken,
+            refreshToken,
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+
+          if (!cancelled) {
+            const errorParam = payload?.error ?? "session_failed";
+            router.replace(`/login?error=${encodeURIComponent(errorParam)}`);
+          }
+          return;
+        }
+
+        await response.json().catch(() => null);
+
+        if (!cancelled) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          window.location.replace(redirectTo);
+        }
+      } catch {
+        if (!cancelled) {
+          router.replace("/login?error=session_network");
+        }
       }
+    };
 
-      payload = await response.json().catch(() => null);
-      console.log("[hash-handler] session API success", payload);
+    void establishSession();
 
-      console.log("[hash-handler] session set, cleaning hash");
-      window.history.replaceState(null, "", window.location.pathname);
-      window.location.replace("/lobby");
-    })();
-  }, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [redirectTo, router]);
 
   return null;
 }
-
-
