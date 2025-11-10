@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
+import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 import { createServerClient } from "@supabase/ssr";
 
 import type { Database } from "./database.types";
