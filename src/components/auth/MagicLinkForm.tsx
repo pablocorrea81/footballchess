@@ -59,7 +59,9 @@ export function MagicLinkForm() {
 
     setStatus("success");
     setMessage("Acceso concedido, redirigiendo al lobby…");
+    await supabase.auth.getSession();
     router.replace("/lobby");
+    router.refresh();
   };
 
   return session ? null : (
