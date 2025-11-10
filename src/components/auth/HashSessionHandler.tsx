@@ -42,16 +42,19 @@ export function HashSessionHandler() {
         }),
       });
 
+      let payload: unknown = null;
       if (!response.ok) {
-        const payload = await response.json().catch(() => null);
+        payload = await response.json().catch(() => null);
         console.error("[hash-handler] failed to set session", payload);
         return;
       }
 
+      payload = await response.json().catch(() => null);
+      console.log("[hash-handler] session API success", payload);
+
       console.log("[hash-handler] session set, cleaning hash");
       window.history.replaceState(null, "", window.location.pathname);
-      router.replace("/lobby");
-      router.refresh();
+      window.location.replace("/lobby");
     })();
   }, [router]);
 
