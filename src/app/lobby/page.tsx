@@ -25,6 +25,8 @@ export default async function LobbyPage() {
     data: { session },
   } = await supabase.auth.getSession();
 
+  console.log("[lobby] session in server", session);
+
   if (!session) {
     redirect("/login");
   }

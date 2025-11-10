@@ -73,32 +73,40 @@ const withCookies = (response?: NextResponse) =>
     cookies: {
       get(name) {
         const store = readCookieStore();
-        return store?.get(name)?.value;
+        const value = store?.get(name)?.value;
+        console.log("[supabaseServer:get]", name, value ? "found" : "missing");
+        return value;
       },
       set(name, value, options) {
         try {
           if (response) {
+            console.log("[supabaseServer:set]", name, "via response", options);
             response.cookies.set(name, value, normalizeOptions(options));
           } else {
+            console.log("[supabaseServer:set]", name, "directly", options);
             const store = readCookieStore();
             store?.set({ name, value, ...options });
           }
-        } catch {
+        } catch (error) {
+          console.error("[supabaseServer:set:error]", error);
           // noop - cookies are read-only in some contexts
         }
       },
       remove(name, options) {
         try {
           if (response) {
+            console.log("[supabaseServer:remove]", name, "via response", options);
             response.cookies.set(name, "", {
               ...(normalizeOptions(options) ?? {}),
               maxAge: 0,
             });
           } else {
+            console.log("[supabaseServer:remove]", name, "directly", options);
             const store = readCookieStore();
             store?.delete({ name, ...options });
           }
-        } catch {
+        } catch (error) {
+          console.error("[supabaseServer:remove:error]", error);
           // noop - cookies are read-only in some contexts
         }
       },
