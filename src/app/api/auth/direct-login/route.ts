@@ -32,18 +32,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    email_confirm: true,
-  });
-
-  if (createError && !createError.message?.includes("already registered")) {
-    return NextResponse.json(
-      { error: createError.message ?? "No se pudo preparar el acceso" },
-      { status: 500 },
-    );
-  }
-
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
