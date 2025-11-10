@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     );
   }
 
+<<<<<<< HEAD
   const { error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     email_confirm: true,
@@ -47,6 +48,14 @@ export async function POST(request: Request) {
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
+=======
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+    options: {
+      shouldCreateUser: true,
+    },
+>>>>>>> 273f60c0040b26c2299429f7a8b8728c88dfc4cd
   });
 
   if (error || !data?.properties?.email_otp) {
