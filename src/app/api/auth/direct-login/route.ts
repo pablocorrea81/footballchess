@@ -38,10 +38,6 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SITE_URL ??
     `${requestUrl.protocol}//${requestUrl.host}`;
 
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    `${requestUrl.protocol}//${requestUrl.host}`;
-
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
