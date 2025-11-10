@@ -15,6 +15,7 @@ export function HashSessionHandler() {
     }
 
     const hash = window.location.hash.replace("#", "");
+    console.log("[hash-handler] hash detected", hash);
     if (!hash) {
       return;
     }
@@ -24,15 +25,20 @@ export function HashSessionHandler() {
     const refreshToken = params.get("refresh_token");
 
     if (!accessToken || !refreshToken) {
+      console.warn("[hash-handler] missing tokens", {
+        accessToken,
+        refreshToken,
+      });
       return;
     }
 
     void (async () => {
+      console.log("[hash-handler] setting session");
       await supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
       });
-
+      console.log("[hash-handler] session set, cleaning hash");
       window.history.replaceState(null, "", window.location.pathname);
       router.replace("/lobby");
       router.refresh();

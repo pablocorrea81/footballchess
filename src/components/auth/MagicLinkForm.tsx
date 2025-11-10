@@ -40,6 +40,7 @@ export function MagicLinkForm() {
         | null;
       setStatus("error");
       setMessage(payload?.error ?? "No se pudo validar el acceso.");
+      console.error("[magic-link] direct login failed", payload);
       return;
     }
 
@@ -48,11 +49,13 @@ export function MagicLinkForm() {
     if (!actionLink) {
       setStatus("error");
       setMessage("No se pudo generar el enlace de acceso.");
+      console.error("[magic-link] missing action link");
       return;
     }
 
     setStatus("success");
     setMessage("Acceso concedido, redirigiendo al acceso seguro…");
+    console.log("[magic-link] redirecting to action link");
     window.location.href = actionLink;
   };
 

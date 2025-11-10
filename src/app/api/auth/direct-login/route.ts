@@ -15,12 +15,15 @@ export async function POST(request: Request) {
     | DirectLoginPayload
     | null;
 
+  console.log("[direct-login] incoming body", body);
+
   const requestUrl = new URL(request.url);
 
   const email = body?.email;
   const accessCode = body?.accessCode;
 
   if (typeof email !== "string" || !email.includes("@")) {
+    console.warn("[direct-login] invalid email", email);
     return NextResponse.json(
       { error: "Correo inválido" },
       { status: 400 },
@@ -38,6 +41,11 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SITE_URL ??
     `${requestUrl.protocol}//${requestUrl.host}`;
 
+  console.log("[direct-login] generating link", {
+    siteUrl,
+    email,
+  });
+
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
@@ -49,11 +57,16 @@ export async function POST(request: Request) {
   const actionLink = data?.properties?.action_link;
 
   if (error || !actionLink) {
+    console.error("[direct-login] generateLink error", error);
     return NextResponse.json(
       { error: error?.message ?? "No se pudo generar el acceso" },
       { status: 500 },
     );
   }
+
+  console.log("[direct-login] action link generated", {
+    actionLink,
+  });
 
   return NextResponse.json({
     actionLink,
