@@ -38,24 +38,6 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SITE_URL ??
     `${requestUrl.protocol}//${requestUrl.host}`;
 
-<<<<<<< HEAD
-=======
-  const { error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    email_confirm: true,
-  });
-
-  if (
-    createError &&
-    !createError.message?.toLowerCase().includes("already registered")
-  ) {
-    return NextResponse.json(
-      { error: createError.message ?? "No se pudo preparar el acceso" },
-      { status: 500 },
-    );
-  }
-
->>>>>>> 00ec947831bf8e86148be35c26588945f2492682
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
