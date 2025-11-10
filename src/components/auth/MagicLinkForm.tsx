@@ -45,7 +45,7 @@ export function MagicLinkForm() {
 
     const { emailOtp } = (await response.json()) as { emailOtp: string };
 
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       email,
       token: emailOtp,
       type: "magiclink",
@@ -55,6 +55,13 @@ export function MagicLinkForm() {
       setStatus("error");
       setMessage(error.message);
       return;
+    }
+
+    if (data?.session) {
+      await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
     }
 
     setStatus("success");
