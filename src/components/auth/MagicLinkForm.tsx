@@ -9,6 +9,7 @@ export function MagicLinkForm() {
   const { supabase, session } = useSupabase();
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
     "idle",
   );
@@ -16,7 +17,7 @@ export function MagicLinkForm() {
 
   useEffect(() => {
     if (session) {
-      router.replace("/");
+      router.replace("/lobby");
     }
   }, [session, router]);
 
@@ -25,16 +26,29 @@ export function MagicLinkForm() {
     setStatus("loading");
     setMessage(null);
 
-    const redirectTo =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/auth/callback`
-        : undefined;
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: redirectTo,
+    const response = await fetch("/api/auth/direct-login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({ email, accessCode }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      setStatus("error");
+      setMessage(payload?.error ?? "No se pudo validar el acceso.");
+      return;
+    }
+
+    const { emailOtp } = (await response.json()) as { emailOtp: string };
+
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: emailOtp,
+      type: "magiclink",
     });
 
     if (error) {
@@ -44,9 +58,8 @@ export function MagicLinkForm() {
     }
 
     setStatus("success");
-    setMessage(
-      "Te enviamos un enlace mágico a tu correo. Revísalo para iniciar sesión.",
-    );
+    setMessage("Acceso concedido, redirigiendo al lobby…");
+    router.replace("/lobby");
   };
 
   return session ? null : (
@@ -55,10 +68,10 @@ export function MagicLinkForm() {
       className="flex w-full max-w-md flex-col gap-4 rounded-2xl border border-emerald-100 bg-white/90 p-6 shadow-md"
     >
       <h1 className="text-2xl font-semibold text-emerald-950">
-        Accede con Magic Link
+        Acceso con código
       </h1>
       <p className="text-emerald-900/80">
-        Ingresa tu correo y te enviaremos un enlace temporal para autenticarte.
+        Ingresa tu correo para identificarte y el código compartido del equipo.
       </p>
       <label className="flex flex-col gap-2 text-sm text-emerald-900/80">
         Correo electrónico
@@ -69,6 +82,19 @@ export function MagicLinkForm() {
           onChange={(event) => setEmail(event.target.value)}
           className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-base text-emerald-950 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
           placeholder="tu@correo.com"
+          autoComplete="email"
+        />
+      </label>
+      <label className="flex flex-col gap-2 text-sm text-emerald-900/80">
+        Código de acceso
+        <input
+          type="password"
+          required
+          value={accessCode}
+          onChange={(event) => setAccessCode(event.target.value)}
+          className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-base text-emerald-950 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+          placeholder="Ingresa el código"
+          autoComplete="current-password"
         />
       </label>
       <button
@@ -76,7 +102,7 @@ export function MagicLinkForm() {
         disabled={status === "loading"}
         className="rounded-xl bg-emerald-600 px-4 py-2 text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
       >
-        {status === "loading" ? "Enviando..." : "Enviar enlace"}
+        {status === "loading" ? "Validando..." : "Ingresar"}
       </button>
       {message && (
         <p
