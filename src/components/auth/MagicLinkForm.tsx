@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 
 export function MagicLinkForm() {
-  const { supabase, session } = useSupabase();
+  const { session } = useSupabase();
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [accessCode, setAccessCode] = useState("");
@@ -43,32 +43,17 @@ export function MagicLinkForm() {
       return;
     }
 
-    const { emailOtp } = (await response.json()) as { emailOtp: string };
+    const { actionLink } = (await response.json()) as { actionLink: string };
 
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token: emailOtp,
-      type: "magiclink",
-    });
-
-    if (error) {
+    if (!actionLink) {
       setStatus("error");
-      setMessage(error.message);
+      setMessage("No se pudo generar el enlace de acceso.");
       return;
     }
 
-    if (data?.session) {
-      await supabase.auth.setSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-      });
-    }
-
     setStatus("success");
-    setMessage("Acceso concedido, redirigiendo al lobby…");
-    await supabase.auth.getSession();
-    router.replace("/lobby");
-    router.refresh();
+    setMessage("Acceso concedido, redirigiendo al acceso seguro…");
+    window.location.href = actionLink;
   };
 
   return session ? null : (

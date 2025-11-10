@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import type { Metadata } from "next";
 
+import { HashSessionHandler } from "@/components/auth/HashSessionHandler";
 import { SupabaseListener } from "@/components/providers/SupabaseListener";
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
@@ -39,6 +40,7 @@ export default async function RootLayout({
       >
         <SupabaseProvider initialSession={session}>
           <SupabaseListener accessToken={session?.access_token ?? undefined} />
+          <HashSessionHandler />
           {children}
         </SupabaseProvider>
       </body>

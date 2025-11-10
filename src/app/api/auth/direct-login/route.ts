@@ -46,9 +46,9 @@ export async function POST(request: Request) {
     },
   });
 
-  const emailOtp = data?.properties?.email_otp;
+  const actionLink = data?.properties?.action_link;
 
-  if (error || !emailOtp) {
+  if (error || !actionLink) {
     return NextResponse.json(
       { error: error?.message ?? "No se pudo generar el acceso" },
       { status: 500 },
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    emailOtp,
+    actionLink,
   });
 }
 
