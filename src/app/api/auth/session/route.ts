@@ -15,7 +15,7 @@ type SerializableCookie = {
   domain?: string;
   maxAge?: number;
   expires?: number | string | Date;
-  sameSite?: "lax" | "strict" | "none" | false;
+  sameSite?: "lax" | "strict" | "none";
   secure?: boolean;
   httpOnly?: boolean;
   priority?: "low" | "medium" | "high";
@@ -139,7 +139,28 @@ export async function POST(request: Request) {
   });
 
   cookiesToSet.forEach((cookie) => {
-    response.headers.append("Set-Cookie", serializeCookie(cookie));
+    const serializable: SerializableCookie = {
+      name: cookie.name,
+      value: cookie.value,
+      path: cookie.path,
+      domain: cookie.domain,
+      maxAge:
+        typeof cookie.maxAge === "number"
+          ? cookie.maxAge
+          : typeof cookie.maxAge === "string"
+            ? Number.parseInt(cookie.maxAge, 10)
+            : undefined,
+      expires: cookie.expires,
+      sameSite:
+        typeof cookie.sameSite === "string" ? cookie.sameSite : undefined,
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      priority:
+        typeof cookie.priority === "string" ? cookie.priority : undefined,
+      partitioned: cookie.partitioned,
+    };
+
+    response.headers.append("Set-Cookie", serializeCookie(serializable));
   });
 
   return response;
