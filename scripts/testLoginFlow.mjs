@@ -68,6 +68,9 @@ if (!sessionResponse.ok) {
   throw new Error("Setting session failed");
 }
 
+const sessionPayload = await sessionResponse.json();
+console.log("Session payload debug:", sessionPayload.debug);
+
 const rawHeaders = sessionResponse.headers.raw?.() ?? {};
 const setCookieHeaders =
   sessionResponse.headers.getSetCookie?.() ??

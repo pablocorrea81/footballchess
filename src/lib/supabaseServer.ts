@@ -50,48 +50,34 @@ const normalizeOptions = (
 const withCookies = (response?: NextResponse) =>
   createServerClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
     cookies: {
-      get(name) {
+      async getAll() {
         try {
           const store = cookies();
-          const getter = (store as { get?: (key: string) => { value: string } | undefined }).get;
-          const value = getter ? getter.call(store, name)?.value : undefined;
-          console.log("[supabaseServer:get]", name, value ? "found" : "missing");
-          return value;
+          return store.getAll().map(({ name, value }) => ({ name, value }));
         } catch (error) {
-          console.error("[supabaseServer:get:error]", name, error);
-          return undefined;
+          console.error("[supabaseServer:getAll:error]", error);
+          return [];
         }
       },
-      set(name, value, options) {
-        try {
-          if (response) {
-            console.log("[supabaseServer:set]", name, "via response", options);
-            response.cookies.set(name, value, normalizeOptions(options));
-          } else {
-            console.warn(
-              "[supabaseServer:set]", name, "skipped (read-only request context)",
-            );
-          }
-        } catch (error) {
-          console.error("[supabaseServer:set:error]", name, error);
+      async setAll(cookiesToSet) {
+        if (!response) {
+          console.warn(
+            "[supabaseServer:setAll] skipped (read-only request context)",
+          );
+          return;
         }
-      },
-      remove(name, options) {
-        try {
-          if (response) {
-            console.log("[supabaseServer:remove]", name, "via response", options);
+
+        cookiesToSet.forEach(({ name, value, options }) => {
+          const normalized = normalizeOptions(options);
+          if (!value) {
             response.cookies.set(name, "", {
-              ...(normalizeOptions(options) ?? {}),
+              ...(normalized ?? {}),
               maxAge: 0,
             });
           } else {
-            console.warn(
-              "[supabaseServer:remove]", name, "skipped (read-only request context)",
-            );
+            response.cookies.set(name, value, normalized);
           }
-        } catch (error) {
-          console.error("[supabaseServer:remove:error]", name, error);
-        }
+        });
       },
     },
   });
