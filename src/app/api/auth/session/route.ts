@@ -96,6 +96,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 401 });
   }
 
+  const cookiesToSet = carrier.cookies.getAll();
+
   const debugCookies =
     process.env.NODE_ENV !== "production"
       ? cookiesToSet.map((cookie) => ({
@@ -114,7 +116,6 @@ export async function POST(request: Request) {
     debug: debugCookies,
   });
 
-  const cookiesToSet = carrier.cookies.getAll();
   cookiesToSet.forEach((cookie) => {
     response.headers.append("Set-Cookie", serializeCookie(cookie));
   });
