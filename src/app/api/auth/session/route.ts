@@ -1,7 +1,6 @@
 "use server";
 
 import { NextResponse } from "next/server";
-
 import { createRouteSupabaseClient } from "@/lib/supabaseServer";
 
 type SessionPayload = {
@@ -9,9 +8,18 @@ type SessionPayload = {
   refreshToken?: unknown;
 };
 
-type SerializableCookie = ResponseCookie & {
+type SerializableCookie = {
   name: string;
   value: string;
+  path?: string;
+  domain?: string;
+  maxAge?: number;
+  expires?: number | string | Date;
+  sameSite?: "lax" | "strict" | "none";
+  secure?: boolean;
+  httpOnly?: boolean;
+  priority?: "low" | "medium" | "high";
+  partitioned?: boolean;
 };
 
 const serializeCookie = (cookie: SerializableCookie): string => {
