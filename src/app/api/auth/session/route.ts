@@ -9,68 +9,82 @@ type SessionPayload = {
   refreshToken?: unknown;
 };
 
-type SerializedCookie = {
+type SerializableCookie = ResponseCookie & {
   name: string;
   value: string;
-  path?: string;
-  domain?: string;
-  expires?: Date;
-  maxAge?: number;
-  sameSite?: "lax" | "strict" | "none";
-  secure?: boolean;
-  httpOnly?: boolean;
-  priority?: "low" | "medium" | "high";
-  partitioned?: boolean;
 };
 
-const serializeCookie = (cookie: SerializedCookie): string => {
-  const parts: string[] = [`${cookie.name}=${cookie.value}`];
+const serializeCookie = (cookie: SerializableCookie): string => {
+  const {
+    name,
+    value,
+    path,
+    domain,
+    maxAge,
+    expires,
+    sameSite,
+    secure,
+    httpOnly,
+    priority,
+    partitioned,
+  } = cookie;
 
-  if (cookie.path) {
-    parts.push(`Path=${cookie.path}`);
+  const parts: string[] = [`${name}=${value}`];
+
+  if (path) {
+    parts.push(`Path=${path}`);
   }
 
-  if (cookie.domain) {
-    parts.push(`Domain=${cookie.domain}`);
+  if (domain) {
+    parts.push(`Domain=${domain}`);
   }
 
-  if (typeof cookie.maxAge === "number") {
-    parts.push(`Max-Age=${cookie.maxAge}`);
+  if (typeof maxAge === "number") {
+    parts.push(`Max-Age=${maxAge}`);
   }
 
-  if (cookie.expires instanceof Date && !Number.isNaN(cookie.expires.valueOf())) {
-    parts.push(`Expires=${cookie.expires.toUTCString()}`);
+  if (expires !== undefined) {
+    const normalized =
+      typeof expires === "number"
+        ? new Date(expires)
+        : expires instanceof Date
+          ? expires
+          : new Date(expires);
+
+    if (!Number.isNaN(normalized.valueOf())) {
+      parts.push(`Expires=${normalized.toUTCString()}`);
+    }
   }
 
-  if (cookie.sameSite) {
+  if (sameSite) {
     const sameSiteValue =
-      cookie.sameSite === "none"
+      sameSite === "none"
         ? "None"
-        : cookie.sameSite === "strict"
+        : sameSite === "strict"
           ? "Strict"
           : "Lax";
     parts.push(`SameSite=${sameSiteValue}`);
   }
 
-  if (cookie.secure) {
+  if (secure) {
     parts.push("Secure");
   }
 
-  if (cookie.httpOnly) {
+  if (httpOnly) {
     parts.push("HttpOnly");
   }
 
-  if (cookie.priority) {
+  if (priority) {
     const priorityValue =
-      cookie.priority === "low"
+      priority === "low"
         ? "Low"
-        : cookie.priority === "high"
+        : priority === "high"
           ? "High"
           : "Medium";
     parts.push(`Priority=${priorityValue}`);
   }
 
-  if (cookie.partitioned) {
+  if (partitioned) {
     parts.push("Partitioned");
   }
 
