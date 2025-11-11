@@ -29,11 +29,15 @@ const extractUsername = (
 };
 
 const normalizeGames = (rows: RawGameRow[]): GameRow[] =>
-  rows.map(({ player1, player2, ...rest }) => ({
-    ...rest,
-    player_1_username: extractUsername(player1),
-    player_2_username: extractUsername(player2),
-  }));
+  rows.map((row) => {
+    const { player1, player2, ...rest } = row;
+    const baseRow = rest as Database["public"]["Tables"]["games"]["Row"];
+    return {
+      ...baseRow,
+      player_1_username: extractUsername(player1),
+      player_2_username: extractUsername(player2),
+    };
+  });
 
 type LobbyViewProps = {
   profileId: string;
@@ -85,6 +89,14 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
               game_state,
               score,
               winner_id,
+            is_bot_game,
+            bot_player,
+            bot_difficulty,
+            bot_display_name,
+            is_bot_game,
+            bot_player,
+            bot_difficulty,
+            bot_display_name,
               player1:profiles!games_player_1_id_fkey(username),
               player2:profiles!games_player_2_id_fkey(username)`,
             )
