@@ -48,6 +48,7 @@ export default async function LobbyPage() {
       game_state,
       score,
       winner_id,
+      bot_difficulty,
             is_bot_game,
             bot_player,
             bot_display_name,
@@ -58,10 +59,10 @@ export default async function LobbyPage() {
     .order("created_at", { ascending: true });
 
   const games =
-    rawGames?.map((game) => ({
-      ...game,
-      player_1_username: getUsername(game.player1),
-      player_2_username: getUsername(game.player2),
+    rawGames?.map(({ player1, player2, ...rest }) => ({
+      ...(rest as Database["public"]["Tables"]["games"]["Row"]),
+      player_1_username: getUsername(player1),
+      player_2_username: getUsername(player2),
     })) ?? [];
 
   return (
