@@ -46,10 +46,12 @@ export default async function PlayPage({ params }: PlayPageProps) {
     redirect("/login");
   }
 
-  const { data: adminGame, error } = await supabaseAdmin
-    .from("games")
-    .select(
-      `
+  let adminGame: RawGame | null = null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("games")
+      .select(
+        `
         id,
         status,
         game_state,
@@ -63,12 +65,21 @@ export default async function PlayPage({ params }: PlayPageProps) {
         player_one:profiles!games_player_1_id_fkey(username),
         player_two:profiles!games_player_2_id_fkey(username)
       `,
-    )
-    .eq("id", params.gameId)
-    .single();
+      )
+      .eq("id", params.gameId)
+      .single();
 
-  if (error || !adminGame) {
-    notFound();
+    if (error) {
+      console.error("[play] supabaseAdmin fetch error", error);
+    }
+
+    adminGame = (data as RawGame | null) ?? null;
+  } catch (adminError) {
+    console.error("[play] unexpected admin fetch error", adminError);
+  }
+
+  if (!adminGame) {
+    redirect("/lobby?error=game_not_found");
   }
 
   let rawGame = adminGame as RawGame;
@@ -79,23 +90,24 @@ export default async function PlayPage({ params }: PlayPageProps) {
 
   if (!userIsPlayer && !rawGame.is_bot_game) {
     if (rawGame.status === "waiting" && rawGame.player_2_id === null) {
-      const joinPayload = {
-        player_2_id: session.user.id,
-        status: "in_progress",
-      };
+      try {
+        const joinPayload = {
+          player_2_id: session.user.id,
+          status: "in_progress",
+        };
 
-      const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
-        "games",
-      ) as unknown as {
-        update: (
-          values: Record<string, unknown>,
-        ) => ReturnType<typeof supabaseAdmin.from>;
-      })
-        .update(joinPayload as Record<string, unknown>)
-        .eq("id", params.gameId)
-        .is("player_2_id", null)
-        .select(
-          `
+        const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
+          "games",
+        ) as unknown as {
+          update: (
+            values: Record<string, unknown>,
+          ) => ReturnType<typeof supabaseAdmin.from>;
+        })
+          .update(joinPayload as Record<string, unknown>)
+          .eq("id", params.gameId)
+          .is("player_2_id", null)
+          .select(
+            `
             id,
             status,
             game_state,
@@ -106,11 +118,18 @@ export default async function PlayPage({ params }: PlayPageProps) {
             player_one:profiles!games_player_1_id_fkey(username),
             player_two:profiles!games_player_2_id_fkey(username)
           `,
-        )
-        .single()) as PostgrestSingleResponse<RawGame>;
+          )
+          .single()) as PostgrestSingleResponse<RawGame>;
 
-      if (!joinError && joinedGame) {
-        rawGame = joinedGame;
+        if (joinError) {
+          console.error("[play] joinGame error", joinError);
+        }
+
+        if (!joinError && joinedGame) {
+          rawGame = joinedGame;
+        }
+      } catch (joinError) {
+        console.error("[play] unexpected join error", joinError);
       }
     }
   }

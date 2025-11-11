@@ -7,7 +7,11 @@ import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
 import type { GameState } from "@/lib/ruleEngine";
-import { createBotGameAction, createGameAction } from "@/app/lobby/create-game/action";
+import {
+  createBotGameAction,
+  createGameAction,
+  deleteGameAction,
+} from "@/app/lobby/create-game/action";
 
 type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_1_username?: string | null;
@@ -64,6 +68,7 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
   const [games, setGames] = useState<GameRow[]>(initialGames);
   const [loading, setLoading] = useState(false);
   const [botLoading, setBotLoading] = useState(false);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -196,6 +201,22 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
     setLoading(false);
   };
 
+  const deleteGame = async (id: string) => {
+    setDeleteLoadingId(id);
+    setError(null);
+    try {
+      await deleteGameAction(id);
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "No se pudo eliminar la partida.",
+      );
+    } finally {
+      setDeleteLoadingId(null);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col items-start gap-3 rounded-3xl border border-white/10 bg-white/10 p-6 shadow-lg text-white sm:flex-row sm:items-center sm:justify-between">
@@ -252,6 +273,8 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
           const canJoin =
             !isBot && game.status === "waiting" && !hasOpponent;
           const isInGame = isOwner || isOpponent;
+          const canDelete =
+            isOwner && (game.status === "waiting" || game.status === "finished");
           const opponentLabel = isBot
             ? game.bot_display_name ?? "FootballBot"
             : game.player_2_username
@@ -305,6 +328,16 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
                   <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-emerald-100/60">
                     {isBot ? "Solo jugador invitado" : "Observando..."}
                   </span>
+                )}
+
+                {canDelete && (
+                  <button
+                    onClick={() => deleteGame(game.id)}
+                    disabled={deleteLoadingId === game.id}
+                    className="rounded-full border border-red-400/60 px-3 py-1 text-xs text-red-200 transition hover:border-red-200 hover:text-white disabled:opacity-60"
+                  >
+                    {deleteLoadingId === game.id ? "Eliminando..." : "Eliminar"}
+                  </button>
                 )}
               </div>
             </li>

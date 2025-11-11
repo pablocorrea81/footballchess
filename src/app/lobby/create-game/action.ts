@@ -41,6 +41,45 @@ export async function createGameAction(profileId: string) {
   revalidatePath("/lobby");
 }
 
+export async function deleteGameAction(gameId: string) {
+  const supabase = createServerActionSupabaseClient();
+
+  const { data: sessionData, error: sessionError } =
+    await supabase.auth.getSession();
+
+  if (sessionError || !sessionData.session) {
+    throw new Error("Sesión no válida.");
+  }
+
+  const userId = sessionData.session.user.id;
+
+  const { data: game, error: fetchError } = await supabase
+    .from("games")
+    .select("player_1_id, player_2_id, status")
+    .eq("id", gameId)
+    .single();
+
+  if (fetchError || !game) {
+    throw new Error("No se encontró la partida.");
+  }
+
+  const isOwner = game.player_1_id === userId;
+  if (!isOwner) {
+    throw new Error("Sólo el creador puede eliminar la partida.");
+  }
+
+  const { error: deleteError } = await supabase
+    .from("games")
+    .delete()
+    .eq("id", gameId);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  revalidatePath("/lobby");
+}
+
 export async function createBotGameAction(
   profileId: string,
   difficulty: "easy" | "medium" | "hard" = FOOTBALL_BOT_DEFAULT_DIFFICULTY,

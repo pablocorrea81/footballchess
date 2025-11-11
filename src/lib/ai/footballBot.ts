@@ -22,14 +22,6 @@ const opponent = (player: PlayerId): PlayerId => (player === "home" ? "away" : "
 
 const goalRowForPlayer = (player: PlayerId): number =>
   player === "home" ? 0 : BOARD_ROWS - 1;
-const callBotUpdate = async (params: Record<string, unknown>) => {
-  const rpc = supabaseAdmin.rpc as unknown as (
-    fn: string,
-    params: Record<string, unknown>,
-  ) => Promise<{ error?: unknown }>;
-  await rpc("update_game_state_for_bot", params);
-};
-
 
 const forwardProgress = (from: Move["from"], to: Move["to"], player: PlayerId): number =>
   player === "home" ? from.row - to.row : to.row - from.row;
@@ -191,11 +183,20 @@ export const executeBotTurnIfNeeded = async (
         turn: opponent(botPlayer),
       };
 
-      await callBotUpdate({
-        p_game_id: gameId,
-        p_game_state: passedState,
-        p_score: passedState.score,
-      });
+      try {
+        await (supabaseAdmin.from("games") as unknown as {
+          update: (
+            values: Record<string, unknown>,
+          ) => ReturnType<typeof supabaseAdmin.from>;
+        })
+          .update({
+            game_state: passedState,
+            score: passedState.score,
+          } as Record<string, unknown>)
+          .eq("id", gameId);
+      } catch (updateError) {
+        console.error("[bot] failed to update passed state", updateError);
+      }
       return;
     }
 
@@ -210,13 +211,23 @@ export const executeBotTurnIfNeeded = async (
       }
     }
 
-    await callBotUpdate({
-      p_game_id: gameId,
-      p_game_state: outcome.nextState,
-      p_score: outcome.nextState.score,
-      p_status: nextStatus,
-      p_winner_id: winnerId,
-    });
+    try {
+      await (supabaseAdmin.from("games") as unknown as {
+        update: (
+          values: Record<string, unknown>,
+        ) => ReturnType<typeof supabaseAdmin.from>;
+      })
+        .update({
+          game_state: outcome.nextState,
+          score: outcome.nextState.score,
+          status: nextStatus,
+          winner_id: winnerId,
+        } as Record<string, unknown>)
+        .eq("id", gameId);
+    } catch (updateError) {
+      console.error("[bot] failed to persist move", updateError);
+      return;
+    }
 
     if (nextStatus === "finished") {
       return;
