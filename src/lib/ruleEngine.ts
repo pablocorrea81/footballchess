@@ -573,5 +573,28 @@ export class RuleEngine {
 
     return false;
   }
+
+  static getLegalMoves(state: GameState, player: PlayerId): Move[] {
+    const moves: Move[] = [];
+    for (let row = 0; row < BOARD_ROWS; row += 1) {
+      for (let col = 0; col < BOARD_COLS; col += 1) {
+        const piece = state.board[row][col];
+        if (!piece || piece.owner !== player) {
+          continue;
+        }
+        const origin = { row, col };
+        const destinations = this.getLegalMovesForPiece(state, origin);
+        for (const to of destinations) {
+          moves.push({
+            player,
+            from: origin,
+            to,
+          });
+        }
+      }
+    }
+
+    return moves;
+  }
 }
 

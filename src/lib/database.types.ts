@@ -39,6 +39,10 @@ export interface Database {
           game_state: Json;
           score: Json;
           winner_id: string | null;
+          is_bot_game: boolean;
+          bot_player: string | null;
+          bot_difficulty: string | null;
+          bot_display_name: string | null;
         };
         Insert: {
           id?: string;
@@ -49,6 +53,10 @@ export interface Database {
           game_state?: Json;
           score?: Json;
           winner_id?: string | null;
+          is_bot_game?: boolean;
+          bot_player?: string | null;
+          bot_difficulty?: string | null;
+          bot_display_name?: string | null;
         };
         Update: {
           id?: string;
@@ -59,6 +67,10 @@ export interface Database {
           game_state?: Json;
           score?: Json;
           winner_id?: string | null;
+          is_bot_game?: boolean;
+          bot_player?: string | null;
+          bot_difficulty?: string | null;
+          bot_display_name?: string | null;
         };
       };
     };

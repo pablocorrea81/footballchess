@@ -26,6 +26,9 @@ type GameViewProps = {
   playerRole: PlayerId;
   opponentRole: PlayerId;
   playerIds: Record<PlayerId, string | null>;
+  isBotGame: boolean;
+  botPlayer: PlayerId | null;
+  botDisplayName: string;
 };
 
 const BOARD_CHANNEL_PREFIX = "game";
@@ -59,6 +62,9 @@ export function GameView({
   playerRole,
   opponentRole,
   playerIds,
+  isBotGame,
+  botPlayer,
+  botDisplayName,
 }: GameViewProps) {
   const { supabase } = useSupabase();
 
@@ -140,7 +146,9 @@ export function GameView({
   }, [initialGameId, supabase]);
 
   const currentTurnLabel =
-    gameState.turn === playerRole ? playerLabels[playerRole] : playerLabels[opponentRole];
+    gameState.turn === playerRole
+      ? playerLabels[playerRole]
+      : playerLabels[opponentRole];
   const currentTurnIsPlayer = gameState.turn === playerRole;
   const startingLabel =
     gameState.startingPlayer === "home"
@@ -296,6 +304,35 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     isStarting ? "border border-yellow-300/60" : "border border-transparent",
   ].join(" ");
 
+  const isBotTurn =
+    isBotGame &&
+    botPlayer === opponentRole &&
+    status === "in_progress" &&
+    gameState.turn === opponentRole;
+
+  const computedWinnerLabel = (() => {
+    if (winnerId) {
+      if (winnerId === players.home) {
+        return playerLabels.home;
+      }
+      if (winnerId === players.away) {
+        return playerLabels.away;
+      }
+    }
+
+    if (status === "finished" && isBotGame) {
+      const finalMover = gameState.lastMove?.player ?? null;
+      if (finalMover === playerRole) {
+        return playerLabels[playerRole];
+      }
+      if (finalMover === opponentRole) {
+        return botDisplayName;
+      }
+    }
+
+    return null;
+  })();
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10">
       <section className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl md:flex-row md:items-center md:justify-between">
@@ -305,12 +342,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           </h1>
           <p className="text-sm text-emerald-100/70">
             {status === "finished"
-              ? winnerId
-                ? `Ganador: ${
-                    winnerId === players.home
-                      ? playerLabels.home
-                      : playerLabels.away
-                  }`
+              ? computedWinnerLabel
+                ? `Ganador: ${computedWinnerLabel}`
                 : "Partida finalizada"
               : `Turno actual: ${currentTurnLabel}`}
           </p>
@@ -365,6 +398,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       {feedback && (
         <div className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-50 shadow-lg">
           {feedback}
+        </div>
+      )}
+
+      {isBotTurn && (
+        <div className="rounded-3xl border border-sky-400/40 bg-sky-500/10 p-4 text-sm text-sky-100 shadow-lg">
+          {botDisplayName} está analizando su próximo movimiento…
         </div>
       )}
 

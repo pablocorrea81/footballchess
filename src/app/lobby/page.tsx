@@ -48,6 +48,9 @@ export default async function LobbyPage() {
       game_state,
       score,
       winner_id,
+            is_bot_game,
+            bot_player,
+            bot_display_name,
       player1:profiles!games_player_1_id_fkey(username),
       player2:profiles!games_player_2_id_fkey(username)`,
     )

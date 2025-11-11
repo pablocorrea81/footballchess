@@ -5,6 +5,8 @@ import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import { RuleEngine, type GameState } from "@/lib/ruleEngine";
 import type { Database } from "@/lib/database.types";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { FOOTBALL_BOT_DEFAULT_NAME } from "@/lib/ai/footballBot";
 
 type PlayPageProps = {
   params: {
@@ -44,7 +46,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
     redirect("/login");
   }
 
-  const { data: rawGame, error } = (await supabase
+  const { data: adminGame, error } = await supabaseAdmin
     .from("games")
     .select(
       `
@@ -55,26 +57,68 @@ export default async function PlayPage({ params }: PlayPageProps) {
         player_1_id,
         player_2_id,
         winner_id,
+        is_bot_game,
+        bot_player,
+        bot_display_name,
         player_one:profiles!games_player_1_id_fkey(username),
         player_two:profiles!games_player_2_id_fkey(username)
       `,
     )
     .eq("id", params.gameId)
-    .single()) as PostgrestSingleResponse<RawGame>;
+    .single();
 
-  if (error || !rawGame) {
+  if (error || !adminGame) {
     notFound();
+  }
+
+  let rawGame = adminGame as RawGame;
+
+  const userIsPlayer =
+    rawGame.player_1_id === session.user.id ||
+    (!!rawGame.player_2_id && rawGame.player_2_id === session.user.id);
+
+  if (!userIsPlayer && !rawGame.is_bot_game) {
+    if (rawGame.status === "waiting" && rawGame.player_2_id === null) {
+      const { data: joinedGame, error: joinError } = (await supabaseAdmin
+        .from("games")
+        .update({
+          player_2_id: session.user.id,
+          status: "in_progress",
+        })
+        .eq("id", params.gameId)
+        .is("player_2_id", null)
+        .select(
+          `
+            id,
+            status,
+            game_state,
+            score,
+            player_1_id,
+            player_2_id,
+            winner_id,
+            player_one:profiles!games_player_1_id_fkey(username),
+            player_two:profiles!games_player_2_id_fkey(username)
+          `,
+        )
+        .single()) as PostgrestSingleResponse<RawGame>;
+
+      if (!joinError && joinedGame) {
+        rawGame = joinedGame;
+      }
+    }
   }
 
   const game = {
     ...rawGame,
     player_one_username: extractUsername(rawGame.player_one),
     player_two_username: extractUsername(rawGame.player_two),
+    bot_display_name: rawGame.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME,
   };
 
   const isPlayer =
     game.player_1_id === session.user.id ||
-    (!!game.player_2_id && game.player_2_id === session.user.id);
+    (!!game.player_2_id && game.player_2_id === session.user.id) ||
+    (game.is_bot_game && game.player_1_id === session.user.id);
 
   if (!isPlayer) {
     redirect("/lobby");
@@ -98,7 +142,9 @@ export default async function PlayPage({ params }: PlayPageProps) {
 
   const playerLabels = {
     home: game.player_one_username ?? "Jugador 1",
-    away: game.player_two_username ?? "Jugador 2",
+    away: game.is_bot_game
+      ? game.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME
+      : game.player_two_username ?? "Jugador 2",
   };
 
   return (
@@ -113,6 +159,9 @@ export default async function PlayPage({ params }: PlayPageProps) {
       opponentRole={opponentRole}
       playerIds={{ home: game.player_1_id, away: game.player_2_id }}
       initialWinnerId={game.winner_id}
+      isBotGame={game.is_bot_game}
+      botPlayer={game.bot_player as "home" | "away" | null}
+      botDisplayName={game.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME}
     />
   );
 }

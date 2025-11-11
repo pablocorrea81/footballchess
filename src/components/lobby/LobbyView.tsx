@@ -7,11 +7,14 @@ import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/database.types";
 import type { GameState } from "@/lib/ruleEngine";
-import { createGameAction } from "@/app/lobby/create-game/action";
+import { createBotGameAction, createGameAction } from "@/app/lobby/create-game/action";
 
 type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_1_username?: string | null;
   player_2_username?: string | null;
+  is_bot_game?: boolean;
+  bot_player?: string | null;
+  bot_display_name?: string | null;
 };
 
 type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
@@ -59,6 +62,7 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
 
   const [games, setGames] = useState<GameRow[]>(initialGames);
   const [loading, setLoading] = useState(false);
+  const [botLoading, setBotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -121,6 +125,9 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
             game_state,
             score,
             winner_id,
+            is_bot_game,
+            bot_player,
+            bot_display_name,
             player1:profiles!games_player_1_id_fkey(username),
             player2:profiles!games_player_2_id_fkey(username)`,
           )
@@ -139,6 +146,24 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
         );
       } finally {
         setLoading(false);
+      }
+    });
+  };
+
+  const createBotGame = async () => {
+    setError(null);
+    setBotLoading(true);
+    startTransition(async () => {
+      try {
+        await createBotGameAction(profileId);
+      } catch (actionError) {
+        setError(
+          actionError instanceof Error
+            ? actionError.message
+            : "No se pudo crear la partida contra la IA.",
+        );
+      } finally {
+        setBotLoading(false);
       }
     });
   };
@@ -168,17 +193,26 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
         <div>
           <h2 className="text-xl font-semibold">Partidas activas</h2>
           <p className="text-sm text-emerald-100/80">
-            Lista compartida en tiempo real. Puedes crear o unirte a un juego
-            abierto.
+            Lista compartida en tiempo real. Puedes crear, enfrentarte a la IA o unirte a un
+            juego abierto.
           </p>
         </div>
-        <button
-          onClick={createGame}
-          disabled={loading || isPending}
-          className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
-        >
-          {loading ? "Procesando..." : "Crear partida"}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={createBotGame}
+            disabled={botLoading || isPending}
+            className="rounded-full border border-sky-300/50 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-200 hover:text-white disabled:cursor-not-allowed disabled:border-sky-100/30 disabled:text-sky-100/40"
+          >
+            {botLoading ? "Invocando IA..." : "Partida vs IA"}
+          </button>
+          <button
+            onClick={createGame}
+            disabled={loading || isPending}
+            className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
+          >
+            {loading ? "Procesando..." : "Crear partida"}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -192,6 +226,7 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
           const isOwner = game.player_1_id === profileId;
           const isOpponent = game.player_2_id === profileId;
           const hasOpponent = Boolean(game.player_2_id);
+          const isBot = Boolean(game.is_bot_game);
           const startingPlayer =
             ((game.game_state as unknown) as GameState)?.startingPlayer ??
             "home";
@@ -202,9 +237,19 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
                 : "Jugador 1 empieza"
               : game.player_2_id === profileId
                 ? "Tú comienzas"
-                : "Jugador 2 empieza";
-          const canJoin = game.status === "waiting" && !hasOpponent;
+                : isBot
+                  ? `${game.bot_display_name ?? "FootballBot"} inicia`
+                  : "Jugador 2 empieza";
+          const canJoin =
+            !isBot && game.status === "waiting" && !hasOpponent;
           const isInGame = isOwner || isOpponent;
+          const opponentLabel = isBot
+            ? game.bot_display_name ?? "FootballBot"
+            : game.player_2_username
+              ? game.player_2_username
+              : canJoin
+                ? "¿Te unes?"
+                : "Buscando...";
 
           return (
             <li
@@ -213,20 +258,18 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
             >
               <div className="flex flex-col gap-2">
                 <p className="text-xs uppercase tracking-widest text-emerald-200">
-                  {game.status === "waiting" ? "Esperando rival" : "En progreso"}
+                  {isBot
+                    ? "Modo IA"
+                    : game.status === "waiting"
+                      ? "Esperando rival"
+                      : "En progreso"}
                 </p>
                 <h3 className="text-lg font-semibold">
                   {game.player_1_username ?? "Jugador 1"}
                 </h3>
                 <p className="text-sm text-emerald-100/80">
                   vs{" "}
-                  <span>
-                    {game.player_2_username
-                      ? game.player_2_username
-                      : canJoin
-                        ? "¿Te unes?"
-                        : "Buscando..."}
-                  </span>
+                  <span>{opponentLabel}</span>
                 </p>
                 <p className="text-xs uppercase tracking-widest text-emerald-200/80">
                   {startsLabel}
@@ -251,7 +294,7 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
                   </button>
                 ) : (
                   <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-emerald-100/60">
-                    Observando...
+                    {isBot ? "Solo jugador invitado" : "Observando..."}
                   </span>
                 )}
               </div>
