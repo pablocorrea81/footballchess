@@ -52,7 +52,11 @@ const withCookies = (response?: NextResponse) =>
     cookies: {
       async getAll() {
         try {
-          const store = cookies();
+          const store = await Promise.resolve(cookies());
+          if (typeof store.getAll !== "function") {
+            console.warn("[supabaseServer:getAll] cookies store missing getAll");
+            return [];
+          }
           return store.getAll().map(({ name, value }) => ({ name, value }));
         } catch (error) {
           console.error("[supabaseServer:getAll:error]", error);
