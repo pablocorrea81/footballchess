@@ -7,6 +7,7 @@ import {
   type PlayerId,
 } from "@/lib/ruleEngine";
 import type { Database } from "@/lib/database.types";
+import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
 export type BotDifficulty = "easy" | "medium" | "hard";
 
@@ -21,6 +22,14 @@ const opponent = (player: PlayerId): PlayerId => (player === "home" ? "away" : "
 
 const goalRowForPlayer = (player: PlayerId): number =>
   player === "home" ? 0 : BOARD_ROWS - 1;
+const callBotUpdate = async (params: Record<string, unknown>) => {
+  const rpc = supabaseAdmin.rpc as unknown as (
+    fn: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ error?: unknown }>;
+  await rpc("update_game_state_for_bot", params);
+};
+
 
 const forwardProgress = (from: Move["from"], to: Move["to"], player: PlayerId): number =>
   player === "home" ? from.row - to.row : to.row - from.row;
@@ -136,7 +145,7 @@ export const executeBotTurnIfNeeded = async (
   gameId: string,
 ): Promise<void> => {
   for (let iteration = 0; iteration < MAX_CHAINED_BOT_MOVES; iteration += 1) {
-    const { data: game, error } = await supabaseAdmin
+    const { data: game, error } = (await supabaseAdmin
       .from("games")
       .select(
         `id,
@@ -152,7 +161,7 @@ export const executeBotTurnIfNeeded = async (
          bot_display_name`,
       )
       .eq("id", gameId)
-      .single();
+      .single()) as PostgrestSingleResponse<GameRow>;
 
     if (error || !game || !game.is_bot_game) {
       return;
@@ -182,13 +191,11 @@ export const executeBotTurnIfNeeded = async (
         turn: opponent(botPlayer),
       };
 
-      await supabaseAdmin
-        .from("games")
-        .update({
-          game_state: passedState,
-          score: passedState.score,
-        })
-        .eq("id", gameId);
+      await callBotUpdate({
+        p_game_id: gameId,
+        p_game_state: passedState,
+        p_score: passedState.score,
+      });
       return;
     }
 
@@ -203,15 +210,13 @@ export const executeBotTurnIfNeeded = async (
       }
     }
 
-    await supabaseAdmin
-      .from("games")
-      .update({
-        game_state: outcome.nextState,
-        score: outcome.nextState.score,
-        status: nextStatus,
-        winner_id: winnerId,
-      })
-      .eq("id", gameId);
+    await callBotUpdate({
+      p_game_id: gameId,
+      p_game_state: outcome.nextState,
+      p_score: outcome.nextState.score,
+      p_status: nextStatus,
+      p_winner_id: winnerId,
+    });
 
     if (nextStatus === "finished") {
       return;

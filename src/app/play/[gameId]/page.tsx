@@ -4,10 +4,7 @@ import { GameView } from "@/components/game/GameView";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import { RuleEngine, type GameState } from "@/lib/ruleEngine";
 import type { Database } from "@/lib/database.types";
-import type {
-  PostgrestQueryBuilder,
-  PostgrestSingleResponse,
-} from "@supabase/supabase-js";
+import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { FOOTBALL_BOT_DEFAULT_NAME } from "@/lib/ai/footballBot";
 
@@ -82,21 +79,19 @@ export default async function PlayPage({ params }: PlayPageProps) {
 
   if (!userIsPlayer && !rawGame.is_bot_game) {
     if (rawGame.status === "waiting" && rawGame.player_2_id === null) {
-      const gamesTable = supabaseAdmin.from(
-        "games",
-      ) as PostgrestQueryBuilder<
-        Database["public"]["Tables"]["games"]["Row"],
-        Database["public"]["Tables"]["games"]["Insert"],
-        Database["public"]["Tables"]["games"]["Update"]
-      >;
-
       const joinPayload = {
         player_2_id: session.user.id,
         status: "in_progress",
-      } as Partial<Database["public"]["Tables"]["games"]["Row"]> as Record<string, unknown>;
+      };
 
-      const { data: joinedGame, error: joinError } = (await gamesTable
-        .update(joinPayload)
+      const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
+        "games",
+      ) as unknown as {
+        update: (
+          values: Record<string, unknown>,
+        ) => ReturnType<typeof supabaseAdmin.from>;
+      })
+        .update(joinPayload as Record<string, unknown>)
         .eq("id", params.gameId)
         .is("player_2_id", null)
         .select(
