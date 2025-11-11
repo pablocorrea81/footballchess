@@ -15,7 +15,7 @@ type SerializableCookie = {
   domain?: string;
   maxAge?: number;
   expires?: number | string | Date;
-  sameSite?: "lax" | "strict" | "none";
+  sameSite?: "lax" | "strict" | "none" | false;
   secure?: boolean;
   httpOnly?: boolean;
   priority?: "low" | "medium" | "high";
