@@ -5,6 +5,10 @@ import { SupabaseListener } from "@/components/providers/SupabaseListener";
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 export const metadata: Metadata = {
   title: "Football Chess",
   description:

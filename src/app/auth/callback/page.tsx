@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +9,15 @@ const FALLBACK_REDIRECT = "/lobby";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
     const hash = window.location.hash.slice(1);
     if (!hash) {
+      router.replace("/login?error=session_missing_hash");
       return;
     }
 
@@ -26,6 +30,7 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    const searchParams = new URLSearchParams(window.location.search);
     const targetPath = searchParams.get("next") ?? FALLBACK_REDIRECT;
 
     let cancelled = false;
@@ -72,7 +77,7 @@ export default function AuthCallbackPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams]);
+  }, [router]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950 p-6 text-white">
@@ -80,9 +85,7 @@ export default function AuthCallbackPage() {
         <span className="text-sm uppercase tracking-widest text-emerald-200">
           Football Chess
         </span>
-        <h1 className="text-2xl font-semibold">
-          Validando acceso…
-        </h1>
+        <h1 className="text-2xl font-semibold">Validando acceso…</h1>
         <p className="text-sm text-emerald-100/80">
           Estamos confirmando tu sesión segura. Serás redirigido automáticamente al lobby.
         </p>
