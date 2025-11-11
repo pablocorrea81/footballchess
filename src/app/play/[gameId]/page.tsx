@@ -84,7 +84,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
         .update({
           player_2_id: session.user.id,
           status: "in_progress",
-        } as Database["public"]["Tables"]["games"]["Update"])
+        } as Record<string, unknown>)
         .eq("id", params.gameId)
         .is("player_2_id", null)
         .select(
