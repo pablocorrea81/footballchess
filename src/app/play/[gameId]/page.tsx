@@ -79,12 +79,16 @@ export default async function PlayPage({ params }: PlayPageProps) {
 
   if (!userIsPlayer && !rawGame.is_bot_game) {
     if (rawGame.status === "waiting" && rawGame.player_2_id === null) {
+      const joinPayload: Partial<
+        Database["public"]["Tables"]["games"]["Row"]
+      > = {
+        player_2_id: session.user.id,
+        status: "in_progress",
+      };
+
       const { data: joinedGame, error: joinError } = (await supabaseAdmin
         .from("games")
-        .update({
-          player_2_id: session.user.id,
-          status: "in_progress",
-        } as Record<string, unknown>)
+        .update(joinPayload)
         .eq("id", params.gameId)
         .is("player_2_id", null)
         .select(
