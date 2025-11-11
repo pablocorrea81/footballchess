@@ -12,9 +12,6 @@ import { createBotGameAction, createGameAction } from "@/app/lobby/create-game/a
 type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_1_username?: string | null;
   player_2_username?: string | null;
-  is_bot_game?: boolean;
-  bot_player?: string | null;
-  bot_display_name?: string | null;
 };
 
 type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
