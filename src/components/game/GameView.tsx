@@ -115,6 +115,10 @@ export function GameView({
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
   const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
+  // Track if we're currently processing a local move to avoid overwriting with Realtime updates
+  const isProcessingLocalMoveRef = useRef<boolean>(false);
+  // Track the last move we processed to avoid duplicate updates
+  const lastProcessedHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
   
   // Move hints state
   const [hoveredPiece, setHoveredPiece] = useState<Position | null>(null);
@@ -227,16 +231,30 @@ export function GameView({
       
       setDynamicPlayerLabels(updatedLabels);
 
+      // Check if game just started
+      const historyLength = nextState.history?.length ?? 0;
+      const currentHistoryLength = lastProcessedHistoryLengthRef.current;
+      
       console.log("[GameView] Fetched game state:", {
         turn: nextState.turn,
         score: nextScore,
         status: gameData.status,
-        historyLength: nextState.history?.length ?? 0,
+        historyLength,
+        currentHistoryLength,
+        isProcessingLocalMove: isProcessingLocalMoveRef.current,
         playerLabels: updatedLabels,
       });
 
-      // Check if game just started
-      const historyLength = nextState.history?.length ?? 0;
+      // Don't overwrite local state if we're processing a move and history hasn't increased
+      if (isProcessingLocalMoveRef.current && historyLength <= currentHistoryLength) {
+        console.log("[GameView] Skipping fetchGameState update - processing local move and history hasn't increased");
+        // Still update player labels (already done above)
+        return;
+      }
+      
+      // Update last processed history length
+      lastProcessedHistoryLengthRef.current = historyLength;
+      
       const isGameStart = historyLength === 0 && status === "waiting" && gameData.status === "in_progress" && !hasPlayedStartSound;
 
       setGameState(nextState);
@@ -297,6 +315,85 @@ export function GameView({
             (payload.new.score as GameState["score"] | null) ??
             RuleEngine.createInitialState().score;
 
+          const historyLength = nextState.history?.length ?? 0;
+          const currentHistoryLength = lastProcessedHistoryLengthRef.current;
+          
+          console.log("[GameView] Realtime update - history lengths:", {
+            received: historyLength,
+            current: currentHistoryLength,
+            isProcessingLocalMove: isProcessingLocalMoveRef.current,
+            turn: nextState.turn,
+            playerRole,
+            profileId,
+            playerId: players[playerRole],
+          });
+
+          // If we're processing a local move, only update if the history is longer (new move from opponent)
+          // This prevents overwriting our own move with a stale update
+          if (isProcessingLocalMoveRef.current) {
+            // If history is longer, it's a new move from the opponent
+            if (historyLength > currentHistoryLength) {
+              console.log("[GameView] New move detected from opponent, updating state");
+              isProcessingLocalMoveRef.current = false;
+              lastProcessedHistoryLengthRef.current = historyLength;
+              // Continue with update
+            } else {
+              // History is same or shorter - this might be our own move confirmation or a stale update
+              // Check if it's the opponent's turn now (our move was processed)
+              const isOpponentTurn = nextState.turn === opponentRole;
+              const isPlayerTurn = nextState.turn === playerRole && players[playerRole] === profileId;
+              
+              if (isOpponentTurn && historyLength === currentHistoryLength) {
+                // Our move was processed, now it's opponent's turn
+                console.log("[GameView] Our move was processed, opponent's turn now");
+                isProcessingLocalMoveRef.current = false;
+                lastProcessedHistoryLengthRef.current = historyLength;
+                // Continue with update to reflect opponent's turn
+              } else if (isPlayerTurn && historyLength === currentHistoryLength) {
+                // Still our turn - might be a duplicate update, skip it
+                console.log("[GameView] Still our turn with same history, skipping duplicate update");
+                return;
+              } else {
+                // History is shorter - this is definitely a stale update, ignore it
+                console.log("[GameView] History is shorter than current, ignoring stale update");
+                return;
+              }
+            }
+          } else {
+            // Not processing a local move - update if history is longer (new move from opponent)
+            if (historyLength > currentHistoryLength) {
+              console.log("[GameView] New move from opponent detected, updating state");
+              lastProcessedHistoryLengthRef.current = historyLength;
+              // Continue with update
+            } else if (historyLength === currentHistoryLength) {
+              // Same history length - might be a status update or duplicate, check if turn changed
+              const currentTurn = gameState.turn;
+              const nextTurn = nextState.turn;
+              
+              if (currentTurn !== nextTurn) {
+                // Turn changed - update state
+                console.log("[GameView] Turn changed, updating state");
+                lastProcessedHistoryLengthRef.current = historyLength;
+                // Continue with update
+              } else {
+                // Same history and same turn - might be a duplicate or status update
+                // Only update if status changed or if it's a status update
+                if (payload.new.status !== status) {
+                  console.log("[GameView] Status changed, updating state");
+                  // Continue with update
+                } else {
+                  // Duplicate update, skip
+                  console.log("[GameView] Duplicate update (same history, turn, status), skipping");
+                  return;
+                }
+              }
+            } else {
+              // History is shorter - stale update, ignore
+              console.log("[GameView] History is shorter than current, ignoring stale update");
+              return;
+            }
+          }
+
           console.log("[GameView] Updating local state from Realtime:", {
             turn: nextState.turn,
             score: nextScore,
@@ -305,7 +402,6 @@ export function GameView({
           });
 
           // Check if game just started (first move)
-          const historyLength = nextState.history?.length ?? 0;
           const isGameStart = historyLength === 0 && status === "waiting" && payload.new.status === "in_progress";
 
           setGameState(nextState);
@@ -332,11 +428,15 @@ export function GameView({
           // Goal detection and resume sound are handled by the useEffect that monitors gameState.history
           // This avoids duplicate triggers
           
-          // Fetch player names asynchronously after state update (don't block the update)
-          // Use a small delay to avoid race conditions
-          setTimeout(() => {
-            void fetchGameState();
-          }, 100);
+          // Only fetch player names if history increased (new move from opponent)
+          // Don't fetch if we're just confirming our own move
+          if (historyLength > currentHistoryLength) {
+            // Fetch player names asynchronously after state update (don't block the update)
+            // Use a small delay to avoid race conditions
+            setTimeout(() => {
+              void fetchGameState();
+            }, 100);
+          }
         },
       )
       .subscribe((status) => {
@@ -352,7 +452,7 @@ export function GameView({
       console.log("[GameView] Cleaning up Realtime subscription for game:", initialGameId);
       void supabase.removeChannel(channel);
     };
-  }, [initialGameId, supabase, status, hasPlayedStartSound, playSound, fetchGameState]);
+  }, [initialGameId, supabase, status, hasPlayedStartSound, playSound, fetchGameState, playerRole, opponentRole, players, profileId, gameState.turn]);
 
   // Poll for updates when it's not the player's turn
   // This handles both bot games and multiplayer games where the opponent is moving
@@ -458,6 +558,10 @@ export function GameView({
     }
 
     setPendingMove(true);
+    // Mark that we're processing a local move to prevent Realtime from overwriting it
+    isProcessingLocalMoveRef.current = true;
+    const currentHistoryLength = gameState.history?.length ?? 0;
+    lastProcessedHistoryLengthRef.current = currentHistoryLength;
 
     try {
       const outcome = RuleEngine.applyMove(gameState, move);
@@ -468,6 +572,7 @@ export function GameView({
       // The useEffect that monitors gameState.history will detect the goal and show celebration
       const newHistoryLength = outcome.nextState.history?.length ?? 0;
       previousHistoryLengthRef.current = newHistoryLength - 1; // Set to previous length so useEffect detects the change
+      lastProcessedHistoryLengthRef.current = newHistoryLength;
       
       setGameState(outcome.nextState);
       setScore(newScore);
@@ -520,11 +625,20 @@ export function GameView({
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
         setFeedback(data.error ?? "Error al actualizar la partida.");
+        // Reset the flag if there was an error
+        isProcessingLocalMoveRef.current = false;
+      } else {
+        // Move was successful, but keep the flag until we receive confirmation from Realtime
+        // that the move was processed and it's now the opponent's turn
+        // The Realtime subscription will reset the flag when it detects the opponent's turn
+        console.log("[GameView] Move sent successfully, waiting for Realtime confirmation");
       }
     } catch (error) {
       setFeedback(
         error instanceof Error ? error.message : "Movimiento inválido.",
       );
+      // Reset the flag if there was an error
+      isProcessingLocalMoveRef.current = false;
     } finally {
       setPendingMove(false);
     }

@@ -4,7 +4,8 @@ import { useState, useCallback } from "react";
 import {
   generateWhatsAppInviteMessage,
   generateWhatsAppLink,
-  normalizeUruguayanPhoneToWhatsApp,
+  normalizePhoneToWhatsApp,
+  formatPhoneForDisplay,
 } from "@/lib/whatsappUtils";
 
 type InviteWhatsAppModalProps = {
@@ -27,28 +28,18 @@ export function InviteWhatsAppModal({
   const handlePhoneChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
     
-    // Remove all non-digit characters for processing
-    const cleaned = value.replace(/\D/g, '');
+    // Allow +, digits, spaces, dashes, and parentheses
+    // Remove invalid characters
+    value = value.replace(/[^\d\+\s\-\(\)]/g, '');
     
-    // Limit to 9 digits max (09 + 8 digits for Uruguayan format)
-    if (cleaned.length > 9) {
+    // Limit to reasonable length (15 digits max for international + formatting)
+    const cleaned = value.replace(/\D/g, '');
+    if (cleaned.length > 15) {
       return;
     }
     
-    // Format as user types: XXX XXX XXX (groups of 3)
-    let formatted = '';
-    if (cleaned.length === 0) {
-      formatted = '';
-    } else if (cleaned.length <= 3) {
-      // First 3 digits: 092
-      formatted = cleaned;
-    } else if (cleaned.length <= 6) {
-      // First 6 digits: 092 922
-      formatted = `${cleaned.substring(0, 3)} ${cleaned.substring(3)}`;
-    } else {
-      // All 9 digits: 092 922 281
-      formatted = `${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6)}`;
-    }
+    // Format using the formatPhoneForDisplay function
+    const formatted = formatPhoneForDisplay(value);
     
     setPhoneNumber(formatted);
     setError(null);
@@ -64,20 +55,11 @@ export function InviteWhatsAppModal({
     setError(null);
 
     try {
-      // Remove all non-digit characters for normalization
-      const cleanedPhone = phoneNumber.replace(/\D/g, '');
-      
-      if (!cleanedPhone || cleanedPhone.length < 9) {
-        setError("Número de teléfono inválido. Ingresa 9 dígitos (ej: 092 922 281).");
-        setIsValidating(false);
-        return;
-      }
-      
-      // Normalize phone number
-      const normalized = normalizeUruguayanPhoneToWhatsApp(cleanedPhone);
+      // Normalize phone number (handles international formats)
+      const normalized = normalizePhoneToWhatsApp(phoneNumber);
       
       if (!normalized) {
-        setError("Número de teléfono inválido. Ingresa un número uruguayo válido (debe empezar con 09 y tener 9 dígitos, ej: 092 922 281).");
+        setError("Número de teléfono inválido. Por favor ingresa un número con código de país (ej: +598 9 123 4567 para Uruguay, +1 234 567 8900 para US/Canadá).");
         setIsValidating(false);
         return;
       }
@@ -89,7 +71,7 @@ export function InviteWhatsAppModal({
       const message = generateWhatsAppInviteMessage(inviteCode, inviteUrl, creatorName);
       
       // Generate WhatsApp link
-      const whatsappLink = generateWhatsAppLink(normalized, message);
+      const whatsappLink = generateWhatsAppLink(phoneNumber, message);
       
       // Open WhatsApp
       window.open(whatsappLink, '_blank');
@@ -178,14 +160,14 @@ export function InviteWhatsAppModal({
             value={displayPhone}
             onChange={handlePhoneChange}
             onKeyPress={handleKeyPress}
-            placeholder="092 922 281"
+            placeholder="+598 9 123 4567 o +1 234 567 8900"
             className="w-full rounded-xl border-2 border-emerald-200/30 bg-white/10 px-4 py-3 text-base text-white placeholder-emerald-200/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200/50 font-mono"
             autoFocus
             disabled={isValidating}
-            maxLength={11} // XXX XXX XXX (11 characters with spaces: 3+1+3+1+3)
+            maxLength={25} // Allow for international format with country code and formatting
           />
           <p className="mt-2 text-xs text-emerald-200/60">
-            Formato uruguayo: 092 922 281 (9 dígitos agrupados de 3 en 3)
+            Ingresa el número con código de país (ej: +598 9 123 4567 para Uruguay, +1 234 567 8900 para US/Canadá, +34 612 345 678 para España)
           </p>
         </div>
 
