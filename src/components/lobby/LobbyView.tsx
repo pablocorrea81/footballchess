@@ -78,6 +78,7 @@ const GAME_SELECT = `
   bot_player,
   bot_difficulty,
   bot_display_name,
+  invite_code,
   player1:profiles!games_player_1_id_fkey(username, avatar_url),
   player2:profiles!games_player_2_id_fkey(username, avatar_url)
 `;
@@ -447,6 +448,27 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-emerald-100/60">
                     {isBot ? "Solo jugador invitado" : "Observando..."}
                   </span>
+                )}
+
+                {/* Share button for waiting games */}
+                {isOwner && game.status === "waiting" && !isBot && game.invite_code && (
+                  <button
+                    onClick={async () => {
+                      const inviteUrl = `${window.location.origin}/invite/${game.invite_code}`;
+                      try {
+                        await navigator.clipboard.writeText(inviteUrl);
+                        // You could add a toast notification here
+                        alert(`Link de invitación copiado: ${inviteUrl}`);
+                      } catch (err) {
+                        // Fallback for browsers that don't support clipboard API
+                        prompt("Copia este link para invitar a un amigo:", inviteUrl);
+                      }
+                    }}
+                    className="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-200 transition hover:border-blue-200 hover:text-white"
+                    title="Copiar link de invitación"
+                  >
+                    📤 Compartir
+                  </button>
                 )}
 
                 {canDelete && (

@@ -10,6 +10,7 @@ import {
   FOOTBALL_BOT_DEFAULT_NAME,
   executeBotTurnIfNeeded,
 } from "@/lib/ai/footballBot";
+import { generateInviteCode } from "@/lib/inviteCode";
 
 export async function createGameAction(profileId: string) {
   const supabase = createServerActionSupabaseClient();
@@ -29,12 +30,32 @@ export async function createGameAction(profileId: string) {
 
   const startingPlayer = Math.random() < 0.5 ? "home" : "away";
   const initialState = RuleEngine.createInitialState(startingPlayer);
+  const inviteCode = generateInviteCode();
+
+  // Ensure invite code is unique (retry if collision occurs, though very unlikely)
+  let attempts = 0;
+  let finalInviteCode = inviteCode;
+  while (attempts < 5) {
+    const { data: existing } = await supabase
+      .from("games")
+      .select("id")
+      .eq("invite_code", finalInviteCode)
+      .single();
+    
+    if (!existing) {
+      break; // Code is unique
+    }
+    
+    finalInviteCode = generateInviteCode();
+    attempts++;
+  }
 
   const { error } = await supabase.from("games").insert({
     player_1_id: profileId,
     status: "waiting",
     game_state: initialState,
     score: initialState.score,
+    invite_code: finalInviteCode,
   });
 
   if (error) {

@@ -76,6 +76,7 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       is_bot_game,
       bot_player,
       bot_display_name,
+      invite_code,
       player1:profiles!games_player_1_id_fkey(username, avatar_url),
       player2:profiles!games_player_2_id_fkey(username, avatar_url)`,
     )

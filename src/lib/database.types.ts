@@ -49,6 +49,7 @@ export interface Database {
           bot_player: string | null;
           bot_difficulty: string | null;
           bot_display_name: string | null;
+          invite_code: string | null;
         };
         Insert: {
           id?: string;
@@ -63,6 +64,7 @@ export interface Database {
           bot_player?: string | null;
           bot_difficulty?: string | null;
           bot_display_name?: string | null;
+          invite_code?: string | null;
         };
         Update: {
           id?: string;
@@ -77,6 +79,7 @@ export interface Database {
           bot_player?: string | null;
           bot_difficulty?: string | null;
           bot_display_name?: string | null;
+          invite_code?: string | null;
         };
       };
     };

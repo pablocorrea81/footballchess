@@ -30,8 +30,12 @@ export default function AuthCallbackPage() {
       return;
     }
 
+    // Get redirect path from query params, default to lobby
     const searchParams = new URLSearchParams(window.location.search);
-    const targetPath = searchParams.get("next") ?? FALLBACK_REDIRECT;
+    let targetPath = searchParams.get("next") ?? FALLBACK_REDIRECT;
+    
+    // If redirecting to invite page, it will handle joining the game
+    // Otherwise, redirect to lobby or the specified path
 
     let cancelled = false;
 
