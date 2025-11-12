@@ -308,39 +308,49 @@ export function GameView({
       console.log("[GameView] Cleaning up Realtime subscription for game:", initialGameId);
       void supabase.removeChannel(channel);
     };
-  }, [initialGameId, supabase]);
+  }, [initialGameId, supabase, status, hasPlayedStartSound, playSound]);
 
-  // Poll for updates when it's the bot's turn (fallback for Realtime not working with admin updates)
+  // Poll for updates when it's not the player's turn
+  // This handles both bot games and multiplayer games where the opponent is moving
   useEffect(() => {
-    if (!isBotGame || !botPlayer || status !== "in_progress") return;
+    if (status !== "in_progress") return;
     
-    const isBotTurnNow = gameState.turn === botPlayer;
-
-    if (!isBotTurnNow) {
-      console.log("[GameView] Not bot's turn, stopping polling");
+    const isPlayerTurn = gameState.turn === playerRole && players[playerRole] === profileId;
+    
+    // If it's the player's turn, no need to poll
+    if (isPlayerTurn) {
+      console.log("[GameView] Player's turn, stopping polling");
       return;
     }
 
-    console.log("[GameView] Bot's turn detected, starting polling for updates...");
+    // For bot games, only poll when it's the bot's turn
+    if (isBotGame) {
+      if (!botPlayer || gameState.turn !== botPlayer) {
+        console.log("[GameView] Not bot's turn, stopping polling");
+        return;
+      }
+    }
+
+    console.log("[GameView] Opponent's turn detected, starting polling for updates...");
     
-    // Initial fetch after a short delay to allow bot to process
+    // Initial fetch after a short delay to allow opponent to process
     const initialTimeout = setTimeout(() => {
-      console.log("[GameView] Initial fetch after bot turn...");
+      console.log("[GameView] Initial fetch after opponent turn...");
       void fetchGameState();
     }, 1000);
     
-    // Poll every 500ms while it's the bot's turn
+    // Poll every 1 second while it's the opponent's turn (less aggressive than bot polling)
     const pollInterval = setInterval(() => {
-      console.log("[GameView] Polling for bot move update...");
+      console.log("[GameView] Polling for opponent move update...");
       void fetchGameState();
-    }, 500);
+    }, 1000);
 
     return () => {
       console.log("[GameView] Cleaning up polling interval and timeout");
       clearTimeout(initialTimeout);
       clearInterval(pollInterval);
     };
-  }, [isBotGame, botPlayer, status, gameState.turn, fetchGameState]);
+  }, [isBotGame, botPlayer, status, gameState.turn, playerRole, players, profileId, fetchGameState]);
 
   const currentTurnLabel =
     gameState.turn === playerRole
@@ -1001,6 +1011,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             </div>
           )}
 
+          {!isBotGame && !isBotTurn && !currentTurnIsPlayer && status === "in_progress" && (
+            <div className="rounded-xl md:rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
+              ⏳ Esperando que {playerLabels[opponentRole]} haga su movimiento...
+            </div>
+          )}
+
           {lastMoveDescription && (
             <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-r from-slate-800/90 to-slate-700/90 p-3 md:p-4 text-sm md:text-base text-white shadow-xl backdrop-blur-sm">
               <p className="font-medium">
@@ -1067,21 +1083,28 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {/* Game info */}
           <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-3 md:p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
             <p className="text-xs md:text-sm lg:text-base font-semibold mb-2 md:mb-3">
-              Tu rol: <strong className="text-yellow-300 text-sm md:text-base lg:text-lg">{playerRole.toUpperCase()}</strong>.{" "}
+              <span className="text-emerald-200">Tú:</span> <strong className="text-yellow-300 text-sm md:text-base lg:text-lg">{playerLabels[playerRole]}</strong> ({playerRole.toUpperCase()}){" "}
+              {!isBotGame && (
+                <>
+                  <span className="text-sky-200">•</span> <span className="text-sky-200">Oponente:</span> <strong className="text-sky-300 text-sm md:text-base lg:text-lg">{playerLabels[opponentRole]}</strong> ({opponentRole.toUpperCase()})
+                </>
+              )}
+            </p>
+            <p className="text-xs md:text-sm lg:text-base font-semibold mb-2 md:mb-3">
               {status === "finished" ? (
                 <>
                   Partido terminado.{" "}
                   <strong className="text-emerald-300 text-sm md:text-base lg:text-lg">
                     {winnerId && winnerId === players[playerRole]
                       ? "🎉 ¡Ganaste!"
-                      : "😔 Ganó tu rival"}
+                      : `😔 Ganó ${computedWinnerLabel ?? "tu rival"}`}
                   </strong>
                 </>
               ) : (
                 <>
                   Turno actual:{" "}
                   <strong className={`text-sm md:text-base lg:text-lg ${currentTurnIsPlayer ? "text-emerald-300" : "text-sky-300"}`}>
-                    {gameState.turn.toUpperCase()}{" "}
+                    {currentTurnLabel} ({gameState.turn.toUpperCase()}){" "}
                     {currentTurnIsPlayer ? "✅" : "⏳"}
                   </strong>
                 </>
