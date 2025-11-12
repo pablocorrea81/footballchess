@@ -432,11 +432,11 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                 )}
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
                 {isInGame ? (
                   <Link
                     href={`/play/${game.id}`}
-                    className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-emerald-950 transition hover:bg-emerald-400"
+                    className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-emerald-950 transition hover:bg-emerald-400 font-semibold"
                   >
                     Entrar a la partida
                   </Link>
@@ -452,6 +452,28 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-emerald-100/60">
                     {isBot ? "Solo jugador invitado" : "Observando..."}
                   </span>
+                )}
+
+                {/* Delete button - Always visible for creator, regardless of status */}
+                {isOwner && (
+                  <button
+                    onClick={() => deleteGame(game.id)}
+                    disabled={deleteLoadingId === game.id}
+                    className="rounded-full border-2 border-red-400/80 bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:border-red-300 hover:bg-red-500/40 hover:text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg"
+                    title={game.status === "in_progress" ? "Eliminar partida en progreso" : "Eliminar partida"}
+                  >
+                    {deleteLoadingId === game.id ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        <span>Eliminando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🗑️</span>
+                        <span>Eliminar</span>
+                      </>
+                    )}
+                  </button>
                 )}
 
                 {/* Invite button for waiting games */}
@@ -470,16 +492,6 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   >
                     <span>💬</span>
                     <span>Invitar</span>
-                  </button>
-                )}
-
-                {canDelete && (
-                  <button
-                    onClick={() => deleteGame(game.id)}
-                    disabled={deleteLoadingId === game.id}
-                    className="rounded-full border border-red-400/60 px-3 py-1 text-xs text-red-200 transition hover:border-red-200 hover:text-white disabled:opacity-60"
-                  >
-                    {deleteLoadingId === game.id ? "Eliminando..." : "Eliminar"}
                   </button>
                 )}
               </div>
