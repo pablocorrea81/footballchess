@@ -1,10 +1,10 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { GameView } from "@/components/game/GameView";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import { RuleEngine, type GameState } from "@/lib/ruleEngine";
 import type { Database } from "@/lib/database.types";
-import type { PostgrestSingleResponse } from "@supabase/supabase-js";
+import type { PostgrestSingleResponse, PostgrestError } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { FOOTBALL_BOT_DEFAULT_NAME } from "@/lib/ai/footballBot";
 
@@ -17,24 +17,34 @@ type PlayPageProps = {
 type GameRow = Database["public"]["Tables"]["games"]["Row"];
 
 type RawGame = GameRow & {
-  player_one?:
-    | { username: string }
-    | { username: string }[];
-  player_two?:
-    | { username: string }
-    | { username: string }[];
+  player_one?: { username: string } | { username: string }[];
+  player_two?: { username: string } | { username: string }[];
 };
 
 const extractUsername = (
-  profile:
-    | RawGame["player_one"]
-    | RawGame["player_two"],
+  profile: RawGame["player_one"] | RawGame["player_two"],
 ): string | null => {
   if (Array.isArray(profile)) {
     return profile[0]?.username ?? null;
   }
   return profile?.username ?? null;
 };
+
+const GAME_SELECT = `
+        id,
+        status,
+        game_state,
+        score,
+        player_1_id,
+        player_2_id,
+        winner_id,
+        is_bot_game,
+        bot_player,
+        bot_difficulty,
+        bot_display_name,
+        player_one:profiles!games_player_1_id_fkey(username),
+        player_two:profiles!games_player_2_id_fkey(username)
+      `;
 
 export default async function PlayPage({ params }: PlayPageProps) {
   const supabase = createServerSupabaseClient();
@@ -46,68 +56,73 @@ export default async function PlayPage({ params }: PlayPageProps) {
     redirect("/login");
   }
 
-  let adminGame: RawGame | null = null;
-  try {
-    const { data, error } = await supabaseAdmin
-      .from("games")
-      .select(
-        `
-        id,
-        status,
-        game_state,
-        score,
-        player_1_id,
-        player_2_id,
-        winner_id,
-        is_bot_game,
-        bot_player,
-        bot_display_name,
-        player_one:profiles!games_player_1_id_fkey(username),
-        player_two:profiles!games_player_2_id_fkey(username)
-      `,
-      )
-      .eq("id", params.gameId)
-      .single();
+  const gameId = params.gameId;
+  let rawGame: RawGame | null = null;
 
-    if (error) {
-      console.error("[play] supabaseAdmin fetch error", error);
+  const { data: rlsGame, error: rlsError } = await supabase
+    .from("games")
+    .select(GAME_SELECT)
+    .eq("id", gameId)
+    .single();
+
+  if (rlsError && (rlsError as PostgrestError).code !== "PGRST116") {
+    console.error("[play] RLS game fetch error", rlsError);
+  }
+
+  if (rlsGame) {
+    rawGame = rlsGame as RawGame;
+  } else {
+    try {
+      const { data: adminData, error } = await supabaseAdmin
+        .from("games")
+        .select(GAME_SELECT)
+        .eq("id", gameId)
+        .single();
+
+      if (error) {
+        console.error("[play] supabaseAdmin fallback error", error);
+      }
+
+      rawGame = (adminData as RawGame | null) ?? null;
+    } catch (adminError) {
+      console.error("[play] unexpected admin fallback error", adminError);
     }
-
-    adminGame = (data as RawGame | null) ?? null;
-  } catch (adminError) {
-    console.error("[play] unexpected admin fetch error", adminError);
   }
 
-  if (!adminGame) {
-    redirect("/lobby?error=game_not_found");
+  if (!rawGame) {
+    redirect(`/lobby?error=game_not_found&game=${encodeURIComponent(gameId)}`);
   }
 
-  let rawGame = adminGame as RawGame;
+  if (rawGame.is_bot_game && rawGame.player_1_id !== session.user.id) {
+    redirect("/lobby?error=bot_private");
+  }
 
-  const userIsPlayer =
+  const isParticipant =
     rawGame.player_1_id === session.user.id ||
     (!!rawGame.player_2_id && rawGame.player_2_id === session.user.id);
 
-  if (!userIsPlayer && !rawGame.is_bot_game) {
-    if (rawGame.status === "waiting" && rawGame.player_2_id === null) {
-      try {
-        const joinPayload = {
+  if (
+    !rawGame.is_bot_game &&
+    !isParticipant &&
+    rawGame.status === "waiting" &&
+    rawGame.player_2_id === null
+  ) {
+    try {
+      const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
+        "games",
+      ) as unknown as {
+        update: (
+          values: Record<string, unknown>,
+        ) => ReturnType<typeof supabaseAdmin.from>;
+      })
+        .update({
           player_2_id: session.user.id,
           status: "in_progress",
-        };
-
-        const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
-          "games",
-        ) as unknown as {
-          update: (
-            values: Record<string, unknown>,
-          ) => ReturnType<typeof supabaseAdmin.from>;
-        })
-          .update(joinPayload as Record<string, unknown>)
-          .eq("id", params.gameId)
-          .is("player_2_id", null)
-          .select(
-            `
+        } as Record<string, unknown>)
+        .eq("id", gameId)
+        .is("player_2_id", null)
+        .select(
+          `
             id,
             status,
             game_state,
@@ -118,20 +133,27 @@ export default async function PlayPage({ params }: PlayPageProps) {
             player_one:profiles!games_player_1_id_fkey(username),
             player_two:profiles!games_player_2_id_fkey(username)
           `,
-          )
-          .single()) as PostgrestSingleResponse<RawGame>;
+        )
+        .single()) as PostgrestSingleResponse<RawGame>;
 
-        if (joinError) {
-          console.error("[play] joinGame error", joinError);
-        }
-
-        if (!joinError && joinedGame) {
-          rawGame = joinedGame;
-        }
-      } catch (joinError) {
-        console.error("[play] unexpected join error", joinError);
+      if (joinError) {
+        console.error("[play] joinGame error", joinError);
       }
+
+      if (!joinError && joinedGame) {
+        rawGame = joinedGame;
+      }
+    } catch (joinError) {
+      console.error("[play] unexpected join error", joinError);
     }
+  }
+
+  const finalParticipant =
+    rawGame.player_1_id === session.user.id ||
+    (!!rawGame.player_2_id && rawGame.player_2_id === session.user.id);
+
+  if (!finalParticipant) {
+    redirect("/lobby?error=not_participant");
   }
 
   const game = {
@@ -140,15 +162,6 @@ export default async function PlayPage({ params }: PlayPageProps) {
     player_two_username: extractUsername(rawGame.player_two),
     bot_display_name: rawGame.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME,
   };
-
-  const isPlayer =
-    game.player_1_id === session.user.id ||
-    (!!game.player_2_id && game.player_2_id === session.user.id) ||
-    (game.is_bot_game && game.player_1_id === session.user.id);
-
-  if (!isPlayer) {
-    redirect("/lobby");
-  }
 
   const baseState = RuleEngine.createInitialState();
   const rawState = (game.game_state as Partial<GameState> | null) ?? baseState;

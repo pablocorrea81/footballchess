@@ -10,6 +10,13 @@ type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player2?: { username: string } | { username: string }[];
 };
 
+type LobbyPageProps = {
+  searchParams?: {
+    error?: string;
+    game?: string;
+  };
+};
+
 const getUsername = (
   profile: RawGameRow["player1"],
 ): string | null => {
@@ -19,13 +26,30 @@ const getUsername = (
   return profile?.username ?? null;
 };
 
-export default async function LobbyPage() {
+const mapErrorCode = (code?: string, gameId?: string | null): string | null => {
+  if (!code) {
+    return null;
+  }
+
+  switch (code) {
+    case "game_not_found":
+      return gameId
+        ? `La partida ${gameId} no existe o ha sido eliminada.`
+        : "La partida no existe o ha sido eliminada.";
+    case "not_participant":
+      return "Necesitas ser participante de la partida para poder verla.";
+    case "bot_private":
+      return "Las partidas contra la IA sólo pueden ser abiertas por su creador.";
+    default:
+      return "No se pudo acceder a la partida seleccionada.";
+  }
+};
+
+export default async function LobbyPage({ searchParams }: LobbyPageProps) {
   const supabase = createServerSupabaseClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
-
-  console.log("[lobby] session in server", session);
 
   if (!session) {
     redirect("/login");
@@ -49,9 +73,9 @@ export default async function LobbyPage() {
       score,
       winner_id,
       bot_difficulty,
-            is_bot_game,
-            bot_player,
-            bot_display_name,
+      is_bot_game,
+      bot_player,
+      bot_display_name,
       player1:profiles!games_player_1_id_fkey(username),
       player2:profiles!games_player_2_id_fkey(username)`,
     )
@@ -59,11 +83,13 @@ export default async function LobbyPage() {
     .order("created_at", { ascending: true });
 
   const games =
-    rawGames?.map(({ player1, player2, ...rest }) => ({
-      ...(rest as Database["public"]["Tables"]["games"]["Row"]),
-      player_1_username: getUsername(player1),
-      player_2_username: getUsername(player2),
+    rawGames?.map((game) => ({
+      ...game,
+      player_1_username: getUsername(game.player1),
+      player_2_username: getUsername(game.player2),
     })) ?? [];
+
+  const initialError = mapErrorCode(searchParams?.error, searchParams?.game ?? null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950 py-16">
@@ -89,7 +115,11 @@ export default async function LobbyPage() {
           </div>
         </header>
 
-        <LobbyView profileId={session.user.id} initialGames={games} />
+        <LobbyView
+          profileId={session.user.id}
+          initialGames={games}
+          initialError={initialError ?? undefined}
+        />
       </main>
     </div>
   );

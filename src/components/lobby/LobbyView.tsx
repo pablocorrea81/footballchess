@@ -46,11 +46,12 @@ const normalizeGames = (rows: RawGameRow[]): GameRow[] =>
 type LobbyViewProps = {
   profileId: string;
   initialGames: GameRow[];
+  initialError?: string;
 };
 
 const GAME_CHANNEL = "games:lobby";
 
-export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
+export function LobbyView({ profileId, initialGames, initialError }: LobbyViewProps) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -69,7 +70,7 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
   const [loading, setLoading] = useState(false);
   const [botLoading, setBotLoading] = useState(false);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError || null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -94,14 +95,10 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
               game_state,
               score,
               winner_id,
-            is_bot_game,
-            bot_player,
-            bot_difficulty,
-            bot_display_name,
-            is_bot_game,
-            bot_player,
-            bot_difficulty,
-            bot_display_name,
+              is_bot_game,
+              bot_player,
+              bot_difficulty,
+              bot_display_name,
               player1:profiles!games_player_1_id_fkey(username),
               player2:profiles!games_player_2_id_fkey(username)`,
             )
@@ -141,6 +138,7 @@ export function LobbyView({ profileId, initialGames }: LobbyViewProps) {
             winner_id,
             is_bot_game,
             bot_player,
+            bot_difficulty,
             bot_display_name,
             player1:profiles!games_player_1_id_fkey(username),
             player2:profiles!games_player_2_id_fkey(username)`,
