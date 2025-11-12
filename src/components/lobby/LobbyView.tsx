@@ -270,7 +270,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                       key={diff}
                       onClick={() => {
                         setSelectedDifficulty(diff);
-                        setShowDifficultySelector(false);
+                        // Don't close modal - user needs to click "Crear partida vs IA"
                       }}
                       className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
                         selectedDifficulty === diff

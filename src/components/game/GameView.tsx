@@ -111,6 +111,7 @@ export function GameView({
   const [hasPlayedStartSound, setHasPlayedStartSound] = useState(false);
   const [previousScore, setPreviousScore] = useState<GameState["score"]>(initialScore ?? initialState.score);
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
+  const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
 
   const rowIndices = useMemo(
@@ -571,6 +572,22 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     }
   }, [gameState.history, playerLabels, showGoalCelebration, playSound]);
 
+  // Auto-scroll to board when it's the player's turn
+  useEffect(() => {
+    if (canAct && boardRef.current && status === "in_progress") {
+      // Small delay to ensure DOM is updated
+      const timer = setTimeout(() => {
+        boardRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+          inline: "nearest",
+        });
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [canAct, status]);
+
   return (
     <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
       {showGoalCelebration && goalScorer && (
@@ -583,103 +600,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         />
       )}
 
-      {/* Header - Always full width */}
-      <section className="flex flex-col gap-4 rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-6 text-white shadow-2xl backdrop-blur-sm md:flex-row md:items-center md:justify-between">
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-3 mb-2">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Partido #{initialGameId.slice(0, 8)}
-            </h1>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/lobby"
-                className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
-              >
-                ← Lobby
-              </Link>
-              <Link
-                href="/"
-                className="rounded-full border-2 border-white/30 bg-white/10 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50"
-              >
-                🏠 Home
-              </Link>
-            </div>
-          </div>
-          <p className="mt-2 text-base font-medium text-emerald-50">
-            {status === "finished"
-              ? computedWinnerLabel
-                ? `Ganador: ${computedWinnerLabel}`
-                : "Partida finalizada"
-              : `Turno actual: ${currentTurnLabel}`}
-          </p>
-          {status !== "finished" && (
-            <p className="mt-1 text-sm font-semibold uppercase tracking-wider text-emerald-200">
-              Inicio: <span className="text-yellow-300">{startingLabel}</span>
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-4 text-base">
-          <div
-            className={badgeClass(
-              "home",
-              gameState.startingPlayer === "home",
-              gameState.turn === "home",
-            )}
-          >
-            {gameState.startingPlayer === "home" ? "★" : null}
-            <span className="font-semibold">
-              {playerLabels.home}: {score.home ?? 0}
-            </span>
-          </div>
-          <div
-            className={badgeClass(
-              "away",
-              gameState.startingPlayer === "away",
-              gameState.turn === "away",
-            )}
-          >
-            {gameState.startingPlayer === "away" ? "★" : null}
-            <span className="font-semibold">
-              {playerLabels.away}: {score.away ?? 0}
-            </span>
-          </div>
-        </div>
-      </section>
-
-      {/* Status messages - Always full width */}
-      {status === "waiting" && (
-        <div className="rounded-2xl border-2 border-yellow-500/60 bg-yellow-500/30 p-5 text-base font-semibold text-yellow-900 shadow-lg backdrop-blur-sm">
-          ⏳ Esperando a que se una el segundo jugador...
-        </div>
-      )}
-
-      {feedback && (
-        <div className="rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/40 p-5 text-base font-semibold text-white shadow-xl backdrop-blur-sm">
-          {feedback}
-        </div>
-      )}
-
-      {isBotTurn && (
-        <div className="rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-5 text-base font-semibold text-white shadow-xl backdrop-blur-sm animate-pulse">
-          🤖 {botDisplayName} está analizando su próximo movimiento…
-        </div>
-      )}
-
-      {lastMoveDescription && (
-        <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-r from-slate-800/90 to-slate-700/90 p-5 text-base text-white shadow-xl backdrop-blur-sm">
-          <p className="font-medium">
-            Último movimiento: <strong className="text-yellow-300">{lastMoveDescription}</strong>
-          </p>
-          {lastMoveGoalText && (
-            <p className="mt-2 text-lg font-bold text-emerald-300">⚽ {lastMoveGoalText}</p>
-          )}
-        </div>
-      )}
-
-      {/* Main content: Board on left, Info on right (desktop) / Stacked (mobile) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
-        {/* Board - Left side on desktop */}
-        <div className="w-full overflow-x-auto lg:sticky lg:top-6 lg:self-start">
+      {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start">
+        {/* Board - Left side on all screen sizes */}
+        <div 
+          ref={boardRef}
+          className="w-full overflow-x-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start"
+        >
           <div className="w-full border border-white/20 shadow-2xl">
             {/* Column labels (A-H) */}
             <div
@@ -806,24 +733,115 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           </div>
         </div>
 
-        {/* Info panel - Right side on desktop */}
-        <div className="flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        {/* Header and Info panel - Right side on all screen sizes */}
+        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:sticky md:top-6 md:self-start md:max-h-[calc(100vh-3rem)] md:overflow-y-auto">
+          {/* Header */}
+          <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
+            <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1 md:mb-2">
+              <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
+                Partido #{initialGameId.slice(0, 8)}
+              </h1>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/lobby"
+                  className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
+                >
+                  ← Lobby
+                </Link>
+                <Link
+                  href="/"
+                  className="rounded-full border-2 border-white/30 bg-white/10 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50"
+                >
+                  🏠 Home
+                </Link>
+              </div>
+            </div>
+            <p className="text-sm md:text-base font-medium text-emerald-50">
+              {status === "finished"
+                ? computedWinnerLabel
+                  ? `Ganador: ${computedWinnerLabel}`
+                  : "Partida finalizada"
+                : `Turno actual: ${currentTurnLabel}`}
+            </p>
+            {status !== "finished" && (
+              <p className="mt-1 text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200">
+                Inicio: <span className="text-yellow-300">{startingLabel}</span>
+              </p>
+            )}
+            <div className="flex items-center gap-3 md:gap-4 mt-2 md:mt-3 text-sm md:text-base">
+              <div
+                className={badgeClass(
+                  "home",
+                  gameState.startingPlayer === "home",
+                  gameState.turn === "home",
+                )}
+              >
+                {gameState.startingPlayer === "home" ? "★" : null}
+                <span className="font-semibold">
+                  {playerLabels.home}: {score.home ?? 0}
+                </span>
+              </div>
+              <div
+                className={badgeClass(
+                  "away",
+                  gameState.startingPlayer === "away",
+                  gameState.turn === "away",
+                )}
+              >
+                {gameState.startingPlayer === "away" ? "★" : null}
+                <span className="font-semibold">
+                  {playerLabels.away}: {score.away ?? 0}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Status messages */}
+          {status === "waiting" && (
+            <div className="rounded-xl md:rounded-2xl border-2 border-yellow-500/60 bg-yellow-500/30 p-3 md:p-4 text-sm md:text-base font-semibold text-yellow-900 shadow-lg backdrop-blur-sm">
+              ⏳ Esperando a que se una el segundo jugador...
+            </div>
+          )}
+
+          {feedback && (
+            <div className="rounded-xl md:rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
+              {feedback}
+            </div>
+          )}
+
+          {isBotTurn && (
+            <div className="rounded-xl md:rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm animate-pulse">
+              🤖 {botDisplayName} está analizando su próximo movimiento…
+            </div>
+          )}
+
+          {lastMoveDescription && (
+            <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-r from-slate-800/90 to-slate-700/90 p-3 md:p-4 text-sm md:text-base text-white shadow-xl backdrop-blur-sm">
+              <p className="font-medium">
+                Último movimiento: <strong className="text-yellow-300">{lastMoveDescription}</strong>
+              </p>
+              {lastMoveGoalText && (
+                <p className="mt-2 text-base md:text-lg font-bold text-emerald-300">⚽ {lastMoveGoalText}</p>
+              )}
+            </div>
+          )}
+
           {/* History */}
-          <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
-            <h2 className="text-lg lg:text-xl font-bold text-white mb-3 lg:mb-4">
+          <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-3 md:p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
+            <h2 className="text-base md:text-lg lg:text-xl font-bold text-white mb-2 md:mb-3 lg:mb-4">
               📜 Historial reciente
             </h2>
             {recentMoves.length === 0 ? (
-              <p className="mt-3 text-sm lg:text-base text-emerald-200">
+              <p className="mt-2 md:mt-3 text-xs md:text-sm lg:text-base text-emerald-200">
                 Aún no hay movimientos registrados.
               </p>
             ) : (
-              <ul className="mt-3 flex flex-col gap-2 lg:gap-3 max-h-[300px] lg:max-h-[400px] overflow-y-auto">
-                <li className="flex items-center justify-between rounded-xl border-2 border-yellow-400/60 bg-yellow-500/30 px-3 lg:px-5 py-2 lg:py-3 text-xs lg:text-sm font-semibold text-yellow-900 shadow-lg">
+              <ul className="mt-2 md:mt-3 flex flex-col gap-2 lg:gap-3 max-h-[200px] md:max-h-[250px] lg:max-h-[300px] overflow-y-auto">
+                <li className="flex items-center justify-between rounded-lg md:rounded-xl border-2 border-yellow-400/60 bg-yellow-500/30 px-2 md:px-3 lg:px-5 py-1.5 md:py-2 lg:py-3 text-xs md:text-sm font-semibold text-yellow-900 shadow-lg">
                   <span className="text-xs font-bold uppercase tracking-wider text-yellow-800">
                     Inicio
                   </span>
-                  <span className="flex items-center gap-2 text-xs lg:text-sm">
+                  <span className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
                     <span>★ {startingLabel}</span>
                   </span>
                   <span className="text-xs font-medium text-yellow-800">Sorteo</span>
@@ -831,12 +849,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 {recentMoves.map((move) => (
                   <li
                     key={move.moveNumber}
-                    className="flex items-center justify-between rounded-xl border-2 border-white/20 bg-white/10 px-3 lg:px-5 py-2 lg:py-3 shadow-md hover:bg-white/15 transition-colors"
+                    className="flex items-center justify-between rounded-lg md:rounded-xl border-2 border-white/20 bg-white/10 px-2 md:px-3 lg:px-5 py-1.5 md:py-2 lg:py-3 shadow-md hover:bg-white/15 transition-colors"
                   >
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-2 lg:px-3 py-1 rounded-full">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-1.5 md:px-2 lg:px-3 py-0.5 md:py-1 rounded-full">
                       #{move.moveNumber}
                     </span>
-                    <span className="text-xs lg:text-sm text-white font-medium flex-1 text-center mx-2">
+                    <span className="text-xs md:text-sm text-white font-medium flex-1 text-center mx-1 md:mx-2">
                       <span className={move.player === "home" ? "text-emerald-300" : "text-sky-300"}>
                         {move.player === "home"
                           ? playerLabels.home
@@ -848,7 +866,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         <span className="text-rose-300 font-semibold ml-1">⚔️</span>
                       ) : null}
                     </span>
-                    <span className="text-xs font-medium text-emerald-200 bg-emerald-900/50 px-2 lg:px-3 py-1 rounded-full">
+                    <span className="text-xs font-medium text-emerald-200 bg-emerald-900/50 px-1.5 md:px-2 lg:px-3 py-0.5 md:py-1 rounded-full">
                       {new Date(move.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
@@ -861,13 +879,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           </div>
 
           {/* Game info */}
-          <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
-            <p className="text-sm lg:text-base font-semibold mb-3">
-              Tu rol: <strong className="text-yellow-300 text-base lg:text-lg">{playerRole.toUpperCase()}</strong>.{" "}
+          <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-3 md:p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
+            <p className="text-xs md:text-sm lg:text-base font-semibold mb-2 md:mb-3">
+              Tu rol: <strong className="text-yellow-300 text-sm md:text-base lg:text-lg">{playerRole.toUpperCase()}</strong>.{" "}
               {status === "finished" ? (
                 <>
                   Partido terminado.{" "}
-                  <strong className="text-emerald-300 text-base lg:text-lg">
+                  <strong className="text-emerald-300 text-sm md:text-base lg:text-lg">
                     {winnerId && winnerId === players[playerRole]
                       ? "🎉 ¡Ganaste!"
                       : "😔 Ganó tu rival"}
@@ -876,14 +894,14 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               ) : (
                 <>
                   Turno actual:{" "}
-                  <strong className={`text-base lg:text-lg ${currentTurnIsPlayer ? "text-emerald-300" : "text-sky-300"}`}>
+                  <strong className={`text-sm md:text-base lg:text-lg ${currentTurnIsPlayer ? "text-emerald-300" : "text-sky-300"}`}>
                     {gameState.turn.toUpperCase()}{" "}
                     {currentTurnIsPlayer ? "✅" : "⏳"}
                   </strong>
                 </>
               )}
             </p>
-            <p className="text-xs lg:text-sm text-emerald-100 font-medium leading-relaxed">
+            <p className="text-xs md:text-sm text-emerald-100 font-medium leading-relaxed">
               💡 Selecciona una pieza tuya para ver movimientos legales. Los movimientos se
               validan localmente con la lógica oficial y se sincronizan en Supabase.
               {status === "finished" ? " Esta partida ya finalizó." : ""}

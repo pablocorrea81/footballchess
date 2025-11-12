@@ -28,15 +28,20 @@ const goalRowForPlayer = (player: PlayerId): number =>
 const forwardProgress = (from: Move["from"], to: Move["to"], player: PlayerId): number =>
   player === "home" ? from.row - to.row : to.row - from.row;
 
-const positionalBonus = (to: Move["to"], player: PlayerId): number => {
+const positionalBonus = (to: Move["to"], player: PlayerId, pieceType?: string): number => {
   const targetRow = goalRowForPlayer(player);
   const distance = Math.abs(targetRow - to.row);
   // Reward proximity to goal; closer rows yield higher score
-  // Extra bonus if in goal columns
-  const columnBonus = GOAL_COLS.includes(to.col) ? 10 : 0;
+  // Extra bonus if in goal columns (critical for scoring)
+  const columnBonus = GOAL_COLS.includes(to.col) ? 25 : 0; // Increased from 10 to 25
   // Bonus for controlling center columns (better strategic position)
   const centerBonus = to.col >= 2 && to.col <= 5 ? 3 : 0;
-  return Math.max(0, 15 - distance) + columnBonus + centerBonus;
+  
+  // Extra bonus for forwards near the goal (they are the only ones that can score)
+  const isDelantero = pieceType === "delantero";
+  const forwardBonus = isDelantero && distance <= 3 ? (4 - distance) * 15 : 0; // Up to 45 bonus for forwards very close to goal
+  
+  return Math.max(0, 15 - distance) + columnBonus + centerBonus + forwardBonus;
 };
 
 // Evaluate defensive threat (opponent pieces threatening our goal)
@@ -88,38 +93,41 @@ const pieceSafety = (state: GameState, move: Move, outcome: ReturnType<typeof Ru
 };
 
 // Evaluate piece value (different pieces have different strategic importance)
+// Delanteros are MUCH more valuable - they are the only pieces that can score
 const pieceValue = (pieceType: string): number => {
   switch (pieceType) {
     case "delantero":
-      return 30; // Most valuable for scoring
+      return 80; // Most valuable for scoring - significantly increased
     case "mediocampista":
-      return 20; // Good for control and scoring
+      return 25; // Good for control and supporting forwards
     case "carrilero":
-      return 15; // Versatile
+      return 18; // Versatile, can help in attack and defense
     case "defensa":
-      return 10; // Defensive value
+      return 12; // Defensive value
     default:
-      return 10;
+      return 12;
   }
 };
 
 // Evaluate board control (how well we control key areas)
+// Forwards are especially valuable in offensive positions
 const boardControl = (state: GameState, player: PlayerId): number => {
   let controlScore = 0;
   const centerRows = [5, 6]; // Middle rows
   const centerCols = [3, 4]; // Center columns
   
-  // Count pieces in center
+  // Count pieces in center (use piece values)
   for (const row of centerRows) {
     for (const col of centerCols) {
       const piece = state.board[row]?.[col];
       if (piece && piece.owner === player) {
-        controlScore += 10;
+        const pieceVal = pieceValue(piece.type);
+        controlScore += pieceVal; // Use piece value instead of fixed 10
       }
     }
   }
   
-  // Count pieces in opponent's half
+  // Count pieces in opponent's half (forwards are especially valuable here)
   const opponentGoalRow = goalRowForPlayer(opponent(player));
   const playerGoalRow = goalRowForPlayer(player);
   const midfieldRow = Math.floor((opponentGoalRow + playerGoalRow) / 2);
@@ -130,7 +138,14 @@ const boardControl = (state: GameState, player: PlayerId): number => {
     for (let col = 0; col < BOARD_COLS; col += 1) {
       const piece = state.board[row]?.[col];
       if (piece && piece.owner === player) {
-        controlScore += 5;
+        const pieceVal = pieceValue(piece.type);
+        // Forwards in opponent's half are extremely valuable (they can score)
+        const forwardBonus = piece.type === "delantero" ? 20 : 0;
+        controlScore += pieceVal / 2 + forwardBonus; // Base value + forward bonus
+        // Extra bonus if forward is in goal columns
+        if (piece.type === "delantero" && GOAL_COLS.includes(col)) {
+          controlScore += 15; // Even more valuable in goal columns
+        }
       }
     }
   }
@@ -153,11 +168,12 @@ const rateMove = (
   const goal = outcome.goal?.scoringPlayer === move.player;
   const capture = Boolean(outcome.capture);
   const progress = forwardProgress(move.from, move.to, move.player);
-  const positional = positionalBonus(move.to, move.player);
   
   // Get piece type for value calculation
   const piece = state.board[move.from.row]?.[move.from.col];
-  const pieceVal = piece ? pieceValue(piece.type) : 10;
+  const pieceType = piece?.type ?? "defensa";
+  const pieceVal = pieceValue(pieceType);
+  const positional = positionalBonus(move.to, move.player, pieceType);
 
   let score = 0;
   
@@ -167,18 +183,31 @@ const rateMove = (
   }
 
   // Capture with piece value consideration
+  // Capturing a forward is extremely valuable (they can score)
   if (capture && outcome.capture) {
     const capturedValue = pieceValue(outcome.capture.type);
-    score += 150 + capturedValue * 2; // More valuable captures are better
+    const captureBonus = outcome.capture.type === "delantero" ? 300 : 0; // Huge bonus for capturing forwards
+    score += 150 + capturedValue * 3 + captureBonus; // Increased multiplier and added forward bonus
   }
 
-  // Progress towards goal (more important for forwards)
+  // Progress towards goal (MUCH more important for forwards)
   if (progress > 0) {
-    score += progress * (pieceVal / 2);
+    if (pieceType === "delantero") {
+      // Forwards get massive bonus for forward progress, especially in goal columns
+      const goalColumnBonus = GOAL_COLS.includes(move.to.col) ? progress * 20 : 0;
+      score += progress * pieceVal + goalColumnBonus; // Full value, not divided
+    } else {
+      score += progress * (pieceVal / 3); // Reduced for other pieces
+    }
   }
 
-  // Positional bonus (being close to goal)
-  score += positional * 3;
+  // Positional bonus (being close to goal) - multiplied by piece value
+  // Forwards get significantly more weight
+  if (pieceType === "delantero") {
+    score += positional * 5; // Increased multiplier for forwards
+  } else {
+    score += positional * 2; // Reduced for other pieces
+  }
 
   // Defensive considerations (medium and hard only)
   if (difficulty !== "easy") {
@@ -188,16 +217,40 @@ const rateMove = (
     score += threatReduction * (difficulty === "hard" ? 3 : 2); // Hard considers threats more heavily
     
     // Piece safety (protecting our pieces)
+    // Forwards are especially important to protect
     const safety = pieceSafety(state, move, outcome);
-    score += safety * (difficulty === "hard" ? 1.5 : 1);
+    const safetyMultiplier = pieceType === "delantero" 
+      ? (difficulty === "hard" ? 3 : 2) // Much higher safety for forwards
+      : (difficulty === "hard" ? 1.5 : 1);
+    score += safety * safetyMultiplier;
+    
+    // Extra penalty if we're exposing a forward to capture
+    // Check if the moved piece (if it's a forward) is now vulnerable
+    if (pieceType === "delantero") {
+      const movedPieceAfter = outcome.nextState.board[move.to.row]?.[move.to.col];
+      if (movedPieceAfter && movedPieceAfter.type === "delantero") {
+        // Check if opponent can capture this forward
+        const opponentPlayer = opponent(move.player);
+        const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
+        const canBeCaptured = opponentMoves.some((oppMove) => 
+          oppMove.to.row === move.to.row && oppMove.to.col === move.to.col
+        );
+        if (canBeCaptured) {
+          score -= difficulty === "hard" ? 200 : 100; // Heavy penalty for exposing forwards
+        }
+      }
+    }
   }
 
   // Board control (medium and hard only)
+  // Especially important for forwards - they should control offensive areas
   if (difficulty !== "easy") {
     const controlBefore = boardControl(state, move.player);
     const controlAfter = boardControl(outcome.nextState, move.player);
     const controlGain = controlAfter - controlBefore;
-    score += controlGain * 2;
+    // Forwards controlling offensive areas is more valuable
+    const controlMultiplier = pieceType === "delantero" ? 3 : 2;
+    score += controlGain * controlMultiplier;
   }
 
   // Calculate score difference for adaptive strategy
@@ -252,7 +305,7 @@ const rateMove = (
           opponentCanCapture = true;
         }
         opponentScore += opponentProgress * (opponentPieceVal / 2);
-        opponentScore += positionalBonus(opponentMove.to, opponentPlayer) * 2;
+        opponentScore += positionalBonus(opponentMove.to, opponentPlayer, opponentPiece?.type) * 2;
         
         bestOpponentScore = Math.max(bestOpponentScore, opponentScore);
       }
@@ -263,31 +316,82 @@ const rateMove = (
       }
       
       // Penalty if opponent can capture valuable pieces
+      // Check if opponent can capture a forward (extremely bad)
       if (opponentCanCapture) {
-        score -= 200;
+        // Check if any opponent move would capture our forward
+        const canCaptureForward = opponentMoves.some((oppMove) => {
+          const targetPiece = outcome.nextState.board[oppMove.to.row]?.[oppMove.to.col];
+          return targetPiece && targetPiece.type === "delantero" && targetPiece.owner === move.player;
+        });
+        if (canCaptureForward) {
+          score -= difficulty === "hard" ? 500 : 300; // Massive penalty for allowing forward capture
+        } else {
+          score -= 200; // Standard penalty for other captures
+        }
       }
       
       // Subtract opponent's best response from our score
       // Hard difficulty considers this more heavily
-      score -= bestOpponentScore * (difficulty === "hard" ? 0.6 : 0.3);
+      // But if opponent can capture our forward, even heavier penalty
+      const opponentResponseWeight = difficulty === "hard" ? 0.6 : 0.3;
+      score -= bestOpponentScore * opponentResponseWeight;
     }
   }
   
   // Adaptive strategy based on score
   if (scoreDiff < 0) {
-    // Losing: be more aggressive
+    // Losing: be more aggressive, especially with forwards
     if (progress > 0) {
-      score += progress * 5; // Extra bonus for forward movement
+      if (pieceType === "delantero") {
+        score += progress * 15; // Massive bonus for forward movement with forwards
+        // Extra bonus if moving forward into goal columns
+        if (GOAL_COLS.includes(move.to.col)) {
+          score += 50; // Huge bonus for forwards moving into goal columns
+        }
+      } else {
+        score += progress * 5; // Standard bonus for other pieces
+      }
     }
     if (capture) {
-      score += 30; // Extra bonus for captures
+      const captureBonus = outcome.capture?.type === "delantero" ? 100 : 30;
+      score += captureBonus; // Extra bonus for captures, especially forwards
     }
   } else if (scoreDiff >= 2) {
     // Winning by 2 or more: be more defensive
     const threatReduction = defensiveThreat(state, move.player) - defensiveThreat(outcome.nextState, move.player);
     score += threatReduction * 3; // Higher reward for defensive moves
-    if (progress > 2) {
-      score -= 15; // Penalty for being too aggressive when winning
+    // Still allow forwards to be aggressive when winning (they're the scoring pieces)
+    if (progress > 2 && pieceType !== "delantero") {
+      score -= 15; // Penalty for being too aggressive when winning (except forwards)
+    }
+  } else {
+    // Tied or winning by 1: balanced strategy
+    // But still prioritize forward movement with forwards
+    if (pieceType === "delantero" && progress > 0) {
+      score += progress * 8; // Good bonus for forwards even when tied
+      if (GOAL_COLS.includes(move.to.col) && progress >= 2) {
+        score += 30; // Bonus for forwards advancing into goal columns
+      }
+    }
+  }
+  
+  // Always prioritize keeping forwards in offensive positions
+  // Bonus if forward is moving to a good offensive position
+  if (pieceType === "delantero") {
+    const targetRow = goalRowForPlayer(move.player);
+    const distanceToGoal = Math.abs(targetRow - move.to.row);
+    // Bonus for forwards in the opponent's half (rows 0-5 for home, rows 6-11 for away)
+    const opponentHalfStart = move.player === "home" ? 0 : 6;
+    const opponentHalfEnd = move.player === "home" ? 5 : 11;
+    if (move.to.row >= opponentHalfStart && move.to.row <= opponentHalfEnd) {
+      score += 20; // Bonus for forwards in opponent's half
+    }
+    // Extra bonus for forwards very close to goal (within 2 rows)
+    if (distanceToGoal <= 2) {
+      score += 40; // Significant bonus for forwards near goal
+      if (GOAL_COLS.includes(move.to.col)) {
+        score += 30; // Even more if in goal columns
+      }
     }
   }
 
