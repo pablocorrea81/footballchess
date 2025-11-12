@@ -322,7 +322,11 @@ export const executeBotTurnIfNeeded = async (
       return;
     }
     
-    console.log("[bot] Move completed, checking for next move...");
+    // After a successful move, the turn always changes to the opponent
+    // According to the rules, after any move (with or without goal), the turn goes to the opponent
+    // So we can stop the loop here - the bot will be called again when it's the bot's turn
+    console.log("[bot] Move completed successfully. Turn changed to opponent, stopping bot execution");
+    return;
   }
   
   console.log("[bot] Reached max iterations, stopping");
