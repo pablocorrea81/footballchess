@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimePostgresUpdatePayload } from "@supabase/supabase-js";
 import Link from "next/link";
 
 import { useSupabase } from "@/components/providers/SupabaseProvider";
+import { GoalCelebration } from "@/components/game/GoalCelebration";
+import { useGameSounds } from "@/hooks/useGameSounds";
 import type { Database, Json } from "@/lib/database.types";
 import {
   BOARD_COLS,
@@ -104,6 +106,12 @@ export function GameView({
   const [players, setPlayers] = useState<Record<PlayerId, string | null>>(playerIds);
   const [winnerId, setWinnerId] = useState<string | null>(initialWinnerId);
   const [pendingMove, setPendingMove] = useState(false);
+  const [showGoalCelebration, setShowGoalCelebration] = useState(false);
+  const [goalScorer, setGoalScorer] = useState<string | null>(null);
+  const [hasPlayedStartSound, setHasPlayedStartSound] = useState(false);
+  const [previousScore, setPreviousScore] = useState<GameState["score"]>(initialScore ?? initialState.score);
+  const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
+  const { playSound } = useGameSounds();
 
   const rowIndices = useMemo(
     () =>
@@ -178,6 +186,10 @@ export function GameView({
         historyLength: nextState.history?.length ?? 0,
       });
 
+      // Check if game just started
+      const historyLength = nextState.history?.length ?? 0;
+      const isGameStart = historyLength === 0 && status === "waiting" && gameData.status === "in_progress" && !hasPlayedStartSound;
+
       setGameState(nextState);
       setScore(nextScore);
       setStatus(gameData.status);
@@ -186,6 +198,18 @@ export function GameView({
         away: gameData.player_2_id,
       });
       setWinnerId(gameData.winner_id ?? null);
+      setPreviousScore(nextScore);
+      
+      // Update history length ref
+      previousHistoryLengthRef.current = historyLength;
+
+      // Play start sound if game just started
+      if (isGameStart) {
+        setTimeout(() => {
+          playSound("whistle_start");
+          setHasPlayedStartSound(true);
+        }, 500);
+      }
     } catch (error) {
       console.error("[GameView] Exception fetching game state:", error);
     }
@@ -231,6 +255,10 @@ export function GameView({
             historyLength: nextState.history?.length ?? 0,
           });
 
+          // Check if game just started (first move)
+          const historyLength = nextState.history?.length ?? 0;
+          const isGameStart = historyLength === 0 && status === "waiting" && payload.new.status === "in_progress";
+
           setGameState(nextState);
           setScore(nextScore);
           setStatus(payload.new.status);
@@ -239,6 +267,21 @@ export function GameView({
             away: payload.new.player_2_id,
           });
           setWinnerId(payload.new.winner_id ?? null);
+          setPreviousScore(nextScore);
+          
+          // Update history length ref
+          previousHistoryLengthRef.current = historyLength;
+
+          // Play start sound when game begins
+          if (isGameStart && !hasPlayedStartSound) {
+            setTimeout(() => {
+              playSound("whistle_start");
+              setHasPlayedStartSound(true);
+            }, 500);
+          }
+          
+          // Goal detection and resume sound are handled by the useEffect that monitors gameState.history
+          // This avoids duplicate triggers
         },
       )
       .subscribe((status) => {
@@ -333,28 +376,45 @@ export function GameView({
 
     try {
       const outcome = RuleEngine.applyMove(gameState, move);
+      const newScore = outcome.nextState.score;
+      const goalScored = outcome.goal !== undefined;
+      
+      // Update history length ref for goal/resume detection
+      // The useEffect that monitors gameState.history will detect the goal and show celebration
+      const newHistoryLength = outcome.nextState.history?.length ?? 0;
+      previousHistoryLengthRef.current = newHistoryLength - 1; // Set to previous length so useEffect detects the change
+      
       setGameState(outcome.nextState);
-      setScore(outcome.nextState.score);
+      setScore(newScore);
       setSelection(null);
-      const scoringLabel = playerLabels[playerRole];
-      setFeedback(
-        outcome.goal
-          ? `¡Gol de ${scoringLabel}! El rival mueve primero tras el reinicio.`
-          : null,
-      );
+      
+      // Update feedback based on move result
+      if (goalScored) {
+        const scoringLabel = playerLabels[playerRole];
+        const updatedScore = newScore[playerRole] ?? 0;
+        if (updatedScore >= 3) {
+          setFeedback(`¡Victoria de ${scoringLabel}!`);
+        } else {
+          setFeedback(
+            `¡Gol de ${scoringLabel}! El rival mueve primero tras el reinicio.`
+          );
+        }
+      } else {
+        setFeedback(null);
+      }
 
       let nextStatus = status;
       let nextWinnerId: string | null = winnerId;
-      if (outcome.goal) {
-        const updatedScore = outcome.nextState.score[playerRole] ?? 0;
+      if (goalScored) {
+        const updatedScore = newScore[playerRole] ?? 0;
         if (updatedScore >= 3) {
           nextStatus = "finished";
           nextWinnerId = players[playerRole] ?? null;
-          setFeedback(`¡Victoria de ${scoringLabel}!`);
         }
       }
       setStatus(nextStatus);
       setWinnerId(nextWinnerId);
+      setPreviousScore(newScore);
 
       const response = await fetch("/api/games/update", {
         method: "POST",
@@ -473,8 +533,57 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     return null;
   })();
 
+  // Monitor history to detect goals and game resumption
+  // This is the central place for detecting goals and playing sounds
+  // It works for both local moves (player) and remote moves (bot, other player)
+  useEffect(() => {
+    const historyLength = gameState.history?.length ?? 0;
+    const prevHistoryLen = previousHistoryLengthRef.current;
+    
+    // Only process if history has changed
+    if (historyLength > prevHistoryLen && historyLength > 0) {
+      const lastMove = gameState.history?.[gameState.history.length - 1];
+      const prevMove = prevHistoryLen > 0 ? gameState.history?.[prevHistoryLen - 1] : null;
+      
+      // Check if a goal was just scored
+      if (lastMove?.goal) {
+        // Goal was just scored - show celebration and play sound
+        // Check if celebration is not already showing to avoid duplicates
+        if (!showGoalCelebration) {
+          const scorer = lastMove.goal.scoringPlayer === "home"
+            ? playerLabels.home
+            : playerLabels.away;
+          setGoalScorer(scorer);
+          setShowGoalCelebration(true);
+          playSound("goal");
+        }
+      } 
+      // Check if this is the first move after a goal (board reset)
+      else if (prevMove?.goal && !lastMove?.goal) {
+        // Previous move was a goal, this move is not - board was reset, game resumed
+        setTimeout(() => {
+          playSound("whistle_resume");
+        }, 1000);
+      }
+      
+      // Update ref after processing
+      previousHistoryLengthRef.current = historyLength;
+    }
+  }, [gameState.history, playerLabels, showGoalCelebration, playSound]);
+
   return (
-    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-7xl">
+    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
+      {showGoalCelebration && goalScorer && (
+        <GoalCelebration
+          playerName={goalScorer}
+          onComplete={() => {
+            setShowGoalCelebration(false);
+            setGoalScorer(null);
+          }}
+        />
+      )}
+
+      {/* Header - Always full width */}
       <section className="flex flex-col gap-4 rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-6 text-white shadow-2xl backdrop-blur-sm md:flex-row md:items-center md:justify-between">
         <div className="flex-1">
           <div className="flex flex-wrap items-center gap-3 mb-2">
@@ -537,6 +646,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
       </section>
 
+      {/* Status messages - Always full width */}
       {status === "waiting" && (
         <div className="rounded-2xl border-2 border-yellow-500/60 bg-yellow-500/30 p-5 text-base font-semibold text-yellow-900 shadow-lg backdrop-blur-sm">
           ⏳ Esperando a que se una el segundo jugador...
@@ -566,216 +676,220 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
       )}
 
-      <div className="w-full overflow-x-auto">
-        <div className="w-full border border-white/20 shadow-2xl">
-          {/* Column labels (A-H) */}
-          <div
-            className="grid border-b border-white/20 w-full"
-            style={{
-              gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
-            }}
-          >
-            <div className="w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16"></div>
-            {colIndices.map((actualCol) => (
-              <div
-                key={`col-label-${actualCol}`}
-                className="flex h-8 sm:h-9 md:h-10 lg:h-12 xl:h-14 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm aspect-square"
-              >
-                {getColumnLabelForDisplay(actualCol, playerRole)}
-              </div>
-            ))}
-          </div>
-
-          {/* Board rows with row labels */}
-          {rowIndices.map((actualRow, uiRow) => (
+      {/* Main content: Board on left, Info on right (desktop) / Stacked (mobile) */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6 items-start">
+        {/* Board - Left side on desktop */}
+        <div className="w-full overflow-x-auto lg:sticky lg:top-6 lg:self-start">
+          <div className="w-full border border-white/20 shadow-2xl">
+            {/* Column labels (A-H) */}
             <div
-              key={`row-${actualRow}`}
-              className="grid border-b border-white/20 last:border-b-0 w-full"
+              className="grid border-b border-white/20 w-full"
               style={{
                 gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
               }}
             >
-              {/* Row label (1-12) */}
-              <div className="flex w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm">
-                {getRowLabelForDisplay(actualRow, playerRole)}
-              </div>
-
-              {/* Board cells */}
-              {colIndices.map((actualCol, uiCol) => {
-                const cell = gameState.board[actualRow]?.[actualCol];
-                const isSelected =
-                  selection?.origin.row === actualRow &&
-                  selection.origin.col === actualCol;
-                const moveOption = isMoveOption(uiRow, uiCol);
-                const isLastFrom =
-                  lastMove &&
-                  lastMove.from.row === actualRow &&
-                  lastMove.from.col === actualCol;
-                const isLastTo =
-                  lastMove &&
-                  lastMove.to.row === actualRow &&
-                  lastMove.to.col === actualCol;
-                const highlightStartingPiece =
-                  isInitialPhase &&
-                  cell &&
-                  cell.owner === gameState.startingPlayer;
-
-                // Mark goal squares (rows 0 and 11, columns 3 and 4)
-                const isGoalSquare =
-                  (actualRow === 0 || actualRow === BOARD_ROWS - 1) &&
-                  GOAL_COLS.includes(actualCol);
-
-                // Display position label from player's perspective
-                const displayRowLabel = getRowLabelForDisplay(actualRow, playerRole);
-                const displayColLabel = getColumnLabelForDisplay(actualCol, playerRole);
-                const positionLabel = `${displayColLabel}${displayRowLabel}`;
-
-                return (
-                  <button
-                    key={`${actualRow}-${actualCol}`}
-                    type="button"
-                    onClick={() => handleCellClick(uiRow, uiCol)}
-                    className={[
-                      "aspect-square w-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
-                      isGoalSquare
-                        ? "border-yellow-400/60 bg-yellow-500/20"
-                        : "border-white/10",
-                      !isGoalSquare &&
-                        ((actualRow + actualCol) % 2 === 0
-                          ? "bg-emerald-900/50"
-                          : "bg-emerald-800/50"),
-                      isSelected ? "ring-2 sm:ring-3 md:ring-4 ring-emerald-300/60 z-10" : "",
-                      moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
-                      isLastTo && !isGoalSquare
-                        ? "bg-amber-500/40"
-                        : isLastFrom && !isGoalSquare
-                          ? "bg-amber-500/20"
-                          : "",
-                      !canAct ? "cursor-default" : "cursor-pointer hover:bg-white/5",
-                    ].join(" ")}
-                    disabled={!canAct}
-                    title={
-                      isGoalSquare
-                        ? `Arco - ${positionLabel}`
-                        : `${positionLabel}${cell ? ` - ${pieceInitials[cell.type]}` : ""}`
-                    }
-                  >
-                    {/* Position label (small, top-left corner) - from player's perspective */}
-                    <span className="absolute left-1 top-1 text-[0.5rem] sm:text-[0.65rem] md:text-xs font-mono font-bold text-white/80 bg-black/40 px-1 rounded">
-                      {positionLabel}
-                    </span>
-
-                    {/* Goal icon */}
-                    {isGoalSquare && (
-                      <span className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm md:text-base font-bold text-yellow-300/80">
-                        🥅
-                      </span>
-                    )}
-
-                    {/* Piece */}
-                    {cell && (
-                      <span
-                        className={`relative z-10 flex items-center justify-center rounded-full border ${
-                          cell.owner === playerRole 
-                            ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
-                            : "border-sky-200 bg-sky-500/50 text-sky-950"
-                        } ${
-                          highlightStartingPiece
-                            ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
-                            : ""
-                        } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
-                      >
-                        {pieceInitials[cell.type]}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              <div className="w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16"></div>
+              {colIndices.map((actualCol) => (
+                <div
+                  key={`col-label-${actualCol}`}
+                  className="flex h-8 sm:h-9 md:h-10 lg:h-12 xl:h-14 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm aspect-square"
+                >
+                  {getColumnLabelForDisplay(actualCol, playerRole)}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
 
-      <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-6 text-white shadow-2xl backdrop-blur-sm">
-        <h2 className="text-xl font-bold text-white mb-4">
-          📜 Historial reciente
-        </h2>
-        {recentMoves.length === 0 ? (
-          <p className="mt-3 text-base text-emerald-200">
-            Aún no hay movimientos registrados.
-          </p>
-        ) : (
-          <ul className="mt-3 flex flex-col gap-3">
-            <li className="flex items-center justify-between rounded-xl border-2 border-yellow-400/60 bg-yellow-500/30 px-5 py-3 text-base font-semibold text-yellow-900 shadow-lg">
-              <span className="text-sm font-bold uppercase tracking-wider text-yellow-800">
-                Inicio
-              </span>
-              <span className="flex items-center gap-2">
-                <span>★ {startingLabel} sale jugando</span>
-              </span>
-              <span className="text-sm font-medium text-yellow-800">Sorteo</span>
-            </li>
-            {recentMoves.map((move) => (
-              <li
-                key={move.moveNumber}
-                className="flex items-center justify-between rounded-xl border-2 border-white/20 bg-white/10 px-5 py-3 shadow-md hover:bg-white/15 transition-colors"
+            {/* Board rows with row labels */}
+            {rowIndices.map((actualRow, uiRow) => (
+              <div
+                key={`row-${actualRow}`}
+                className="grid border-b border-white/20 last:border-b-0 w-full"
+                style={{
+                  gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
+                }}
               >
-                <span className="text-sm font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-3 py-1 rounded-full">
-                  #{move.moveNumber}
-                </span>
-                <span className="text-base text-white font-medium flex-1 text-center">
-                  <span className={move.player === "home" ? "text-emerald-300" : "text-sky-300"}>
-                    {move.player === "home"
-                      ? playerLabels.home
-                      : playerLabels.away}
-                  </span>{" "}
-                  movió <span className="font-semibold text-yellow-300">{move.pieceId.split("-")[1]}</span> a{" "}
-                  <strong className="text-yellow-300 font-bold">{formatPosition(move.to)}</strong>
-                  {move.capturedPieceId ? (
-                    <span className="text-rose-300 font-semibold ml-2">
-                      ⚔️ (captura)
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-sm font-medium text-emerald-200 bg-emerald-900/50 px-3 py-1 rounded-full">
-                  {new Date(move.timestamp).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+                {/* Row label (1-12) */}
+                <div className="flex w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm">
+                  {getRowLabelForDisplay(actualRow, playerRole)}
+                </div>
 
-      <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-6 text-white shadow-2xl backdrop-blur-sm">
-        <p className="text-base font-semibold mb-3">
-          Tu rol: <strong className="text-yellow-300 text-lg">{playerRole.toUpperCase()}</strong>.{" "}
-          {status === "finished" ? (
-            <>
-              Partido terminado.{" "}
-              <strong className="text-emerald-300 text-lg">
-                {winnerId && winnerId === players[playerRole]
-                  ? "🎉 ¡Ganaste!"
-                  : "😔 Ganó tu rival"}
-              </strong>
-            </>
-          ) : (
-            <>
-              Turno actual:{" "}
-              <strong className={`text-lg ${currentTurnIsPlayer ? "text-emerald-300" : "text-sky-300"}`}>
-                {gameState.turn.toUpperCase()}{" "}
-                {currentTurnIsPlayer ? "✅ (Tu turno)" : "⏳ (Turno rival)"}
-              </strong>
-            </>
-          )}
-        </p>
-        <p className="text-sm text-emerald-100 font-medium leading-relaxed">
-          💡 Selecciona una pieza tuya para ver movimientos legales. Los movimientos se
-          validan localmente con la lógica oficial y se sincronizan en Supabase.
-          {status === "finished" ? " Esta partida ya finalizó." : ""}
-        </p>
+                {/* Board cells */}
+                {colIndices.map((actualCol, uiCol) => {
+                  const cell = gameState.board[actualRow]?.[actualCol];
+                  const isSelected =
+                    selection?.origin.row === actualRow &&
+                    selection.origin.col === actualCol;
+                  const moveOption = isMoveOption(uiRow, uiCol);
+                  const isLastFrom =
+                    lastMove &&
+                    lastMove.from.row === actualRow &&
+                    lastMove.from.col === actualCol;
+                  const isLastTo =
+                    lastMove &&
+                    lastMove.to.row === actualRow &&
+                    lastMove.to.col === actualCol;
+                  const highlightStartingPiece =
+                    isInitialPhase &&
+                    cell &&
+                    cell.owner === gameState.startingPlayer;
+
+                  // Mark goal squares (rows 0 and 11, columns 3 and 4)
+                  const isGoalSquare =
+                    (actualRow === 0 || actualRow === BOARD_ROWS - 1) &&
+                    GOAL_COLS.includes(actualCol);
+
+                  // Display position label from player's perspective
+                  const displayRowLabel = getRowLabelForDisplay(actualRow, playerRole);
+                  const displayColLabel = getColumnLabelForDisplay(actualCol, playerRole);
+                  const positionLabel = `${displayColLabel}${displayRowLabel}`;
+
+                  return (
+                    <button
+                      key={`${actualRow}-${actualCol}`}
+                      type="button"
+                      onClick={() => handleCellClick(uiRow, uiCol)}
+                      className={[
+                        "aspect-square w-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
+                        isGoalSquare
+                          ? "border-yellow-400/60 bg-yellow-500/20"
+                          : "border-white/10",
+                        !isGoalSquare &&
+                          ((actualRow + actualCol) % 2 === 0
+                            ? "bg-emerald-900/50"
+                            : "bg-emerald-800/50"),
+                        isSelected ? "ring-2 sm:ring-3 md:ring-4 ring-emerald-300/60 z-10" : "",
+                        moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
+                        isLastTo && !isGoalSquare
+                          ? "bg-amber-500/40"
+                          : isLastFrom && !isGoalSquare
+                            ? "bg-amber-500/20"
+                            : "",
+                        !canAct ? "cursor-default" : "cursor-pointer hover:bg-white/5",
+                      ].join(" ")}
+                      disabled={!canAct}
+                      title={
+                        isGoalSquare
+                          ? `Arco - ${positionLabel}`
+                          : cell
+                            ? `${positionLabel} - ${pieceInitials[cell.type]}`
+                            : positionLabel
+                      }
+                    >
+                      {/* Goal icon */}
+                      {isGoalSquare && (
+                        <span className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm md:text-base font-bold text-yellow-300/80">
+                          🥅
+                        </span>
+                      )}
+
+                      {/* Piece */}
+                      {cell && (
+                        <span
+                          className={`relative z-10 flex items-center justify-center rounded-full border ${
+                            cell.owner === playerRole 
+                              ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
+                              : "border-sky-200 bg-sky-500/50 text-sky-950"
+                          } ${
+                            highlightStartingPiece
+                              ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
+                              : ""
+                          } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
+                        >
+                          {pieceInitials[cell.type]}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Info panel - Right side on desktop */}
+        <div className="flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+          {/* History */}
+          <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
+            <h2 className="text-lg lg:text-xl font-bold text-white mb-3 lg:mb-4">
+              📜 Historial reciente
+            </h2>
+            {recentMoves.length === 0 ? (
+              <p className="mt-3 text-sm lg:text-base text-emerald-200">
+                Aún no hay movimientos registrados.
+              </p>
+            ) : (
+              <ul className="mt-3 flex flex-col gap-2 lg:gap-3 max-h-[300px] lg:max-h-[400px] overflow-y-auto">
+                <li className="flex items-center justify-between rounded-xl border-2 border-yellow-400/60 bg-yellow-500/30 px-3 lg:px-5 py-2 lg:py-3 text-xs lg:text-sm font-semibold text-yellow-900 shadow-lg">
+                  <span className="text-xs font-bold uppercase tracking-wider text-yellow-800">
+                    Inicio
+                  </span>
+                  <span className="flex items-center gap-2 text-xs lg:text-sm">
+                    <span>★ {startingLabel}</span>
+                  </span>
+                  <span className="text-xs font-medium text-yellow-800">Sorteo</span>
+                </li>
+                {recentMoves.map((move) => (
+                  <li
+                    key={move.moveNumber}
+                    className="flex items-center justify-between rounded-xl border-2 border-white/20 bg-white/10 px-3 lg:px-5 py-2 lg:py-3 shadow-md hover:bg-white/15 transition-colors"
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-2 lg:px-3 py-1 rounded-full">
+                      #{move.moveNumber}
+                    </span>
+                    <span className="text-xs lg:text-sm text-white font-medium flex-1 text-center mx-2">
+                      <span className={move.player === "home" ? "text-emerald-300" : "text-sky-300"}>
+                        {move.player === "home"
+                          ? playerLabels.home
+                          : playerLabels.away}
+                      </span>{" "}
+                      <span className="font-semibold text-yellow-300">{move.pieceId.split("-")[1]}</span> →{" "}
+                      <strong className="text-yellow-300 font-bold">{formatPosition(move.to)}</strong>
+                      {move.capturedPieceId ? (
+                        <span className="text-rose-300 font-semibold ml-1">⚔️</span>
+                      ) : null}
+                    </span>
+                    <span className="text-xs font-medium text-emerald-200 bg-emerald-900/50 px-2 lg:px-3 py-1 rounded-full">
+                      {new Date(move.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Game info */}
+          <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
+            <p className="text-sm lg:text-base font-semibold mb-3">
+              Tu rol: <strong className="text-yellow-300 text-base lg:text-lg">{playerRole.toUpperCase()}</strong>.{" "}
+              {status === "finished" ? (
+                <>
+                  Partido terminado.{" "}
+                  <strong className="text-emerald-300 text-base lg:text-lg">
+                    {winnerId && winnerId === players[playerRole]
+                      ? "🎉 ¡Ganaste!"
+                      : "😔 Ganó tu rival"}
+                  </strong>
+                </>
+              ) : (
+                <>
+                  Turno actual:{" "}
+                  <strong className={`text-base lg:text-lg ${currentTurnIsPlayer ? "text-emerald-300" : "text-sky-300"}`}>
+                    {gameState.turn.toUpperCase()}{" "}
+                    {currentTurnIsPlayer ? "✅" : "⏳"}
+                  </strong>
+                </>
+              )}
+            </p>
+            <p className="text-xs lg:text-sm text-emerald-100 font-medium leading-relaxed">
+              💡 Selecciona una pieza tuya para ver movimientos legales. Los movimientos se
+              validan localmente con la lógica oficial y se sincronizan en Supabase.
+              {status === "finished" ? " Esta partida ya finalizó." : ""}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

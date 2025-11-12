@@ -104,6 +104,8 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError || null);
   const [isPending, startTransition] = useTransition();
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("easy");
+  const [showDifficultySelector, setShowDifficultySelector] = useState(false);
 
   const refreshGames = useCallback(async () => {
     try {
@@ -171,10 +173,11 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     setBotLoading(true);
     startTransition(async () => {
       try {
-        await createBotGameAction(profileId);
+        await createBotGameAction(profileId, selectedDifficulty);
         // Refresh games list and server page
         await refreshGames();
         router.refresh();
+        setShowDifficultySelector(false);
       } catch (actionError) {
         setError(
           actionError instanceof Error
@@ -249,13 +252,54 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button
-            onClick={createBotGame}
-            disabled={botLoading || isPending}
-            className="rounded-full border border-sky-300/50 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-200 hover:text-white disabled:cursor-not-allowed disabled:border-sky-100/30 disabled:text-sky-100/40"
-          >
-            {botLoading ? "Invocando IA..." : "Partida vs IA"}
-          </button>
+          <div className="relative">
+            {showDifficultySelector ? (
+              <div className="flex flex-col gap-2 rounded-2xl border-2 border-sky-400/60 bg-sky-900/80 p-4 shadow-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-sky-100">Selecciona dificultad:</span>
+                  <button
+                    onClick={() => setShowDifficultySelector(false)}
+                    className="text-sky-200 hover:text-white text-lg"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  {(["easy", "medium", "hard"] as const).map((diff) => (
+                    <button
+                      key={diff}
+                      onClick={() => {
+                        setSelectedDifficulty(diff);
+                        setShowDifficultySelector(false);
+                      }}
+                      className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                        selectedDifficulty === diff
+                          ? "bg-sky-500 text-white shadow-lg"
+                          : "bg-sky-700/50 text-sky-200 hover:bg-sky-600/70"
+                      }`}
+                    >
+                      {diff === "easy" ? "🟢 Fácil" : diff === "medium" ? "🟡 Medio" : "🔴 Difícil"}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={createBotGame}
+                  disabled={botLoading || isPending}
+                  className="mt-2 rounded-full border-2 border-sky-300/50 bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-700/50 disabled:opacity-60"
+                >
+                  {botLoading ? "Invocando IA..." : `Crear partida vs IA (${selectedDifficulty === "easy" ? "Fácil" : selectedDifficulty === "medium" ? "Medio" : "Difícil"})`}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDifficultySelector(true)}
+                disabled={botLoading || isPending}
+                className="rounded-full border border-sky-300/50 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-200 hover:text-white disabled:cursor-not-allowed disabled:border-sky-100/30 disabled:text-sky-100/40"
+              >
+                {botLoading ? "Invocando IA..." : "🤖 Partida vs IA"}
+              </button>
+            )}
+          </div>
           <button
             onClick={createGame}
             disabled={loading || isPending}
@@ -369,6 +413,18 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                 <p className="text-xs uppercase tracking-widest text-emerald-200/80">
                   {startsLabel}
                 </p>
+                {isBot && game.bot_difficulty && (
+                  <p className="text-xs text-emerald-100/60">
+                    Dificultad:{" "}
+                    <span className="font-semibold text-emerald-200">
+                      {game.bot_difficulty === "easy"
+                        ? "🟢 Fácil"
+                        : game.bot_difficulty === "medium"
+                          ? "🟡 Medio"
+                          : "🔴 Difícil"}
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">

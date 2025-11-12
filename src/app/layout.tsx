@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   title: "Football Chess",
   description:
     "Juego web multijugador de Football Chess con Supabase y Next.js.",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default async function RootLayout({
