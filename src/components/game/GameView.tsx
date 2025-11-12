@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RealtimePostgresUpdatePayload } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { GoalCelebration } from "@/components/game/GoalCelebration";
@@ -120,7 +121,9 @@ export function GameView({
   const [showTimeoutAlert, setShowTimeoutAlert] = useState(false);
   const [showVictoryAlert, setShowVictoryAlert] = useState(false);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
+  const [showSurrenderAlert, setShowSurrenderAlert] = useState(false);
   const [isSurrendering, setIsSurrendering] = useState(false);
+  const router = useRouter();
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [turnStartedAt, setTurnStartedAt] = useState<Date | null>(null);
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
@@ -1046,23 +1049,30 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         const data = (await response.json()) as { error?: string };
         console.error("[GameView] Surrender error:", data.error);
         setFeedback(data.error ?? "Error al rendirse");
+        setIsSurrendering(false);
       } else {
         console.log("[GameView] Surrender successful");
         setShowSurrenderConfirm(false);
-        // Clear feedback - we'll show the finished game message instead
+        // Clear feedback - we'll show the surrender alert instead
         setFeedback(null);
+        // Show surrender alert
+        setShowSurrenderAlert(true);
         // Fetch updated game state to reflect the surrender
         setTimeout(() => {
           void fetchGameState();
         }, 500);
+        // Redirect to lobby after showing alert for 3 seconds
+        setTimeout(() => {
+          setShowSurrenderAlert(false);
+          router.push("/lobby");
+        }, 3000);
       }
     } catch (error) {
       console.error("[GameView] Surrender exception:", error);
       setFeedback("Error al rendirse. Intenta nuevamente.");
-    } finally {
       setIsSurrendering(false);
     }
-  }, [status, isSurrendering, initialGameId, fetchGameState]);
+  }, [status, isSurrendering, initialGameId, fetchGameState, router]);
 
   // Function to execute timeout (lose turn)
   const executeTimeout = useCallback(async () => {
@@ -1437,6 +1447,22 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 >
                   {isSurrendering ? "Rindiéndose..." : "Sí, rendirme"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Surrender Alert */}
+      {showSurrenderAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="animate-bounce-in rounded-2xl border-3 border-red-400 bg-gradient-to-br from-red-500 to-red-600 px-4 md:px-6 py-3 md:py-4 shadow-2xl backdrop-blur-sm pointer-events-auto">
+            <div className="text-center">
+              <div className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-1 md:mb-2 animate-pulse">
+                🏳️ Te rendiste
+              </div>
+              <div className="text-sm md:text-base lg:text-lg font-semibold text-red-100">
+                Redirigiendo al lobby...
               </div>
             </div>
           </div>

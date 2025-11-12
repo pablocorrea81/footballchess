@@ -108,7 +108,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError || null);
   const [isPending, startTransition] = useTransition();
-  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("easy");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("hard");
   const [showDifficultySelector, setShowDifficultySelector] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
   const [selectedWinningScore, setSelectedWinningScore] = useState<1 | 2 | 3>(3);
@@ -304,7 +304,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                 </div>
                 <button
                   onClick={createBotGame}
-                  disabled={botLoading || isPending}
+                  disabled={botLoading || isPending || loading}
                   className="mt-2 rounded-full border-2 border-sky-300/50 bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-700/50 disabled:opacity-60"
                 >
                   {botLoading ? "Invocando IA..." : `Crear partida vs IA (${selectedDifficulty === "easy" ? "Fácil" : selectedDifficulty === "medium" ? "Medio" : "Difícil"})`}
@@ -313,7 +313,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
             ) : (
               <button
                 onClick={() => setShowDifficultySelector(true)}
-                disabled={botLoading || isPending}
+                disabled={botLoading || isPending || loading}
                 className="rounded-full border border-sky-300/50 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-200 hover:text-white disabled:cursor-not-allowed disabled:border-sky-100/30 disabled:text-sky-100/40"
               >
                 {botLoading ? "Invocando IA..." : "🤖 Partida vs IA"}
@@ -372,7 +372,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
 
                 <button
                   onClick={createGame}
-                  disabled={loading || isPending}
+                  disabled={loading || isPending || botLoading}
                   className="mt-2 rounded-full border-2 border-emerald-300/50 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50 disabled:opacity-60"
                 >
                   {loading ? "Creando..." : `Crear partida (${selectedWinningScore} ${selectedWinningScore === 1 ? "gol" : "goles"}, ${selectedTimeoutEnabled ? "con tiempo" : "sin tiempo"})`}
@@ -381,7 +381,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
             ) : (
               <button
                 onClick={() => setShowGameSettings(true)}
-                disabled={loading || isPending}
+                disabled={loading || isPending || botLoading}
                 className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
               >
                 {loading ? "Procesando..." : "Crear partida"}
