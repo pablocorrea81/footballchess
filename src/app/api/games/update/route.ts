@@ -81,13 +81,25 @@ export async function POST(request: Request) {
 
     console.log("[api/games/update] Updating game:", gameId, "payload:", JSON.stringify(updatePayload));
 
+    // Check if the update is trying to set status to "finished"
+    const isFinishingGame = updatePayload.status === "finished";
+    
     // Use admin client to update, bypassing RLS
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error, data: updateResult } = await (supabaseAdmin.from("games") as any)
+    // If we're finishing the game, we need to allow the update even if status is already "finished"
+    // (this shouldn't happen, but we handle it)
+    // Otherwise, we prevent updates to already finished games
+    let updateQuery = (supabaseAdmin.from("games") as any)
       .update(updatePayload)
-      .eq("id", gameId)
-      .neq("status", "finished")
-      .select();
+      .eq("id", gameId);
+    
+    // Only filter out finished games if we're NOT finishing the game
+    // This allows setting status to "finished" from "in_progress"
+    if (!isFinishingGame) {
+      updateQuery = updateQuery.neq("status", "finished");
+    }
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error, data: updateResult } = await updateQuery.select();
 
     if (error) {
       console.error("[api/games/update] Update error:", error);
@@ -95,10 +107,43 @@ export async function POST(request: Request) {
     }
 
     console.log("[api/games/update] Update successful. Updated rows:", updateResult?.length ?? 0);
+    
+    // Check if no rows were updated (game might already be finished or doesn't exist)
+    if (!updateResult || updateResult.length === 0) {
+      console.warn("[api/games/update] No rows updated. Game might already be finished or doesn't exist.");
+      // If we're trying to finish the game and no rows were updated, check if it's already finished
+      if (isFinishingGame) {
+        const { data: currentGameData } = await supabaseAdmin
+          .from("games")
+          .select("status, winner_id")
+          .eq("id", gameId)
+          .single();
+        
+        const currentGame = currentGameData as { status: string; winner_id: string | null } | null;
+        if (currentGame && currentGame.status === "finished") {
+          console.log("[api/games/update] Game is already finished. Returning success.");
+          return NextResponse.json({ 
+            ok: true, 
+            message: "Game is already finished",
+            alreadyFinished: true 
+          });
+        }
+      }
+      return NextResponse.json(
+        { error: "No rows updated. Game might not exist or already be finished." },
+        { status: 400 }
+      );
+    }
+    
     if (updateResult && updateResult[0]) {
       const updatedGame = updateResult[0] as Database["public"]["Tables"]["games"]["Row"];
       const gameState = updatedGame.game_state as unknown as { turn?: string };
       console.log("[api/games/update] Updated game state turn:", gameState?.turn);
+      
+      // If game was just finished, log it
+      if (isFinishingGame) {
+        console.log("[api/games/update] Game finished! Winner:", updatedGame.winner_id);
+      }
     }
 
     // Only execute bot turn if this is a bot game and the update was successful

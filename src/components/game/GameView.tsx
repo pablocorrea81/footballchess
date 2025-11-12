@@ -998,8 +998,9 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         setFeedback(data.error ?? "Error al rendirse");
       } else {
         console.log("[GameView] Surrender successful");
-        setFeedback("Te has rendido. La partida ha terminado.");
         setShowSurrenderConfirm(false);
+        // Clear feedback - we'll show the finished game message instead
+        setFeedback(null);
         // Fetch updated game state to reflect the surrender
         setTimeout(() => {
           void fetchGameState();
@@ -1112,10 +1113,10 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         setTurnStartedAt(new Date());
       }
       
-      // Hide alert after 5 seconds
+      // Hide alert after 3 seconds
       const timer = setTimeout(() => {
         setShowYourTurnAlert(false);
-      }, 5000);
+      }, 3000);
       
       // Update previous turn ref
       previousTurnRef.current = currentTurn;
@@ -1627,14 +1628,16 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   href="/lobby"
                   className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
                 >
-                  ← Lobby
+                  ← Volver al Lobby
                 </Link>
-                <Link
-                  href="/"
-                  className="rounded-full border-2 border-white/30 bg-white/10 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50"
-                >
-                  🏠 Home
-                </Link>
+                {status !== "finished" && (
+                  <Link
+                    href="/"
+                    className="rounded-full border-2 border-white/30 bg-white/10 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50"
+                  >
+                    🏠 Home
+                  </Link>
+                )}
               </div>
             </div>
             {/* Additional info - hidden on mobile, visible on desktop */}
@@ -1688,9 +1691,43 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             </div>
           )}
 
-          {feedback && (
+          {feedback && status !== "finished" && (
             <div className="rounded-xl md:rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
               {feedback}
+            </div>
+          )}
+
+          {/* Game finished message - show when game is finished */}
+          {status === "finished" && (
+            <div className={`rounded-xl md:rounded-2xl border-2 p-4 md:p-5 text-base md:text-lg font-semibold text-white shadow-xl backdrop-blur-sm ${
+              winnerId && winnerId === players[playerRole]
+                ? "border-emerald-500/60 bg-emerald-600/40"
+                : "border-red-500/60 bg-red-600/40"
+            }`}>
+              <div className="flex flex-col gap-2 md:gap-3">
+                <p className="text-lg md:text-xl font-bold text-center">
+                  {winnerId && winnerId === players[playerRole]
+                    ? "🎉 ¡Ganaste la partida!"
+                    : winnerId === null && isBotGame
+                      ? `😔 ${botDisplayName} ganó la partida`
+                      : `😔 ${computedWinnerLabel ?? "Tu rival"} ganó la partida`}
+                </p>
+                {winnerId && winnerId !== players[playerRole] && (
+                  <p className="text-sm md:text-base text-center text-white/90">
+                    La partida ha terminado. Puedes volver al lobby para jugar otra partida.
+                  </p>
+                )}
+                {winnerId && winnerId === players[playerRole] && (
+                  <p className="text-sm md:text-base text-center text-white/90">
+                    ¡Felicidades por la victoria! Puedes volver al lobby para jugar otra partida.
+                  </p>
+                )}
+                {winnerId === null && isBotGame && (
+                  <p className="text-sm md:text-base text-center text-white/90">
+                    La partida ha terminado. Puedes volver al lobby para jugar otra partida.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
