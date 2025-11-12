@@ -59,7 +59,7 @@ export function InviteWhatsAppModal({
       const normalized = normalizePhoneToWhatsApp(phoneNumber);
       
       if (!normalized) {
-        setError("Número de teléfono inválido. Por favor ingresa un número con código de país (ej: +598 9 123 4567 para Uruguay, +1 234 567 8900 para US/Canadá).");
+        setError("Número de teléfono inválido. Para Uruguay: usa formato 09X XXX XXX. Para otros países: incluye el código de país (ej: +1 234 567 8900 para US/Canadá).");
         setIsValidating(false);
         return;
       }
@@ -160,14 +160,14 @@ export function InviteWhatsAppModal({
             value={displayPhone}
             onChange={handlePhoneChange}
             onKeyPress={handleKeyPress}
-            placeholder="+598 9 123 4567 o +1 234 567 8900"
+            placeholder="092 922 281 o +1 234 567 8900"
             className="w-full rounded-xl border-2 border-emerald-200/30 bg-white/10 px-4 py-3 text-base text-white placeholder-emerald-200/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200/50 font-mono"
             autoFocus
             disabled={isValidating}
             maxLength={25} // Allow for international format with country code and formatting
           />
           <p className="mt-2 text-xs text-emerald-200/60">
-            Ingresa el número con código de país (ej: +598 9 123 4567 para Uruguay, +1 234 567 8900 para US/Canadá, +34 612 345 678 para España)
+            Para Uruguay: ingresa el número en formato local (09X XXX XXX). Para otros países: incluye el código de país (ej: +1 234 567 8900 para US/Canadá, +34 612 345 678 para España)
           </p>
         </div>
 

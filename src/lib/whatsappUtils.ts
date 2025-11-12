@@ -84,6 +84,7 @@ export function normalizeUruguayanPhoneToWhatsApp(phone: string): string | null 
 /**
  * Format phone number for display (international format)
  * Formats numbers with country code and groups digits for readability
+ * For Uruguayan numbers: shows local format (09X XXX XXX) without country code
  */
 export function formatPhoneForDisplay(phone: string): string {
   // Preserve the + sign and allowed characters
@@ -109,16 +110,22 @@ export function formatPhoneForDisplay(phone: string): string {
     return formatted;
   }
   
-  // If it's a Uruguayan number (598 + 8 digits), format as +598 9 XXX XXXX
+  // Handle Uruguayan numbers: show in local format (09X XXX XXX) without country code
+  // If it's a Uruguayan number with country code (598 + 8 digits), convert to local format
   if (cleaned.startsWith('598') && cleaned.length === 11) {
     const local = cleaned.substring(3); // Remove 598 (8 digits)
-    return `+598 ${local.substring(0, 1)} ${local.substring(1, 4)} ${local.substring(4)}`;
+    // Format as 09X XXX XXX (local Uruguayan format)
+    return `09${local.substring(0, 1)} ${local.substring(1, 4)} ${local.substring(4)}`;
   }
   
-  // If it's a Uruguayan local format (09X...), format as +598 9 XXX XXXX
+  // If it's already in Uruguayan local format (09X...), format as 09X XXX XXX
   if (cleaned.startsWith('09') && cleaned.length === 9) {
-    const local = cleaned.substring(1); // Remove leading 0
-    return `+598 ${local.substring(0, 1)} ${local.substring(1, 4)} ${local.substring(4)}`;
+    return `${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6)}`;
+  }
+  
+  // If it's 8 digits starting with 9 (Uruguayan without leading 0), add the 0 and format
+  if (cleaned.length === 8 && cleaned.startsWith('9')) {
+    return `09${cleaned.substring(0, 1)} ${cleaned.substring(1, 4)} ${cleaned.substring(4)}`;
   }
   
   // For numbers with country code, detect and format
@@ -225,9 +232,11 @@ ${inviteUrl}
  */
 export function generateWhatsAppLink(phoneNumber: string, message: string): string {
   // Normalize phone number to international format
+  // This will automatically add 598 for Uruguayan numbers (09X format)
+  // For other countries, it expects the country code to be provided
   const normalizedPhone = normalizePhoneToWhatsApp(phoneNumber);
   if (!normalizedPhone) {
-    throw new Error('Número de teléfono inválido. Asegúrate de incluir el código de país (ej: +598 para Uruguay, +1 para US/Canadá)');
+    throw new Error('Número de teléfono inválido. Para Uruguay: usa formato 09X XXX XXX. Para otros países: incluye el código de país (ej: +1 234 567 8900 para US/Canadá)');
   }
   
   // Encode message for URL
