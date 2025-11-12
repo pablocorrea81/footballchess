@@ -56,18 +56,41 @@ export async function POST(request: Request) {
     const updatePayload =
       update as Database["public"]["Tables"]["games"]["Update"];
 
-    const { error } = await supabase
+    console.log("[api/games/update] Updating game:", gameId, "payload:", JSON.stringify(updatePayload));
+
+    const { error, data: updateResult } = await supabase
       .from("games")
       .update(updatePayload)
       .eq("id", gameId)
-      .neq("status", "finished");
+      .neq("status", "finished")
+      .select();
 
     if (error) {
+      console.error("[api/games/update] Update error:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    console.log("[api/games/update] Update successful:", updateResult);
+
+    // Only execute bot turn if this is a bot game and the update was successful
     if (game.is_bot_game) {
-      await executeBotTurnIfNeeded(gameId);
+      console.log("[api/games/update] Executing bot turn for game:", gameId);
+      
+      // Small delay to ensure the database update is fully committed
+      // This helps prevent race conditions where the bot reads stale data
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      
+      try {
+        await executeBotTurnIfNeeded(gameId);
+        console.log("[api/games/update] Bot turn execution completed");
+      } catch (botError) {
+        console.error("[api/games/update] Bot turn error:", botError);
+        if (botError instanceof Error) {
+          console.error("[api/games/update] Bot error message:", botError.message);
+          console.error("[api/games/update] Bot error stack:", botError.stack);
+        }
+        // Don't fail the request if bot turn fails
+      }
     }
 
     return NextResponse.json({ ok: true });

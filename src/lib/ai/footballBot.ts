@@ -111,12 +111,16 @@ export const pickBotMove = (
 
 const parseGameState = (game: GameRow): GameState => {
   const fallback = RuleEngine.createInitialState();
+  const gameStateData = (game.game_state as GameState | null | undefined) ?? fallback;
+  
+  // Ensure all required properties are present
   return {
-    ...fallback,
-    ...(game.game_state as Partial<GameState> | null | undefined),
-    score: (game.score as GameState["score"]) ?? fallback.score,
-    lastMove: (game.game_state as GameState | null | undefined)?.lastMove ?? null,
-    history: (game.game_state as GameState | null | undefined)?.history ?? [],
+    board: gameStateData.board ?? fallback.board,
+    turn: gameStateData.turn ?? fallback.turn,
+    score: (game.score as GameState["score"]) ?? gameStateData.score ?? fallback.score,
+    lastMove: gameStateData.lastMove ?? null,
+    history: gameStateData.history ?? [],
+    startingPlayer: gameStateData.startingPlayer ?? fallback.startingPlayer,
   };
 };
 
@@ -139,7 +143,11 @@ const resolveWinnerId = (
 export const executeBotTurnIfNeeded = async (
   gameId: string,
 ): Promise<void> => {
+  console.log("[bot] executeBotTurnIfNeeded called for game:", gameId);
+  
   for (let iteration = 0; iteration < MAX_CHAINED_BOT_MOVES; iteration += 1) {
+    console.log("[bot] Iteration:", iteration + 1, "of", MAX_CHAINED_BOT_MOVES);
+    
     const { data: game, error } = (await supabaseAdmin
       .from("games")
       .select(
@@ -158,22 +166,46 @@ export const executeBotTurnIfNeeded = async (
       .eq("id", gameId)
       .single()) as PostgrestSingleResponse<GameRow>;
 
-    if (error || !game || !game.is_bot_game) {
+    if (error) {
+      console.error("[bot] Error fetching game:", error);
       return;
     }
 
+    if (!game) {
+      console.error("[bot] Game not found:", gameId);
+      return;
+    }
+
+    if (!game.is_bot_game) {
+      console.log("[bot] Game is not a bot game, skipping");
+      return;
+    }
+
+    console.log("[bot] Game status:", game.status);
     if (game.status !== "in_progress") {
+      console.log("[bot] Game is not in progress, skipping. Status:", game.status);
       return;
     }
 
     const botPlayer = (game.bot_player as PlayerId | null) ?? "away";
+    console.log("[bot] Bot player:", botPlayer);
 
     const currentState = parseGameState(game);
+    console.log("[bot] Parsed game state:", {
+      turn: currentState.turn,
+      score: currentState.score,
+      historyLength: currentState.history?.length ?? 0,
+      startingPlayer: currentState.startingPlayer,
+    });
+    console.log("[bot] Current turn:", currentState.turn, "Bot player:", botPlayer);
+    console.log("[bot] Raw game_state from DB:", JSON.stringify(game.game_state)?.substring(0, 200));
 
     if (currentState.turn !== botPlayer) {
+      console.log("[bot] Not bot's turn. Current turn:", currentState.turn, "Expected:", botPlayer);
       return;
     }
 
+    console.log("[bot] Bot's turn detected, picking move...");
     const difficulty =
       (game.bot_difficulty as BotDifficulty | null) ??
       FOOTBALL_BOT_DEFAULT_DIFFICULTY;
@@ -181,61 +213,99 @@ export const executeBotTurnIfNeeded = async (
     const move = pickBotMove(currentState, botPlayer, difficulty);
 
     if (!move) {
+      console.log("[bot] No legal moves found, passing turn");
       const passedState: GameState = {
         ...currentState,
         turn: opponent(botPlayer),
       };
 
       try {
-        await (supabaseAdmin.from("games") as unknown as {
-          update: (
-            values: Record<string, unknown>,
-          ) => ReturnType<typeof supabaseAdmin.from>;
-        })
+        const { error: updateError } = await supabaseAdmin
+          .from("games")
           .update({
-            game_state: passedState,
-            score: passedState.score,
+            game_state: passedState as unknown as Database["public"]["Tables"]["games"]["Row"]["game_state"],
+            score: passedState.score as unknown as Database["public"]["Tables"]["games"]["Row"]["score"],
           } as Record<string, unknown>)
           .eq("id", gameId);
+        
+        if (updateError) {
+          console.error("[bot] Failed to update passed state:", updateError);
+          console.error("[bot] Update error details:", JSON.stringify(updateError));
+        } else {
+          console.log("[bot] Successfully passed turn");
+        }
       } catch (updateError) {
-        console.error("[bot] failed to update passed state", updateError);
+        console.error("[bot] Exception updating passed state:", updateError);
+        if (updateError instanceof Error) {
+          console.error("[bot] Exception message:", updateError.message);
+        }
       }
       return;
     }
 
+    console.log("[bot] Move selected:", JSON.stringify(move));
     const outcome = RuleEngine.applyMove(currentState, move);
     let nextStatus = game.status;
     let winnerId = game.winner_id;
 
     if (outcome.goal?.scoringPlayer === botPlayer) {
+      console.log("[bot] Bot scored a goal! Score:", outcome.nextState.score);
       nextStatus = outcome.nextState.score[botPlayer] >= 3 ? "finished" : "in_progress";
       if (nextStatus === "finished") {
         winnerId = resolveWinnerId(move, outcome, game);
+        console.log("[bot] Game finished! Winner:", winnerId);
       }
     }
 
     try {
-      await (supabaseAdmin.from("games") as unknown as {
-        update: (
-          values: Record<string, unknown>,
-        ) => ReturnType<typeof supabaseAdmin.from>;
-      })
-        .update({
-          game_state: outcome.nextState,
-          score: outcome.nextState.score,
-          status: nextStatus,
-          winner_id: winnerId,
-        } as Record<string, unknown>)
-        .eq("id", gameId);
+      const updatePayload = {
+        game_state: outcome.nextState as unknown as Database["public"]["Tables"]["games"]["Row"]["game_state"],
+        score: outcome.nextState.score as unknown as Database["public"]["Tables"]["games"]["Row"]["score"],
+        status: nextStatus,
+        winner_id: winnerId,
+      };
+      
+      console.log("[bot] Updating game with payload:", JSON.stringify({
+        status: nextStatus,
+        winner_id: winnerId,
+        score: outcome.nextState.score,
+        game_state_turn: outcome.nextState.turn,
+      }));
+      
+      const { error: updateError, data: updateData } = await supabaseAdmin
+        .from("games")
+        .update(updatePayload as Record<string, unknown>)
+        .eq("id", gameId)
+        .select();
+      
+      if (updateError) {
+        console.error("[bot] Failed to persist move:", updateError);
+        console.error("[bot] Update error details:", JSON.stringify(updateError));
+        return;
+      }
+      
+      console.log("[bot] Move persisted successfully. Updated rows:", updateData?.length ?? 0);
+      if (updateData && updateData.length > 0) {
+        console.log("[bot] Updated game state turn:", (updateData[0]?.game_state as GameState)?.turn);
+      }
     } catch (updateError) {
-      console.error("[bot] failed to persist move", updateError);
+      console.error("[bot] Exception persisting move:", updateError);
+      if (updateError instanceof Error) {
+        console.error("[bot] Exception message:", updateError.message);
+        console.error("[bot] Exception stack:", updateError.stack);
+      }
       return;
     }
 
     if (nextStatus === "finished") {
+      console.log("[bot] Game finished, stopping bot execution");
       return;
     }
+    
+    console.log("[bot] Move completed, checking for next move...");
   }
+  
+  console.log("[bot] Reached max iterations, stopping");
 };
 
 

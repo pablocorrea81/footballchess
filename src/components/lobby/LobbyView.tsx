@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
@@ -51,7 +52,25 @@ type LobbyViewProps = {
 
 const GAME_CHANNEL = "games:lobby";
 
+const GAME_SELECT = `
+  id,
+  status,
+  created_at,
+  player_1_id,
+  player_2_id,
+  game_state,
+  score,
+  winner_id,
+  is_bot_game,
+  bot_player,
+  bot_difficulty,
+  bot_display_name,
+  player1:profiles!games_player_1_id_fkey(username),
+  player2:profiles!games_player_2_id_fkey(username)
+`;
+
 export function LobbyView({ profileId, initialGames, initialError }: LobbyViewProps) {
+  const router = useRouter();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -73,6 +92,24 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [error, setError] = useState<string | null>(initialError || null);
   const [isPending, startTransition] = useTransition();
 
+  const refreshGames = useCallback(async () => {
+    try {
+      const { data } = (await supabase
+        .from("games")
+        .select(GAME_SELECT)
+        .in("status", ["waiting", "in_progress"])
+        .order("created_at", { ascending: true })) as PostgrestSingleResponse<
+        RawGameRow[]
+      >;
+
+      if (data) {
+        setGames(normalizeGames(data));
+      }
+    } catch (refreshError) {
+      console.error("[lobby] Error refreshing games:", refreshError);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     const channel = supabase
       .channel(GAME_CHANNEL)
@@ -83,33 +120,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
           schema: "public",
           table: "games",
         },
-        async () => {
-          const { data } = (await supabase
-            .from("games")
-            .select(
-              `id,
-              status,
-              created_at,
-              player_1_id,
-              player_2_id,
-              game_state,
-              score,
-              winner_id,
-              is_bot_game,
-              bot_player,
-              bot_difficulty,
-              bot_display_name,
-              player1:profiles!games_player_1_id_fkey(username),
-              player2:profiles!games_player_2_id_fkey(username)`,
-            )
-            .in("status", ["waiting", "in_progress"])
-            .order("created_at", { ascending: true })) as PostgrestSingleResponse<
-            RawGameRow[]
-          >;
-
-          if (data) {
-            setGames(normalizeGames(data));
-          }
+        () => {
+          // Refresh games list when changes are detected
+          void refreshGames();
         },
       )
       .subscribe();
@@ -117,7 +130,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [supabase]);
+  }, [supabase, refreshGames]);
 
   const createGame = async () => {
     setError(null);
@@ -125,31 +138,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     startTransition(async () => {
       try {
         await createGameAction(profileId);
-        const { data } = (await supabase
-          .from("games")
-          .select(
-            `id,
-            status,
-            created_at,
-            player_1_id,
-            player_2_id,
-            game_state,
-            score,
-            winner_id,
-            is_bot_game,
-            bot_player,
-            bot_difficulty,
-            bot_display_name,
-            player1:profiles!games_player_1_id_fkey(username),
-            player2:profiles!games_player_2_id_fkey(username)`,
-          )
-          .in("status", ["waiting", "in_progress"])
-          .order("created_at", { ascending: true })) as PostgrestSingleResponse<
-          RawGameRow[]
-        >;
-        if (data) {
-          setGames(normalizeGames(data));
-        }
+        // Refresh games list and server page
+        await refreshGames();
+        router.refresh();
       } catch (actionError) {
         setError(
           actionError instanceof Error
@@ -168,6 +159,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     startTransition(async () => {
       try {
         await createBotGameAction(profileId);
+        // Refresh games list and server page
+        await refreshGames();
+        router.refresh();
       } catch (actionError) {
         setError(
           actionError instanceof Error
@@ -183,20 +177,33 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const joinGame = async (id: string) => {
     setLoading(true);
     setError(null);
-    const { error: updateError } = await supabase
-      .from("games")
-      .update({
-        player_2_id: profileId,
-        status: "in_progress",
-      })
-      .eq("id", id)
-      .eq("player_2_id", null)
-      .eq("status", "waiting");
+    try {
+      const { error: updateError } = await supabase
+        .from("games")
+        .update({
+          player_2_id: profileId,
+          status: "in_progress",
+        })
+        .eq("id", id)
+        .eq("player_2_id", null)
+        .eq("status", "waiting");
 
-    if (updateError) {
-      setError(updateError.message);
+      if (updateError) {
+        setError(updateError.message);
+      } else {
+        // Refresh games list after joining
+        await refreshGames();
+        router.refresh();
+      }
+    } catch (joinError) {
+      setError(
+        joinError instanceof Error
+          ? joinError.message
+          : "No se pudo unir a la partida.",
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const deleteGame = async (id: string) => {
@@ -204,6 +211,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     setError(null);
     try {
       await deleteGameAction(id);
+      // Refresh games list and server page
+      await refreshGames();
+      router.refresh();
     } catch (actionError) {
       setError(
         actionError instanceof Error

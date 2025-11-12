@@ -47,10 +47,35 @@ type Selection = {
 };
 
 const columnLabel = (col: number) => String.fromCharCode(65 + col); // A, B, C...
-const rowLabel = (row: number) => BOARD_ROWS - row; // 12 at top -> 1 bottom
 
-const formatPosition = (position: Position) =>
-  `${columnLabel(position.col)}${rowLabel(position.row)}`;
+// Format position using actual board coordinates (row 0 = 12, row 11 = 1)
+const formatPosition = (position: Position) => {
+  const col = columnLabel(position.col);
+  const row = BOARD_ROWS - position.row; // row 0 -> 12, row 11 -> 1
+  return `${col}${row}`;
+};
+
+// Get row label for display based on player role (always show closest row as 1)
+const getRowLabelForDisplay = (actualRow: number, playerRole: PlayerId): number => {
+  if (playerRole === "home") {
+    // Home sees row 11 as closest (bottom), so row 11 = 1, row 0 = 12
+    return BOARD_ROWS - actualRow;
+  } else {
+    // Away sees row 0 as closest (bottom), so row 0 = 1, row 11 = 12
+    return actualRow + 1;
+  }
+};
+
+// Get column label for display based on player role
+const getColumnLabelForDisplay = (actualCol: number, playerRole: PlayerId): string => {
+  if (playerRole === "home") {
+    // Home sees columns normally (0 = A, 7 = H)
+    return columnLabel(actualCol);
+  } else {
+    // Away sees columns reversed (0 = H, 7 = A)
+    return columnLabel(BOARD_COLS - 1 - actualCol);
+  }
+};
 
 export function GameView({
   initialGameId,
@@ -299,10 +324,12 @@ export function GameView({
 
 const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean) =>
   [
-    "rounded-full px-4 py-2 text-sm transition inline-flex items-center gap-2",
-    role === "home" ? "bg-emerald-500/20 text-emerald-50" : "bg-sky-500/20 text-sky-50",
-    isCurrentTurn ? "ring-2 ring-white/70" : "opacity-80",
-    isStarting ? "border border-yellow-300/60" : "border border-transparent",
+    "rounded-full px-5 py-2.5 text-base font-semibold transition inline-flex items-center gap-2 shadow-lg",
+    role === "home" 
+      ? "bg-emerald-600/90 text-white border-2 border-emerald-400/50" 
+      : "bg-sky-600/90 text-white border-2 border-sky-400/50",
+    isCurrentTurn ? "ring-4 ring-yellow-400/80 shadow-yellow-400/50" : "",
+    isStarting ? "border-yellow-400/80" : "",
   ].join(" ");
 
   const isBotTurn =
@@ -336,12 +363,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10">
-      <section className="flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl md:flex-row md:items-center md:justify-between">
+      <section className="flex flex-col gap-4 rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-6 text-white shadow-2xl backdrop-blur-sm md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="text-3xl font-bold text-white">
             Partido #{initialGameId.slice(0, 8)}
           </h1>
-          <p className="text-sm text-emerald-100/70">
+          <p className="mt-2 text-base font-medium text-emerald-50">
             {status === "finished"
               ? computedWinnerLabel
                 ? `Ganador: ${computedWinnerLabel}`
@@ -349,12 +376,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               : `Turno actual: ${currentTurnLabel}`}
           </p>
           {status !== "finished" && (
-            <p className="text-xs uppercase tracking-widest text-emerald-200/80">
-              Inicio: <span className="font-semibold">{startingLabel}</span>
+            <p className="mt-1 text-sm font-semibold uppercase tracking-wider text-emerald-200">
+              Inicio: <span className="text-yellow-300">{startingLabel}</span>
             </p>
           )}
         </div>
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-base">
           <div
             className={badgeClass(
               "home",
@@ -363,7 +390,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             )}
           >
             {gameState.startingPlayer === "home" ? "★" : null}
-            <span>
+            <span className="font-semibold">
               {playerLabels.home}: {score.home ?? 0}
             </span>
           </div>
@@ -375,7 +402,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             )}
           >
             {gameState.startingPlayer === "away" ? "★" : null}
-            <span>
+            <span className="font-semibold">
               {playerLabels.away}: {score.away ?? 0}
             </span>
           </div>
@@ -383,164 +410,210 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         {status === "finished" && (
           <Link
             href="/lobby"
-            className="rounded-full border border-white/30 px-4 py-2 text-sm text-white transition hover:border-white hover:bg-white/10"
+            className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-6 py-3 text-base font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
           >
-            Volver al lobby
+            ← Volver al lobby
           </Link>
         )}
       </section>
 
       {status === "waiting" && (
-        <div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-200">
-          Esperando a que se una el segundo jugador...
+        <div className="rounded-2xl border-2 border-yellow-500/60 bg-yellow-500/30 p-5 text-base font-semibold text-yellow-900 shadow-lg backdrop-blur-sm">
+          ⏳ Esperando a que se una el segundo jugador...
         </div>
       )}
 
       {feedback && (
-        <div className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-50 shadow-lg">
+        <div className="rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/40 p-5 text-base font-semibold text-white shadow-xl backdrop-blur-sm">
           {feedback}
         </div>
       )}
 
       {isBotTurn && (
-        <div className="rounded-3xl border border-sky-400/40 bg-sky-500/10 p-4 text-sm text-sky-100 shadow-lg">
-          {botDisplayName} está analizando su próximo movimiento…
+        <div className="rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-5 text-base font-semibold text-white shadow-xl backdrop-blur-sm animate-pulse">
+          🤖 {botDisplayName} está analizando su próximo movimiento…
         </div>
       )}
 
       {lastMoveDescription && (
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow">
-          <p>
-            Último movimiento: <strong>{lastMoveDescription}</strong>
+        <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-r from-slate-800/90 to-slate-700/90 p-5 text-base text-white shadow-xl backdrop-blur-sm">
+          <p className="font-medium">
+            Último movimiento: <strong className="text-yellow-300">{lastMoveDescription}</strong>
           </p>
           {lastMoveGoalText && (
-            <p className="mt-1 text-emerald-200">{lastMoveGoalText}</p>
+            <p className="mt-2 text-lg font-bold text-emerald-300">⚽ {lastMoveGoalText}</p>
           )}
         </div>
       )}
 
       <div className="overflow-x-auto">
-        <div
-          className="mx-auto grid max-w-xl border border-white/20 shadow-2xl"
-          style={{
-            gridTemplateColumns: `repeat(${BOARD_COLS}, minmax(0, 1fr))`,
-          }}
-        >
-          {rowIndices.map((actualRow, uiRow) =>
-            colIndices.map((actualCol, uiCol) => {
-              const cell = gameState.board[actualRow]?.[actualCol];
-              const isSelected =
-                selection?.origin.row === actualRow &&
-                selection.origin.col === actualCol;
-              const moveOption = isMoveOption(uiRow, uiCol);
-              const isLastFrom =
-                lastMove &&
-                lastMove.from.row === actualRow &&
-                lastMove.from.col === actualCol;
-              const isLastTo =
-                lastMove &&
-                lastMove.to.row === actualRow &&
-                lastMove.to.col === actualCol;
-              const highlightStartingPiece =
-                isInitialPhase &&
-                cell &&
-                cell.owner === gameState.startingPlayer;
-              
-              // Mark goal squares (rows 0 and 11, columns 3 and 4)
-              const isGoalSquare =
-                (actualRow === 0 || actualRow === BOARD_ROWS - 1) &&
-                GOAL_COLS.includes(actualCol);
+        <div className="mx-auto inline-block border border-white/20 shadow-2xl">
+          {/* Column labels (A-H) */}
+          <div
+            className="grid border-b border-white/20"
+            style={{
+              gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(0, 4rem))`,
+            }}
+          >
+            <div className="w-8"></div>
+            {colIndices.map((actualCol) => (
+              <div
+                key={`col-label-${actualCol}`}
+                className="flex h-8 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-sm font-bold text-emerald-100 shadow-sm"
+              >
+                {getColumnLabelForDisplay(actualCol, playerRole)}
+              </div>
+            ))}
+          </div>
 
-              return (
-                <button
-                  key={`${actualRow}-${actualCol}`}
-                  type="button"
-                  onClick={() => handleCellClick(uiRow, uiCol)}
-                  className={[
-                    "aspect-square flex items-center justify-center border text-lg font-semibold transition relative",
-                    isGoalSquare
-                      ? "border-yellow-400/60 bg-yellow-500/20"
-                      : "border-white/10",
-                    !isGoalSquare &&
-                      ((actualRow + actualCol) % 2 === 0
-                        ? "bg-emerald-900/50"
-                        : "bg-emerald-800/50"),
-                    isSelected ? "ring-4 ring-emerald-300/60" : "",
-                    moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
-                    isLastTo && !isGoalSquare
-                      ? "bg-amber-500/40"
-                      : isLastFrom && !isGoalSquare
-                        ? "bg-amber-500/20"
-                        : "",
-                    !canAct ? "cursor-default" : "",
-                  ].join(" ")}
-                  disabled={!canAct}
-                  title={isGoalSquare ? "Arco" : undefined}
-                >
-                  {isGoalSquare && (
-                    <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-yellow-300/80">
-                      🥅
+          {/* Board rows with row labels */}
+          {rowIndices.map((actualRow, uiRow) => (
+            <div
+              key={`row-${actualRow}`}
+              className="grid border-b border-white/20 last:border-b-0"
+              style={{
+                gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(0, 4rem))`,
+              }}
+            >
+              {/* Row label (1-12) */}
+              <div className="flex w-8 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-sm font-bold text-emerald-100 shadow-sm">
+                {getRowLabelForDisplay(actualRow, playerRole)}
+              </div>
+
+              {/* Board cells */}
+              {colIndices.map((actualCol, uiCol) => {
+                const cell = gameState.board[actualRow]?.[actualCol];
+                const isSelected =
+                  selection?.origin.row === actualRow &&
+                  selection.origin.col === actualCol;
+                const moveOption = isMoveOption(uiRow, uiCol);
+                const isLastFrom =
+                  lastMove &&
+                  lastMove.from.row === actualRow &&
+                  lastMove.from.col === actualCol;
+                const isLastTo =
+                  lastMove &&
+                  lastMove.to.row === actualRow &&
+                  lastMove.to.col === actualCol;
+                const highlightStartingPiece =
+                  isInitialPhase &&
+                  cell &&
+                  cell.owner === gameState.startingPlayer;
+
+                // Mark goal squares (rows 0 and 11, columns 3 and 4)
+                const isGoalSquare =
+                  (actualRow === 0 || actualRow === BOARD_ROWS - 1) &&
+                  GOAL_COLS.includes(actualCol);
+
+                // Display position label from player's perspective
+                const displayRowLabel = getRowLabelForDisplay(actualRow, playerRole);
+                const displayColLabel = getColumnLabelForDisplay(actualCol, playerRole);
+                const positionLabel = `${displayColLabel}${displayRowLabel}`;
+
+                return (
+                  <button
+                    key={`${actualRow}-${actualCol}`}
+                    type="button"
+                    onClick={() => handleCellClick(uiRow, uiCol)}
+                    className={[
+                      "aspect-square flex h-16 w-16 items-center justify-center border-l border-t border-white/10 text-lg font-semibold transition relative",
+                      isGoalSquare
+                        ? "border-yellow-400/60 bg-yellow-500/20"
+                        : "border-white/10",
+                      !isGoalSquare &&
+                        ((actualRow + actualCol) % 2 === 0
+                          ? "bg-emerald-900/50"
+                          : "bg-emerald-800/50"),
+                      isSelected ? "ring-4 ring-emerald-300/60 z-10" : "",
+                      moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
+                      isLastTo && !isGoalSquare
+                        ? "bg-amber-500/40"
+                        : isLastFrom && !isGoalSquare
+                          ? "bg-amber-500/20"
+                          : "",
+                      !canAct ? "cursor-default" : "cursor-pointer hover:bg-white/5",
+                    ].join(" ")}
+                    disabled={!canAct}
+                    title={
+                      isGoalSquare
+                        ? `Arco - ${positionLabel}`
+                        : `${positionLabel}${cell ? ` - ${pieceInitials[cell.type]}` : ""}`
+                    }
+                  >
+                    {/* Position label (small, top-left corner) - from player's perspective */}
+                    <span className="absolute left-1 top-1 text-[0.65rem] font-mono font-bold text-white/80 bg-black/40 px-1 rounded">
+                      {positionLabel}
                     </span>
-                  )}
-                  {cell && (
-                    <span
-                      className={`flex h-10 w-10 items-center justify-center rounded-full border text-base ${cell.owner === playerRole ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" : "border-sky-200 bg-sky-500/50 text-sky-950"} ${
-                        highlightStartingPiece
-                          ? "shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
-                          : ""
-                      }`}
-                    >
-                      {pieceInitials[cell.type]}
-                    </span>
-                  )}
-                </button>
-              );
-            }),
-          )}
+
+                    {/* Goal icon */}
+                    {isGoalSquare && (
+                      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-yellow-300/80">
+                        🥅
+                      </span>
+                    )}
+
+                    {/* Piece */}
+                    {cell && (
+                      <span
+                        className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border text-base ${cell.owner === playerRole ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" : "border-sky-200 bg-sky-500/50 text-sky-950"} ${
+                          highlightStartingPiece
+                            ? "shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
+                            : ""
+                        }`}
+                      >
+                        {pieceInitials[cell.type]}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-sm text-white">
-        <h2 className="text-base font-semibold text-white/90">
-          Historial reciente
+      <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-6 text-white shadow-2xl backdrop-blur-sm">
+        <h2 className="text-xl font-bold text-white mb-4">
+          📜 Historial reciente
         </h2>
         {recentMoves.length === 0 ? (
-          <p className="mt-3 text-emerald-100/70">
+          <p className="mt-3 text-base text-emerald-200">
             Aún no hay movimientos registrados.
           </p>
         ) : (
-          <ul className="mt-3 flex flex-col gap-2">
-            <li className="flex items-center justify-between rounded-2xl border border-yellow-300/40 bg-yellow-300/10 px-4 py-2 text-sm text-amber-100">
-              <span className="text-xs font-semibold uppercase tracking-widest text-amber-200">
+          <ul className="mt-3 flex flex-col gap-3">
+            <li className="flex items-center justify-between rounded-xl border-2 border-yellow-400/60 bg-yellow-500/30 px-5 py-3 text-base font-semibold text-yellow-900 shadow-lg">
+              <span className="text-sm font-bold uppercase tracking-wider text-yellow-800">
                 Inicio
               </span>
               <span className="flex items-center gap-2">
                 <span>★ {startingLabel} sale jugando</span>
               </span>
-              <span className="text-xs text-amber-200/70">Sorteo</span>
+              <span className="text-sm font-medium text-yellow-800">Sorteo</span>
             </li>
             {recentMoves.map((move) => (
               <li
                 key={move.moveNumber}
-                className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-2"
+                className="flex items-center justify-between rounded-xl border-2 border-white/20 bg-white/10 px-5 py-3 shadow-md hover:bg-white/15 transition-colors"
               >
-                <span className="text-xs font-semibold uppercase tracking-widest text-white/60">
+                <span className="text-sm font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-3 py-1 rounded-full">
                   #{move.moveNumber}
                 </span>
-                <span className="text-sm text-white/90">
-                  {move.player === "home"
-                    ? playerLabels.home
-                    : playerLabels.away}{" "}
-                  movió {move.pieceId.split("-")[1]} a{" "}
-                  <strong>{formatPosition(move.to)}</strong>
+                <span className="text-base text-white font-medium flex-1 text-center">
+                  <span className={move.player === "home" ? "text-emerald-300" : "text-sky-300"}>
+                    {move.player === "home"
+                      ? playerLabels.home
+                      : playerLabels.away}
+                  </span>{" "}
+                  movió <span className="font-semibold text-yellow-300">{move.pieceId.split("-")[1]}</span> a{" "}
+                  <strong className="text-yellow-300 font-bold">{formatPosition(move.to)}</strong>
                   {move.capturedPieceId ? (
-                    <span className="text-rose-200">
-                      {" "}
-                      (captura a {move.capturedPieceId})
+                    <span className="text-rose-300 font-semibold ml-2">
+                      ⚔️ (captura)
                     </span>
                   ) : null}
                 </span>
-                <span className="text-xs text-emerald-100/70">
+                <span className="text-sm font-medium text-emerald-200 bg-emerald-900/50 px-3 py-1 rounded-full">
                   {new Date(move.timestamp).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -552,32 +625,30 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         )}
       </div>
 
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-sm text-white">
-        <p>
-          Tu rol: <strong>{playerRole.toUpperCase()}</strong>.{" "}
+      <div className="rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-6 text-white shadow-2xl backdrop-blur-sm">
+        <p className="text-base font-semibold mb-3">
+          Tu rol: <strong className="text-yellow-300 text-lg">{playerRole.toUpperCase()}</strong>.{" "}
           {status === "finished" ? (
             <>
               Partido terminado.{" "}
-              <strong>
+              <strong className="text-emerald-300 text-lg">
                 {winnerId && winnerId === players[playerRole]
-                  ? "Ganaste"
-                  : "Ganó tu rival"}
+                  ? "🎉 ¡Ganaste!"
+                  : "😔 Ganó tu rival"}
               </strong>
-              .
             </>
           ) : (
             <>
               Turno actual:{" "}
-              <strong>
+              <strong className={`text-lg ${currentTurnIsPlayer ? "text-emerald-300" : "text-sky-300"}`}>
                 {gameState.turn.toUpperCase()}{" "}
-                {currentTurnIsPlayer ? "(Tu turno)" : "(Turno rival)"}
+                {currentTurnIsPlayer ? "✅ (Tu turno)" : "⏳ (Turno rival)"}
               </strong>
-              .
             </>
           )}
         </p>
-        <p className="mt-2 text-emerald-100/80">
-          Selecciona una pieza tuya para ver movimientos legales. Los movimientos se
+        <p className="text-sm text-emerald-100 font-medium leading-relaxed">
+          💡 Selecciona una pieza tuya para ver movimientos legales. Los movimientos se
           validan localmente con la lógica oficial y se sincronizan en Supabase.
           {status === "finished" ? " Esta partida ya finalizó." : ""}
         </p>

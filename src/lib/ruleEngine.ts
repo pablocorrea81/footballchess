@@ -93,10 +93,11 @@ const HOME_PIECE_LAYOUT: Array<{ type: PieceType; position: Position }> = [
   { type: "defensa", position: { row: 11, col: 5 } },
   { type: "defensa", position: { row: 11, col: 6 } },
   // Mediocampistas adelante del arco (row 10)
-  { type: "mediocampista", position: { row: 10, col: 1 } },
+  // Dos frente al arco (columnas 3 y 4) y dos en las diagonales (columnas 2 y 5)
+  { type: "mediocampista", position: { row: 10, col: 2 } },
   { type: "mediocampista", position: { row: 10, col: 3 } },
   { type: "mediocampista", position: { row: 10, col: 4 } },
-  { type: "mediocampista", position: { row: 10, col: 6 } },
+  { type: "mediocampista", position: { row: 10, col: 5 } },
   // Delanteros delante de los mediocampistas (row 9)
   { type: "delantero", position: { row: 9, col: 2 } },
   { type: "delantero", position: { row: 9, col: 5 } },
