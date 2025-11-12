@@ -121,6 +121,9 @@ export function GameView({
   const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showHint, setShowHint] = useState(false);
   const [hintMoves, setHintMoves] = useState<Position[]>([]);
+  
+  // Dynamic player labels - updated from server data
+  const [dynamicPlayerLabels, setDynamicPlayerLabels] = useState<Record<PlayerId, string>>(playerLabels);
 
   // Row indices: Always show the player's goal at the bottom of the screen
   // When we map rowIndices, uiRow=0 renders first (top of screen), uiRow=11 renders last (bottom of screen)
@@ -164,7 +167,18 @@ export function GameView({
       console.log("[GameView] Fetching latest game state from Supabase...");
       const { data, error } = await supabase
         .from("games")
-        .select("game_state, score, status, player_1_id, player_2_id, winner_id")
+        .select(`
+          game_state, 
+          score, 
+          status, 
+          player_1_id, 
+          player_2_id, 
+          winner_id,
+          is_bot_game,
+          bot_display_name,
+          player_one:profiles!games_player_1_id_fkey(username),
+          player_two:profiles!games_player_2_id_fkey(username)
+        `)
         .eq("id", initialGameId)
         .single();
 
@@ -186,6 +200,10 @@ export function GameView({
         player_1_id: string;
         player_2_id: string | null;
         winner_id: string | null;
+        is_bot_game: boolean;
+        bot_display_name: string | null;
+        player_one: { username: string | null } | null;
+        player_two: { username: string | null } | null;
       };
 
       const nextState =
@@ -195,11 +213,26 @@ export function GameView({
         (gameData.score as GameState["score"] | null) ??
         RuleEngine.createInitialState().score;
 
+      // Extract usernames
+      const playerOneUsername = gameData.player_one?.username ?? null;
+      const playerTwoUsername = gameData.player_two?.username ?? null;
+      
+      // Update player labels dynamically
+      const updatedLabels: Record<PlayerId, string> = {
+        home: playerOneUsername ?? "Jugador 1",
+        away: gameData.is_bot_game
+          ? (gameData.bot_display_name ?? botDisplayName)
+          : (playerTwoUsername ?? "Jugador 2"),
+      };
+      
+      setDynamicPlayerLabels(updatedLabels);
+
       console.log("[GameView] Fetched game state:", {
         turn: nextState.turn,
         score: nextScore,
         status: gameData.status,
         historyLength: nextState.history?.length ?? 0,
+        playerLabels: updatedLabels,
       });
 
       // Check if game just started
@@ -229,7 +262,7 @@ export function GameView({
     } catch (error) {
       console.error("[GameView] Exception fetching game state:", error);
     }
-  }, [initialGameId, supabase]);
+  }, [initialGameId, supabase, botDisplayName, status, hasPlayedStartSound, playSound]);
 
   useEffect(() => {
     console.log("[GameView] Setting up Realtime subscription for game:", initialGameId);
@@ -264,7 +297,7 @@ export function GameView({
             (payload.new.score as GameState["score"] | null) ??
             RuleEngine.createInitialState().score;
 
-          console.log("[GameView] Updating local state:", {
+          console.log("[GameView] Updating local state from Realtime:", {
             turn: nextState.turn,
             score: nextScore,
             status: payload.new.status,
@@ -298,22 +331,36 @@ export function GameView({
           
           // Goal detection and resume sound are handled by the useEffect that monitors gameState.history
           // This avoids duplicate triggers
+          
+          // Fetch player names asynchronously after state update (don't block the update)
+          // Use a small delay to avoid race conditions
+          setTimeout(() => {
+            void fetchGameState();
+          }, 100);
         },
       )
       .subscribe((status) => {
         console.log("[GameView] Realtime subscription status:", status);
+        if (status === "SUBSCRIBED") {
+          console.log("[GameView] Successfully subscribed to Realtime updates");
+        } else if (status === "CHANNEL_ERROR") {
+          console.error("[GameView] Realtime subscription error");
+        }
       });
 
     return () => {
       console.log("[GameView] Cleaning up Realtime subscription for game:", initialGameId);
       void supabase.removeChannel(channel);
     };
-  }, [initialGameId, supabase, status, hasPlayedStartSound, playSound]);
+  }, [initialGameId, supabase, status, hasPlayedStartSound, playSound, fetchGameState]);
 
   // Poll for updates when it's not the player's turn
   // This handles both bot games and multiplayer games where the opponent is moving
   useEffect(() => {
-    if (status !== "in_progress") return;
+    if (status !== "in_progress") {
+      console.log("[GameView] Game not in progress, stopping polling");
+      return;
+    }
     
     const isPlayerTurn = gameState.turn === playerRole && players[playerRole] === profileId;
     
@@ -331,36 +378,48 @@ export function GameView({
       }
     }
 
+    // For multiplayer games, poll when it's the opponent's turn
+    if (!isBotGame) {
+      const opponentId = players[opponentRole];
+      const currentTurnIsOpponent = gameState.turn === opponentRole && opponentId !== null;
+      
+      if (!currentTurnIsOpponent) {
+        console.log("[GameView] Not opponent's turn in multiplayer, stopping polling");
+        return;
+      }
+    }
+
     console.log("[GameView] Opponent's turn detected, starting polling for updates...");
     
-    // Initial fetch after a short delay to allow opponent to process
-    const initialTimeout = setTimeout(() => {
-      console.log("[GameView] Initial fetch after opponent turn...");
-      void fetchGameState();
-    }, 1000);
+    // Immediate fetch to get latest state
+    console.log("[GameView] Immediate fetch for opponent move...");
+    void fetchGameState();
     
-    // Poll every 1 second while it's the opponent's turn (less aggressive than bot polling)
+    // Poll every 1.5 seconds while it's the opponent's turn
+    // More frequent polling for multiplayer to ensure quick updates
     const pollInterval = setInterval(() => {
       console.log("[GameView] Polling for opponent move update...");
       void fetchGameState();
-    }, 1000);
+    }, 1500);
 
     return () => {
-      console.log("[GameView] Cleaning up polling interval and timeout");
-      clearTimeout(initialTimeout);
+      console.log("[GameView] Cleaning up polling interval");
       clearInterval(pollInterval);
     };
-  }, [isBotGame, botPlayer, status, gameState.turn, playerRole, players, profileId, fetchGameState]);
+  }, [isBotGame, botPlayer, status, gameState.turn, playerRole, opponentRole, players, profileId, fetchGameState]);
 
+  // Use dynamic player labels (updated from server)
+  const effectivePlayerLabels = dynamicPlayerLabels;
+  
   const currentTurnLabel =
     gameState.turn === playerRole
-      ? playerLabels[playerRole]
-      : playerLabels[opponentRole];
+      ? effectivePlayerLabels[playerRole]
+      : effectivePlayerLabels[opponentRole];
   const currentTurnIsPlayer = gameState.turn === playerRole;
   const startingLabel =
     gameState.startingPlayer === "home"
-      ? playerLabels.home
-      : playerLabels.away;
+      ? effectivePlayerLabels.home
+      : effectivePlayerLabels.away;
   const isInitialPhase =
     status === "in_progress" && (gameState.history?.length ?? 0) === 0;
 
@@ -416,7 +475,7 @@ export function GameView({
       
       // Update feedback based on move result
       if (goalScored) {
-        const scoringLabel = playerLabels[playerRole];
+        const scoringLabel = effectivePlayerLabels[playerRole];
         const updatedScore = newScore[playerRole] ?? 0;
         if (updatedScore >= 3) {
           setFeedback(`¡Victoria de ${scoringLabel}!`);
@@ -562,8 +621,8 @@ export function GameView({
     lastMove && lastMove.goal
       ? `Gol de ${
           lastMove.goal.scoringPlayer === "home"
-            ? playerLabels.home
-            : playerLabels.away
+            ? effectivePlayerLabels.home
+            : effectivePlayerLabels.away
         }`
       : null;
 
@@ -586,17 +645,17 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   const computedWinnerLabel = (() => {
     if (winnerId) {
       if (winnerId === players.home) {
-        return playerLabels.home;
+        return effectivePlayerLabels.home;
       }
       if (winnerId === players.away) {
-        return playerLabels.away;
+        return effectivePlayerLabels.away;
       }
     }
 
     if (status === "finished" && isBotGame) {
       const finalMover = gameState.lastMove?.player ?? null;
       if (finalMover === playerRole) {
-        return playerLabels[playerRole];
+        return effectivePlayerLabels[playerRole];
       }
       if (finalMover === opponentRole) {
         return botDisplayName;
@@ -624,8 +683,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         // Check if celebration is not already showing to avoid duplicates
         if (!showGoalCelebration) {
           const scorer = lastMove.goal.scoringPlayer === "home"
-            ? playerLabels.home
-            : playerLabels.away;
+            ? effectivePlayerLabels.home
+            : effectivePlayerLabels.away;
           setGoalScorer(scorer);
           setShowGoalCelebration(true);
           playSound("goal");
@@ -642,7 +701,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       // Update ref after processing
       previousHistoryLengthRef.current = historyLength;
     }
-  }, [gameState.history, playerLabels, showGoalCelebration, playSound]);
+  }, [gameState.history, effectivePlayerLabels, showGoalCelebration, playSound]);
 
   // Auto-scroll to board when it's the player's turn
   // Scroll to focus on the board edge (top for HOME, bottom for AWAY) without including footer
@@ -974,7 +1033,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               >
                 {gameState.startingPlayer === "home" ? "★" : null}
                 <span className="font-semibold">
-                  {playerLabels.home}: {score.home ?? 0}
+                  {effectivePlayerLabels.home}: {score.home ?? 0}
                 </span>
               </div>
               <div
@@ -986,7 +1045,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               >
                 {gameState.startingPlayer === "away" ? "★" : null}
                 <span className="font-semibold">
-                  {playerLabels.away}: {score.away ?? 0}
+                  {effectivePlayerLabels.away}: {score.away ?? 0}
                 </span>
               </div>
             </div>
@@ -1013,7 +1072,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
           {!isBotGame && !isBotTurn && !currentTurnIsPlayer && status === "in_progress" && (
             <div className="rounded-xl md:rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
-              ⏳ Esperando que {playerLabels[opponentRole]} haga su movimiento...
+              ⏳ Esperando que {effectivePlayerLabels[opponentRole]} haga su movimiento...
             </div>
           )}
 
@@ -1059,8 +1118,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     <span className="text-xs md:text-sm text-white font-medium flex-1 text-center mx-1 md:mx-2">
                       <span className={move.player === "home" ? "text-emerald-300" : "text-sky-300"}>
                         {move.player === "home"
-                          ? playerLabels.home
-                          : playerLabels.away}
+                          ? effectivePlayerLabels.home
+                          : effectivePlayerLabels.away}
                       </span>{" "}
                       <span className="font-semibold text-yellow-300">{move.pieceId.split("-")[1]}</span> →{" "}
                       <strong className="text-yellow-300 font-bold">{formatPosition(move.to)}</strong>
@@ -1083,10 +1142,10 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {/* Game info */}
           <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-3 md:p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
             <p className="text-xs md:text-sm lg:text-base font-semibold mb-2 md:mb-3">
-              <span className="text-emerald-200">Tú:</span> <strong className="text-yellow-300 text-sm md:text-base lg:text-lg">{playerLabels[playerRole]}</strong> ({playerRole.toUpperCase()}){" "}
+              <span className="text-emerald-200">Tú:</span> <strong className="text-yellow-300 text-sm md:text-base lg:text-lg">{effectivePlayerLabels[playerRole]}</strong> ({playerRole.toUpperCase()}){" "}
               {!isBotGame && (
                 <>
-                  <span className="text-sky-200">•</span> <span className="text-sky-200">Oponente:</span> <strong className="text-sky-300 text-sm md:text-base lg:text-lg">{playerLabels[opponentRole]}</strong> ({opponentRole.toUpperCase()})
+                  <span className="text-sky-200">•</span> <span className="text-sky-200">Oponente:</span> <strong className="text-sky-300 text-sm md:text-base lg:text-lg">{effectivePlayerLabels[opponentRole]}</strong> ({opponentRole.toUpperCase()})
                 </>
               )}
             </p>

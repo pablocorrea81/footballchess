@@ -35,19 +35,19 @@ export function InviteWhatsAppModal({
       return;
     }
     
-    // Format as user types: 09X XXX XXX
+    // Format as user types: XXX XXX XXX (groups of 3)
     let formatted = '';
     if (cleaned.length === 0) {
       formatted = '';
-    } else if (cleaned.length <= 2) {
-      // Just the prefix: 09
+    } else if (cleaned.length <= 3) {
+      // First 3 digits: 092
       formatted = cleaned;
-    } else if (cleaned.length <= 5) {
-      // 09X XXX
-      formatted = `${cleaned.substring(0, 2)} ${cleaned.substring(2)}`;
+    } else if (cleaned.length <= 6) {
+      // First 6 digits: 092 922
+      formatted = `${cleaned.substring(0, 3)} ${cleaned.substring(3)}`;
     } else {
-      // 09X XXX XXX
-      formatted = `${cleaned.substring(0, 2)} ${cleaned.substring(2, 5)} ${cleaned.substring(5)}`;
+      // All 9 digits: 092 922 281
+      formatted = `${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6)}`;
     }
     
     setPhoneNumber(formatted);
@@ -67,8 +67,8 @@ export function InviteWhatsAppModal({
       // Remove all non-digit characters for normalization
       const cleanedPhone = phoneNumber.replace(/\D/g, '');
       
-      if (!cleanedPhone || cleanedPhone.length < 8) {
-        setError("Número de teléfono inválido. Ingresa al menos 8 dígitos (ej: 099 123 456).");
+      if (!cleanedPhone || cleanedPhone.length < 9) {
+        setError("Número de teléfono inválido. Ingresa 9 dígitos (ej: 092 922 281).");
         setIsValidating(false);
         return;
       }
@@ -77,7 +77,7 @@ export function InviteWhatsAppModal({
       const normalized = normalizeUruguayanPhoneToWhatsApp(cleanedPhone);
       
       if (!normalized) {
-        setError("Número de teléfono inválido. Ingresa un número uruguayo válido (debe empezar con 9 después del 0, ej: 099 123 456).");
+        setError("Número de teléfono inválido. Ingresa un número uruguayo válido (debe empezar con 09 y tener 9 dígitos, ej: 092 922 281).");
         setIsValidating(false);
         return;
       }
@@ -178,14 +178,14 @@ export function InviteWhatsAppModal({
             value={displayPhone}
             onChange={handlePhoneChange}
             onKeyPress={handleKeyPress}
-            placeholder="099 123 456"
+            placeholder="092 922 281"
             className="w-full rounded-xl border-2 border-emerald-200/30 bg-white/10 px-4 py-3 text-base text-white placeholder-emerald-200/50 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200/50 font-mono"
             autoFocus
             disabled={isValidating}
-            maxLength={12} // 09X XXX XXX (12 characters with spaces)
+            maxLength={11} // XXX XXX XXX (11 characters with spaces: 3+1+3+1+3)
           />
           <p className="mt-2 text-xs text-emerald-200/60">
-            Formato uruguayo: 09X XXX XXX (8 dígitos después del 0)
+            Formato uruguayo: 092 922 281 (9 dígitos agrupados de 3 en 3)
           </p>
         </div>
 

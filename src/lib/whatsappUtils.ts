@@ -44,7 +44,7 @@ export function normalizeUruguayanPhoneToWhatsApp(phone: string): string | null 
 }
 
 /**
- * Format phone number for display (Uruguayan format: 09X XXX XXX)
+ * Format phone number for display (Uruguayan format: XXX XXX XXX - groups of 3)
  */
 export function formatUruguayanPhoneForDisplay(phone: string): string {
   // Remove all non-digits
@@ -52,21 +52,26 @@ export function formatUruguayanPhoneForDisplay(phone: string): string {
   
   // If it's in international format (598XXXXXXXXX), convert to local
   if (cleaned.startsWith('598') && cleaned.length === 11) {
-    const local = cleaned.substring(3); // Remove 598
-    return `0${local.substring(0, 1)} ${local.substring(1, 4)} ${local.substring(4, 7)} ${local.substring(7)}`;
+    const local = cleaned.substring(3); // Remove 598 (8 digits)
+    // Format as XXX XXX XX (groups of 3, then remaining)
+    if (local.length === 8) {
+      return `${local.substring(0, 3)} ${local.substring(3, 6)} ${local.substring(6)}`;
+    }
   }
   
-  // If it's already in local format (09XXXXXXXX), format it
-  if (cleaned.length === 9 && cleaned.startsWith('0')) {
-    return `${cleaned.substring(0, 2)} ${cleaned.substring(2, 5)} ${cleaned.substring(5, 8)} ${cleaned.substring(8)}`;
+  // Format as groups of 3: XXX XXX XXX
+  if (cleaned.length === 9) {
+    return `${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6)}`;
   }
   
-  // If it's 8 digits, add 0 prefix
-  if (cleaned.length === 8) {
-    return `0${cleaned.substring(0, 1)} ${cleaned.substring(1, 4)} ${cleaned.substring(4, 7)} ${cleaned.substring(7)}`;
+  // Format partial numbers as user types
+  if (cleaned.length > 6) {
+    return `${cleaned.substring(0, 3)} ${cleaned.substring(3, 6)} ${cleaned.substring(6)}`;
+  } else if (cleaned.length > 3) {
+    return `${cleaned.substring(0, 3)} ${cleaned.substring(3)}`;
   }
   
-  return phone;
+  return cleaned;
 }
 
 /**
