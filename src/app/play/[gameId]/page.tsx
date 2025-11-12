@@ -128,6 +128,20 @@ export default async function PlayPage({ params }: PlayPageProps) {
     rawGame.player_2_id === null
   ) {
     try {
+      // Get the current game state to check who has the initial turn
+      const currentGameState = (rawGame.game_state as { turn?: string; startingPlayer?: string }) ?? {};
+      const initialTurn = currentGameState.turn ?? currentGameState.startingPlayer ?? "home";
+      
+      // Prepare update payload
+      // When the second player joins, the game starts
+      // Don't set turn_started_at yet - it will be set when the first move is made
+      // This ensures the timer only starts when both players are ready and the first move is made
+      const updatePayload: Record<string, unknown> = {
+        player_2_id: session.user.id,
+        status: "in_progress",
+        turn_started_at: null, // Timer will start when first move is made
+      };
+      
       const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
         "games",
       ) as unknown as {
@@ -135,11 +149,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
           values: Record<string, unknown>,
         ) => ReturnType<typeof supabaseAdmin.from>;
       })
-        .update({
-          player_2_id: session.user.id,
-          status: "in_progress",
-          turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
-        } as Record<string, unknown>)
+        .update(updatePayload)
         .eq("id", gameId)
         .is("player_2_id", null)
         .select(

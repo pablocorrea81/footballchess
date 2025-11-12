@@ -112,7 +112,7 @@ export async function createBotGameAction(
       bot_player: botPlayer,
       bot_difficulty: difficulty,
       bot_display_name: FOOTBALL_BOT_DEFAULT_NAME,
-      turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
+      turn_started_at: null, // Timer will start when first move is made
       winning_score: 3, // Default for bot games
       timeout_enabled: true, // Default for bot games
     })
@@ -128,6 +128,9 @@ export async function createBotGameAction(
   }
 
   revalidatePath("/lobby");
+  
+  // Return the game ID so the client can redirect to it
+  return { gameId: data.id };
 }
 
 export async function deleteGameAction(gameId: string) {

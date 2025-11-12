@@ -328,11 +328,36 @@ export function GameView({
       }
       
       // Update turn_started_at if available
+      // Only use turn_started_at if it's the current player's turn
+      // This ensures the timer is accurate for the player whose turn it is
+      // Use gameData.player_1_id and gameData.player_2_id (updated from fetch)
+      const updatedPlayers = {
+        home: gameData.player_1_id,
+        away: gameData.player_2_id,
+      };
       if (gameData.turn_started_at) {
-        setTurnStartedAt(new Date(gameData.turn_started_at));
-      } else if (status === "in_progress") {
-        // If game is in progress but no turn_started_at, set it to now
-        setTurnStartedAt(new Date());
+        const currentTurn = nextState.turn;
+        const currentPlayerId = currentTurn === "home" ? updatedPlayers.home : updatedPlayers.away;
+        const isPlayerTurn = currentTurn === playerRole && currentPlayerId === profileId;
+        if (isPlayerTurn) {
+          // It's the player's turn, use the server's turn_started_at
+          setTurnStartedAt(new Date(gameData.turn_started_at));
+        } else {
+          // It's not the player's turn, clear turn_started_at
+          setTurnStartedAt(null);
+        }
+      } else if (gameData.status === "in_progress") {
+        // If game is in progress but no turn_started_at, and it's the player's turn
+        const currentTurn = nextState.turn;
+        const currentPlayerId = currentTurn === "home" ? updatedPlayers.home : updatedPlayers.away;
+        const isPlayerTurn = currentTurn === playerRole && currentPlayerId === profileId;
+        if (isPlayerTurn) {
+          // It's the player's turn but no turn_started_at, set it to now
+          setTurnStartedAt(new Date());
+        } else {
+          // It's not the player's turn, clear turn_started_at
+          setTurnStartedAt(null);
+        }
       }
       
       // Update history length ref
@@ -498,11 +523,36 @@ export function GameView({
           }
           
           // Update turn_started_at from Realtime update
+          // Only use turn_started_at if it's the current player's turn
+          // This ensures the timer is accurate for the player whose turn it is
+          // Use payload.new.player_1_id and payload.new.player_2_id instead of players state (which may be stale)
+          const updatedPlayers = {
+            home: payload.new.player_1_id,
+            away: payload.new.player_2_id,
+          };
           if (payload.new.turn_started_at) {
-            setTurnStartedAt(new Date(payload.new.turn_started_at));
+            const currentTurn = nextState.turn;
+            const currentPlayerId = currentTurn === "home" ? updatedPlayers.home : updatedPlayers.away;
+            const isPlayerTurn = currentTurn === playerRole && currentPlayerId === profileId;
+            if (isPlayerTurn) {
+              // It's the player's turn, use the server's turn_started_at
+              setTurnStartedAt(new Date(payload.new.turn_started_at));
+            } else {
+              // It's not the player's turn, clear turn_started_at
+              setTurnStartedAt(null);
+            }
           } else if (payload.new.status === "in_progress") {
-            // If game is in progress but no turn_started_at, set it to now
-            setTurnStartedAt(new Date());
+            // If game is in progress but no turn_started_at, and it's the player's turn
+            const currentTurn = nextState.turn;
+            const currentPlayerId = currentTurn === "home" ? updatedPlayers.home : updatedPlayers.away;
+            const isPlayerTurn = currentTurn === playerRole && currentPlayerId === profileId;
+            if (isPlayerTurn) {
+              // It's the player's turn but no turn_started_at, set it to now
+              setTurnStartedAt(new Date());
+            } else {
+              // It's not the player's turn, clear turn_started_at
+              setTurnStartedAt(null);
+            }
           }
           
           // Update history length ref
@@ -1109,8 +1159,15 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       timeoutJustExecutedRef.current = false;
       
       // Initialize timeout timer when it's the player's turn
-      if (!turnStartedAt || previousTurn !== currentTurn) {
-        setTurnStartedAt(new Date());
+      // Use server's turn_started_at if available, otherwise set to now
+      // This ensures the timer is synchronized with the server
+      // Don't reset turn_started_at if it's already set - use the server value
+      // The server's turn_started_at will be set when the turn changes (in /api/games/update)
+      // or when the game starts (when second player joins)
+      if (previousTurn !== currentTurn) {
+        // Turn changed to player - wait for server's turn_started_at via fetchGameState
+        // Don't set it locally here, let fetchGameState handle it from server
+        // This ensures synchronization across clients
       }
       
       // Hide alert after 3 seconds
@@ -1164,9 +1221,18 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       !isBotGame &&
       timeoutEnabled
     ) {
-      // Initialize turn_started_at if not set
+      // Use server's turn_started_at if available, otherwise set to now
+      // The server's turn_started_at is set when the turn changes (in /api/games/update)
+      // or when the game starts (when second player joins)
+      // If the player just connected and it's their turn, use turn_started_at from server
+      // If turn_started_at is not set yet, set it to now (this should only happen if server's value is missing)
       const startTime = turnStartedAt ?? new Date();
       if (!turnStartedAt) {
+        // If turn_started_at is not set, this means the player just connected
+        // and it's their turn, so start the timer now
+        // The server should have set turn_started_at when the game started or turn changed,
+        // but if it's missing, we'll set it locally
+        console.log("[GameView] turn_started_at not set, initializing timer locally");
         setTurnStartedAt(startTime);
       }
 
@@ -1296,12 +1362,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       {/* "¡Tu turno!" Alert */}
       {showYourTurnAlert && canAct && status === "in_progress" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-          <div className="animate-bounce-in rounded-3xl border-4 border-yellow-400 bg-gradient-to-br from-yellow-500 to-yellow-600 px-8 md:px-12 py-6 md:py-8 shadow-2xl backdrop-blur-sm pointer-events-auto">
+          <div className="animate-bounce-in rounded-2xl border-3 border-yellow-400 bg-gradient-to-br from-yellow-500 to-yellow-600 px-4 md:px-6 py-3 md:py-4 shadow-2xl backdrop-blur-sm pointer-events-auto">
             <div className="text-center">
-              <div className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-2 md:mb-3 animate-pulse">
+              <div className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-1 md:mb-2 animate-pulse">
                 ⚽ ¡Tu turno!
               </div>
-              <div className="text-lg md:text-xl lg:text-2xl font-semibold text-yellow-100">
+              <div className="text-sm md:text-base lg:text-lg font-semibold text-yellow-100">
                 Es tu momento de jugar
               </div>
             </div>

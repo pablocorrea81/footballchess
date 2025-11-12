@@ -183,18 +183,23 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     setBotLoading(true);
     startTransition(async () => {
       try {
-        await createBotGameAction(profileId, selectedDifficulty);
-        // Refresh games list and server page
-        await refreshGames();
-        router.refresh();
-        setShowDifficultySelector(false);
+        const result = await createBotGameAction(profileId, selectedDifficulty);
+        // Redirect to the game immediately after creation
+        if (result?.gameId) {
+          setShowDifficultySelector(false);
+          router.push(`/play/${result.gameId}`);
+        } else {
+          // Fallback: refresh games list if no gameId returned
+          await refreshGames();
+          router.refresh();
+          setShowDifficultySelector(false);
+        }
       } catch (actionError) {
         setError(
           actionError instanceof Error
             ? actionError.message
             : "No se pudo crear la partida contra la IA.",
         );
-      } finally {
         setBotLoading(false);
       }
     });
