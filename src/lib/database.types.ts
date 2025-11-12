@@ -14,18 +14,21 @@ export interface Database {
           id: string;
           username: string;
           elo_rating: number | null;
+          avatar_url: string | null;
           created_at: string | null;
         };
         Insert: {
           id: string;
           username: string;
           elo_rating?: number | null;
+          avatar_url?: string | null;
           created_at?: string | null;
         };
         Update: {
           id?: string;
           username?: string;
           elo_rating?: number | null;
+          avatar_url?: string | null;
           created_at?: string | null;
         };
       };

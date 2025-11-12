@@ -17,11 +17,13 @@ import {
 type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_1_username?: string | null;
   player_2_username?: string | null;
+  player_1_avatar_url?: string | null;
+  player_2_avatar_url?: string | null;
 };
 
 type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
-  player1?: { username: string } | { username: string }[];
-  player2?: { username: string } | { username: string }[];
+  player1?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
+  player2?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
 };
 
 const extractUsername = (
@@ -33,6 +35,15 @@ const extractUsername = (
   return profile?.username ?? null;
 };
 
+const extractAvatarUrl = (
+  profile: RawGameRow["player1"],
+): string | null => {
+  if (Array.isArray(profile)) {
+    return profile[0]?.avatar_url ?? null;
+  }
+  return profile?.avatar_url ?? null;
+};
+
 const normalizeGames = (rows: RawGameRow[]): GameRow[] =>
   rows.map((row) => {
     const { player1, player2, ...rest } = row;
@@ -41,6 +52,8 @@ const normalizeGames = (rows: RawGameRow[]): GameRow[] =>
       ...baseRow,
       player_1_username: extractUsername(player1),
       player_2_username: extractUsername(player2),
+      player_1_avatar_url: extractAvatarUrl(player1),
+      player_2_avatar_url: extractAvatarUrl(player2),
     };
   });
 
@@ -65,8 +78,8 @@ const GAME_SELECT = `
   bot_player,
   bot_difficulty,
   bot_display_name,
-  player1:profiles!games_player_1_id_fkey(username),
-  player2:profiles!games_player_2_id_fkey(username)
+  player1:profiles!games_player_1_id_fkey(username, avatar_url),
+  player2:profiles!games_player_2_id_fkey(username, avatar_url)
 `;
 
 export function LobbyView({ profileId, initialGames, initialError }: LobbyViewProps) {
@@ -300,7 +313,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
               key={game.id}
               className="flex h-full flex-col justify-between rounded-3xl border border-white/10 bg-white/5 p-5 text-white shadow-lg backdrop-blur"
             >
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-3">
                 <p className="text-xs uppercase tracking-widest text-emerald-200">
                   {isBot
                     ? "Modo IA"
@@ -308,13 +321,51 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                       ? "Esperando rival"
                       : "En progreso"}
                 </p>
-                <h3 className="text-lg font-semibold">
-                  {game.player_1_username ?? "Jugador 1"}
-                </h3>
-                <p className="text-sm text-emerald-100/80">
-                  vs{" "}
-                  <span>{opponentLabel}</span>
-                </p>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {game.player_1_avatar_url ? (
+                      <img
+                        src={game.player_1_avatar_url}
+                        alt={game.player_1_username ?? "Jugador 1"}
+                        className="h-8 w-8 rounded-full border-2 border-emerald-400/50 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-emerald-400/50 bg-emerald-600 text-xs font-bold text-white">
+                        {game.player_1_username?.charAt(0).toUpperCase() ?? "J"}
+                      </div>
+                    )}
+                    <h3 className="text-lg font-semibold">
+                      {game.player_1_username ?? "Jugador 1"}
+                    </h3>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-emerald-100/60">vs</span>
+                  <div className="flex items-center gap-2">
+                    {isBot ? (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-sky-400/50 bg-sky-600 text-xs font-bold text-white">
+                        🤖
+                      </div>
+                    ) : game.player_2_avatar_url ? (
+                      <img
+                        src={game.player_2_avatar_url}
+                        alt={opponentLabel}
+                        className="h-8 w-8 rounded-full border-2 border-sky-400/50 object-cover"
+                      />
+                    ) : game.player_2_username ? (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-sky-400/50 bg-sky-600 text-xs font-bold text-white">
+                        {game.player_2_username.charAt(0).toUpperCase()}
+                      </div>
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white/30 bg-white/10 text-xs font-bold text-white/50">
+                        ?
+                      </div>
+                    )}
+                    <p className="text-sm text-emerald-100/80">
+                      {opponentLabel}
+                    </p>
+                  </div>
+                </div>
                 <p className="text-xs uppercase tracking-widest text-emerald-200/80">
                   {startsLabel}
                 </p>

@@ -19,8 +19,8 @@ type PlayPageProps = {
 type GameRow = Database["public"]["Tables"]["games"]["Row"];
 
 type RawGame = GameRow & {
-  player_one?: { username: string } | { username: string }[];
-  player_two?: { username: string } | { username: string }[];
+  player_one?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
+  player_two?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
 };
 
 const extractUsername = (
@@ -44,8 +44,8 @@ const GAME_SELECT = `
         bot_player,
         bot_difficulty,
         bot_display_name,
-        player_one:profiles!games_player_1_id_fkey(username),
-        player_two:profiles!games_player_2_id_fkey(username)
+        player_one:profiles!games_player_1_id_fkey(username, avatar_url),
+        player_two:profiles!games_player_2_id_fkey(username, avatar_url)
       `;
 
 export default async function PlayPage({ params }: PlayPageProps) {
@@ -147,8 +147,8 @@ export default async function PlayPage({ params }: PlayPageProps) {
             player_1_id,
             player_2_id,
             winner_id,
-            player_one:profiles!games_player_1_id_fkey(username),
-            player_two:profiles!games_player_2_id_fkey(username)
+            player_one:profiles!games_player_1_id_fkey(username, avatar_url),
+            player_two:profiles!games_player_2_id_fkey(username, avatar_url)
           `,
         )
         .single()) as PostgrestSingleResponse<RawGame>;

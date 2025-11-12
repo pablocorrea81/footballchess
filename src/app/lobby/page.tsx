@@ -6,8 +6,8 @@ import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import type { Database } from "@/lib/database.types";
 
 type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
-  player1?: { username: string } | { username: string }[];
-  player2?: { username: string } | { username: string }[];
+  player1?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
+  player2?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
 };
 
 type LobbyPageProps = {
@@ -57,7 +57,7 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username")
+    .select("id, username, avatar_url")
     .eq("id", session.user.id)
     .single();
 
@@ -76,8 +76,8 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       is_bot_game,
       bot_player,
       bot_display_name,
-      player1:profiles!games_player_1_id_fkey(username),
-      player2:profiles!games_player_2_id_fkey(username)`,
+      player1:profiles!games_player_1_id_fkey(username, avatar_url),
+      player2:profiles!games_player_2_id_fkey(username, avatar_url)`,
     )
     .in("status", ["waiting", "in_progress"])
     .order("created_at", { ascending: true });
@@ -103,9 +103,23 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
             Crea una partida nueva o únete a un juego esperando contrincante.
           </p>
           <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100">
-            <span className="rounded-full bg-emerald-500/20 px-3 py-1">
-              Sesión: {profile?.username ?? "Jugador"}
-            </span>
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 transition hover:bg-emerald-500/30"
+            >
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.username}
+                  className="h-6 w-6 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
+                  {profile?.username?.charAt(0).toUpperCase() ?? "J"}
+                </div>
+              )}
+              <span>{profile?.username ?? "Jugador"}</span>
+            </Link>
             <Link
               href="/"
               className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100 transition hover:border-emerald-200 hover:text-white"

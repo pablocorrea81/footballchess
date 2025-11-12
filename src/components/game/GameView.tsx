@@ -566,20 +566,20 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
       )}
 
-      <div className="w-full overflow-x-auto -mx-2 sm:mx-0 px-2 sm:px-0">
-        <div className="mx-auto inline-block border border-white/20 shadow-2xl">
+      <div className="w-full overflow-x-auto">
+        <div className="w-full border border-white/20 shadow-2xl">
           {/* Column labels (A-H) */}
           <div
-            className="grid border-b border-white/20"
+            className="grid border-b border-white/20 w-full"
             style={{
-              gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(2.5rem, 5rem))`,
+              gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
             }}
           >
-            <div className="w-6 sm:w-8 md:w-10 lg:w-12"></div>
+            <div className="w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16"></div>
             {colIndices.map((actualCol) => (
               <div
                 key={`col-label-${actualCol}`}
-                className="flex h-6 sm:h-7 md:h-8 lg:h-9 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base font-bold text-emerald-100 shadow-sm"
+                className="flex h-8 sm:h-9 md:h-10 lg:h-12 xl:h-14 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm aspect-square"
               >
                 {getColumnLabelForDisplay(actualCol, playerRole)}
               </div>
@@ -590,13 +590,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {rowIndices.map((actualRow, uiRow) => (
             <div
               key={`row-${actualRow}`}
-              className="grid border-b border-white/20 last:border-b-0"
+              className="grid border-b border-white/20 last:border-b-0 w-full"
               style={{
-                gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(2.5rem, 5rem))`,
+                gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
               }}
             >
               {/* Row label (1-12) */}
-              <div className="flex w-6 sm:w-8 md:w-10 lg:w-12 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base font-bold text-emerald-100 shadow-sm">
+              <div className="flex w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm">
                 {getRowLabelForDisplay(actualRow, playerRole)}
               </div>
 
@@ -636,8 +636,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     type="button"
                     onClick={() => handleCellClick(uiRow, uiCol)}
                     className={[
-                      "aspect-square flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
-                      "h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 lg:h-16 lg:w-16 xl:h-20 xl:w-20",
+                      "aspect-square w-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
                       isGoalSquare
                         ? "border-yellow-400/60 bg-yellow-500/20"
                         : "border-white/10",
@@ -662,13 +661,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     }
                   >
                     {/* Position label (small, top-left corner) - from player's perspective */}
-                    <span className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1 text-[0.5rem] sm:text-[0.65rem] font-mono font-bold text-white/80 bg-black/40 px-0.5 sm:px-1 rounded">
+                    <span className="absolute left-1 top-1 text-[0.5rem] sm:text-[0.65rem] md:text-xs font-mono font-bold text-white/80 bg-black/40 px-1 rounded">
                       {positionLabel}
                     </span>
 
                     {/* Goal icon */}
                     {isGoalSquare && (
-                      <span className="absolute inset-0 flex items-center justify-center text-[0.625rem] sm:text-xs font-bold text-yellow-300/80">
+                      <span className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm md:text-base font-bold text-yellow-300/80">
                         🥅
                       </span>
                     )}
@@ -684,7 +683,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                           highlightStartingPiece
                             ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
                             : ""
-                        } h-6 w-6 text-xs sm:h-7 sm:w-7 sm:text-sm md:h-8 md:w-8 md:text-base lg:h-10 lg:w-10 lg:text-lg xl:h-12 xl:w-12 xl:text-xl`}
+                        } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
                       >
                         {pieceInitials[cell.type]}
                       </span>
