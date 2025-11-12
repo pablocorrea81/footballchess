@@ -635,65 +635,69 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [gameState.history, playerLabels, showGoalCelebration, playSound]);
 
   // Auto-scroll to board when it's the player's turn
-  // Scroll to show the player's area (their goal and pieces at the bottom of the board)
+  // Scroll to focus on the board edge (top for HOME, bottom for AWAY) without including footer
   useEffect(() => {
     if (canAct && boardRef.current && status === "in_progress") {
       // Small delay to ensure DOM is updated and realtime updates are processed
       const timer = setTimeout(() => {
         if (boardRef.current) {
-          // Find the board container element
+          // Get the board container element (the actual board)
           const boardContainer = boardRef.current.querySelector("#game-board-container") as HTMLElement;
           
           if (boardContainer) {
-            // Find the player's goal row element
-            const playerGoalRow = boardContainer.querySelector('[data-is-player-goal="true"]') as HTMLElement;
+            const boardRect = boardContainer.getBoundingClientRect();
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+            const currentScrollY = window.scrollY;
             
-            if (playerGoalRow) {
-              // Scroll to the player's goal row (bottom of their view)
-              const goalRowRect = playerGoalRow.getBoundingClientRect();
-              const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-              
-              // Calculate scroll position to show the player's goal row near the bottom of viewport
-              // We want to show the goal row and a few rows above it
-              const targetScrollTop = window.scrollY + goalRowRect.bottom - viewportHeight + 200; // 200px padding to show rows above
-              
-              window.scrollTo({
-                top: Math.max(0, targetScrollTop),
-                behavior: "smooth",
-              });
-              
-              // Also scroll the board container horizontally if needed
-              const containerRect = boardContainer.getBoundingClientRect();
-              const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-              
-              if (containerRect.left < 0 || containerRect.right > viewportWidth) {
-                boardContainer.scrollIntoView({
-                  behavior: "smooth",
-                  block: "nearest",
-                  inline: "center",
-                });
-              }
+            // Calculate the position of the board relative to the viewport
+            const boardTop = boardRect.top + currentScrollY;
+            const boardBottom = boardRect.bottom + currentScrollY;
+            const boardHeight = boardRect.height;
+            
+            // For HOME players, show the bottom edge of the board (their goal area)
+            // For AWAY players, show the top edge of the board (their goal area)
+            // We want the board edge to be visible at the top or bottom of the viewport
+            let targetScrollY: number;
+            
+            if (playerRole === "home") {
+              // HOME: show bottom of board (goal at bottom) at the bottom of viewport
+              // Position board so its bottom edge is near the bottom of viewport
+              const padding = 20; // Small padding from viewport edge
+              targetScrollY = boardBottom - viewportHeight + padding;
             } else {
-              // Fallback: scroll to show bottom of board container
-              const containerRect = boardContainer.getBoundingClientRect();
-              const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-              const targetScrollTop = window.scrollY + containerRect.bottom - viewportHeight + 200;
-              
+              // AWAY: show top of board (goal at bottom after rotation) at the top of viewport
+              // Position board so its top edge is near the top of viewport
+              const padding = 20; // Small padding from viewport edge
+              targetScrollY = boardTop - padding;
+            }
+            
+            // Ensure we don't scroll past the document boundaries
+            const maxScroll = Math.max(0, document.documentElement.scrollHeight - viewportHeight);
+            targetScrollY = Math.max(0, Math.min(targetScrollY, maxScroll));
+            
+            // Only scroll if the board is not already in the desired position
+            const currentScrollTop = window.scrollY;
+            const scrollDifference = Math.abs(targetScrollY - currentScrollTop);
+            
+            if (scrollDifference > 50) { // Only scroll if difference is significant
               window.scrollTo({
-                top: Math.max(0, targetScrollTop),
+                top: targetScrollY,
                 behavior: "smooth",
               });
             }
-          } else {
-            // Fallback: scroll to board container
-            boardRef.current.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-              inline: "nearest",
-            });
+            
+            // Also ensure the board is horizontally centered if it's partially off-screen
+            if (boardRect.left < 0 || boardRect.right > viewportWidth) {
+              boardContainer.scrollIntoView({
+                behavior: "smooth",
+                block: "nearest",
+                inline: "center",
+              });
+            }
           }
         }
-      }, 1000); // Increased delay to allow for realtime updates and state changes
+      }, 800); // Delay to allow for realtime updates and state changes
       
       return () => clearTimeout(timer);
     }
