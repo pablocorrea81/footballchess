@@ -9,7 +9,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { FOOTBALL_BOT_DEFAULT_NAME } from "@/lib/ai/footballBot";
 
 type PlayPageProps = {
-  params: {
+  params: Promise<{
+    gameId: string;
+  }> | {
     gameId: string;
   };
 };
@@ -56,7 +58,19 @@ export default async function PlayPage({ params }: PlayPageProps) {
     redirect("/login");
   }
 
-  const gameId = params.gameId;
+  // Resolver params si es una Promise (Next.js 15+) o usar directamente
+  const resolvedParams =
+    params instanceof Promise ? await params : params;
+  const rawGameId = resolvedParams?.gameId;
+  const gameId =
+    typeof rawGameId === "string" && rawGameId.trim() !== "" && rawGameId !== "undefined"
+      ? rawGameId.trim()
+      : null;
+
+  if (!gameId) {
+    console.error("[play] Invalid gameId:", rawGameId);
+    redirect(`/lobby?error=game_not_found`);
+  }
   let rawGame: RawGame | null = null;
 
   const { data: rlsGame, error: rlsError } = await supabase
@@ -90,11 +104,14 @@ export default async function PlayPage({ params }: PlayPageProps) {
   }
 
   if (!rawGame) {
-    redirect(`/lobby?error=game_not_found&game=${encodeURIComponent(gameId)}`);
+    const errorUrl = gameId
+      ? `/lobby?error=game_not_found&game=${encodeURIComponent(gameId)}`
+      : `/lobby?error=game_not_found`;
+    redirect(errorUrl);
   }
 
   if (rawGame.is_bot_game && rawGame.player_1_id !== session.user.id) {
-    redirect("/lobby?error=bot_private");
+    redirect(`/lobby?error=bot_private&game=${encodeURIComponent(gameId)}`);
   }
 
   const isParticipant =
@@ -153,7 +170,9 @@ export default async function PlayPage({ params }: PlayPageProps) {
     (!!rawGame.player_2_id && rawGame.player_2_id === session.user.id);
 
   if (!finalParticipant) {
-    redirect("/lobby?error=not_participant");
+    redirect(
+      `/lobby?error=not_participant&game=${encodeURIComponent(gameId)}`,
+    );
   }
 
   const game = {

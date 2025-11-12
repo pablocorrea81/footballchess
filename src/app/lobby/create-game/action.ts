@@ -113,7 +113,7 @@ export async function deleteGameAction(gameId: string) {
     error: fetchError,
   } = await supabase
     .from("games")
-    .select("player_1_id, player_2_id, status")
+    .select("player_1_id, player_2_id, status, is_bot_game")
     .eq("id", gameId)
     .single();
 
@@ -123,6 +123,16 @@ export async function deleteGameAction(gameId: string) {
 
   if (game.player_1_id !== userId) {
     throw new Error("Sólo el creador puede eliminar la partida.");
+  }
+
+  // Permitir eliminar partidas con bots en cualquier estado, o partidas normales en waiting/finished
+  const canDelete =
+    game.is_bot_game ||
+    game.status === "waiting" ||
+    game.status === "finished";
+
+  if (!canDelete) {
+    throw new Error("No se puede eliminar una partida en progreso (excepto partidas contra IA).");
   }
 
   const { error: deleteError } = await supabaseAdmin

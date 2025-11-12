@@ -272,7 +272,11 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
             !isBot && game.status === "waiting" && !hasOpponent;
           const isInGame = isOwner || isOpponent;
           const canDelete =
-            isOwner && (game.status === "waiting" || game.status === "finished");
+            isOwner && (
+              game.status === "waiting" ||
+              game.status === "finished" ||
+              (isBot && game.status === "in_progress")
+            );
           const opponentLabel = isBot
             ? game.bot_display_name ?? "FootballBot"
             : game.player_2_username
