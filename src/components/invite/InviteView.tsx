@@ -30,32 +30,55 @@ export function InviteView({ inviteCode, gameId }: InviteViewProps) {
         throw new Error("Por favor ingresa un email válido.");
       }
 
-      // Send magic link with redirect to invite page (which will auto-join after auth)
-      const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/invite/${inviteCode}`)}`;
-      const { error: signUpError } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: {
-          emailRedirectTo: redirectUrl,
-          shouldCreateUser: true,
+      // Call API to join game directly (creates user automatically)
+      const response = await fetch("/api/invite/join", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          inviteCode: inviteCode,
+        }),
       });
 
-      if (signUpError) {
-        throw signUpError;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "No se pudo unir a la partida.");
       }
 
-      setMessage("¡Revisa tu email! Te enviamos un link para ingresar directamente a la partida.");
+      // If we have an action link, redirect to it (auto-login)
+      if (data.actionLink) {
+        setMessage("¡Bienvenido! Redirigiendo a la partida...");
+        // Small delay to show message, then redirect to magic link for auto-login
+        setTimeout(() => {
+          window.location.href = data.actionLink;
+        }, 500);
+      } else if (data.gameId) {
+        // If no action link but we have gameId, redirect to game page
+        // User will need to login manually if not already authenticated
+        setMessage("¡Te has unido a la partida! Redirigiendo...");
+        setTimeout(() => {
+          router.push(`/play/${data.gameId}`);
+        }, 1500);
+      } else {
+        setMessage("¡Te has unido a la partida!");
+        setTimeout(() => {
+          router.push("/lobby");
+        }, 1500);
+      }
     } catch (inviteError) {
-      console.error("Error sending invite:", inviteError);
+      console.error("Error joining invite:", inviteError);
       setError(
         inviteError instanceof Error
           ? inviteError.message
-          : "No se pudo enviar el link de invitación. Por favor intenta de nuevo.",
+          : "No se pudo unir a la partida. Por favor intenta de nuevo.",
       );
     } finally {
       setLoading(false);
     }
-  }, [email, inviteCode, supabase]);
+  }, [email, inviteCode, router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-900 to-slate-950 flex items-center justify-center px-4 py-12">
@@ -106,7 +129,7 @@ export function InviteView({ inviteCode, gameId }: InviteViewProps) {
                 disabled={loading || !!message}
               />
               <p className="mt-2 text-xs text-emerald-200/60">
-                Te enviaremos un link para ingresar directamente a la partida.
+                Solo ingresa tu email y entrarás directamente a la partida. No necesitas validar tu email.
               </p>
             </div>
 
@@ -115,7 +138,7 @@ export function InviteView({ inviteCode, gameId }: InviteViewProps) {
               disabled={loading || !!message || !email}
               className="w-full rounded-full border-2 border-emerald-400 bg-emerald-600 px-6 py-3 text-base font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
             >
-              {loading ? "Enviando..." : message ? "Link enviado ✓" : "Aceptar invitación"}
+              {loading ? "Uniéndote a la partida..." : message ? "✓ ¡Listo!" : "Entrar a la partida"}
             </button>
           </form>
 

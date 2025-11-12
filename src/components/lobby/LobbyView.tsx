@@ -195,6 +195,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     setLoading(true);
     setError(null);
     try {
+      // Use .is() instead of .eq() for null check (Postgrest syntax)
       const { error: updateError } = await supabase
         .from("games")
         .update({
@@ -202,17 +203,21 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
           status: "in_progress",
         })
         .eq("id", id)
-        .eq("player_2_id", null)
+        .is("player_2_id", null) // Fixed: use .is() for null check
         .eq("status", "waiting");
 
       if (updateError) {
-        setError(updateError.message);
+        console.error("[lobby] Join game error:", updateError);
+        setError(updateError.message || "No se pudo unir a la partida.");
       } else {
         // Refresh games list after joining
         await refreshGames();
         router.refresh();
+        // Redirect to game
+        router.push(`/play/${id}`);
       }
     } catch (joinError) {
+      console.error("[lobby] Join game exception:", joinError);
       setError(
         joinError instanceof Error
           ? joinError.message
