@@ -17,7 +17,7 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, username, avatar_url")
+    .select("id, username, avatar_url, show_move_hints")
     .eq("id", session.user.id)
     .single();
 
@@ -32,6 +32,7 @@ export default async function ProfilePage() {
           profileId={profile.id}
           initialUsername={profile.username}
           initialAvatarUrl={profile.avatar_url}
+          initialShowMoveHints={profile.show_move_hints ?? true}
         />
       </main>
     </div>

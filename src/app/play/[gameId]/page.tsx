@@ -205,6 +205,15 @@ export default async function PlayPage({ params }: PlayPageProps) {
       : game.player_two_username ?? "Jugador 2",
   };
 
+  // Get user's show_move_hints preference
+  const { data: userProfile } = await supabase
+    .from("profiles")
+    .select("show_move_hints")
+    .eq("id", session.user.id)
+    .single();
+
+  const showMoveHints = userProfile?.show_move_hints ?? true;
+
   return (
     <GameView
       initialGameId={game.id}
@@ -220,6 +229,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
       isBotGame={game.is_bot_game}
       botPlayer={game.bot_player as "home" | "away" | null}
       botDisplayName={game.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME}
+      showMoveHints={showMoveHints}
     />
   );
 }

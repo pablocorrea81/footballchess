@@ -10,17 +10,20 @@ type ProfileViewProps = {
   profileId: string;
   initialUsername: string;
   initialAvatarUrl: string | null;
+  initialShowMoveHints: boolean;
 };
 
 export function ProfileView({
   profileId,
   initialUsername,
   initialAvatarUrl,
+  initialShowMoveHints,
 }: ProfileViewProps) {
   const { supabase } = useSupabase();
   const router = useRouter();
   const [username, setUsername] = useState(initialUsername);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl);
+  const [showMoveHints, setShowMoveHints] = useState(initialShowMoveHints);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +102,7 @@ export function ProfileView({
         body: JSON.stringify({
           username: username.trim(),
           avatar_url: avatarUrl,
+          show_move_hints: showMoveHints,
         }),
       });
 
@@ -119,7 +123,7 @@ export function ProfileView({
     } finally {
       setSaving(false);
     }
-  }, [username, avatarUrl, router]);
+  }, [username, avatarUrl, showMoveHints, router]);
 
   const handleRemoveAvatar = useCallback(async () => {
     try {
@@ -248,6 +252,31 @@ export function ProfileView({
           </p>
         </div>
 
+        {/* Show Move Hints Section */}
+        <div className="flex items-center justify-between rounded-xl border-2 border-emerald-200 bg-white px-4 py-3">
+          <div className="flex-1">
+            <label
+              htmlFor="show-move-hints"
+              className="block text-sm font-semibold text-emerald-950 mb-1"
+            >
+              Mostrar ayuda de movimientos
+            </label>
+            <p className="text-xs text-emerald-900/60">
+              Al pasar el mouse sobre una pieza durante 5 segundos, se mostrará una ayuda con los movimientos posibles.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              id="show-move-hints"
+              type="checkbox"
+              checked={showMoveHints}
+              onChange={(e) => setShowMoveHints(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-emerald-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-emerald-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+          </label>
+        </div>
+
         {/* Save Button */}
         <div className="flex items-center gap-4">
           <button
@@ -257,7 +286,7 @@ export function ProfileView({
           >
             {saving ? "Guardando..." : "💾 Guardar Cambios"}
           </button>
-          {username.trim() !== initialUsername || avatarUrl !== initialAvatarUrl ? (
+          {username.trim() !== initialUsername || avatarUrl !== initialAvatarUrl || showMoveHints !== initialShowMoveHints ? (
             <p className="text-xs text-emerald-900/60">
               Tienes cambios sin guardar
             </p>

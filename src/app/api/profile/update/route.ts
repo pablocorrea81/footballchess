@@ -10,9 +10,10 @@ export async function POST(request: Request) {
   const supabase = createRouteSupabaseClient();
 
   try {
-    const { username, avatar_url } = (await request.json()) as {
+    const { username, avatar_url, show_move_hints } = (await request.json()) as {
       username?: string;
       avatar_url?: string | null;
+      show_move_hints?: boolean;
     };
 
     const {
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     const updatePayload = {
       username: username.trim(),
       avatar_url: avatar_url ?? null,
+      ...(show_move_hints !== undefined && { show_move_hints }),
     } as Database["public"]["Tables"]["profiles"]["Update"];
 
     // Use admin client to update, bypassing RLS

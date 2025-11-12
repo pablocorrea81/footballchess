@@ -32,6 +32,7 @@ type GameViewProps = {
   isBotGame: boolean;
   botPlayer: PlayerId | null;
   botDisplayName: string;
+  showMoveHints: boolean;
 };
 
 const BOARD_CHANNEL_PREFIX = "game";
@@ -93,6 +94,7 @@ export function GameView({
   isBotGame,
   botPlayer,
   botDisplayName,
+  showMoveHints,
 }: GameViewProps) {
   const { supabase } = useSupabase();
 
@@ -113,15 +115,22 @@ export function GameView({
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
   const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
+  
+  // Move hints state
+  const [hoveredPiece, setHoveredPiece] = useState<Position | null>(null);
+  const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showHint, setShowHint] = useState(false);
+  const [hintMoves, setHintMoves] = useState<Position[]>([]);
 
-  // Row indices: Always show the player's goal at the bottom
-  // HOME's goal is at row 11 (should be at bottom)
-  // AWAY's goal is at row 0 (should be at bottom)
+  // Row indices: Always show the player's goal at the bottom of the screen
+  // When we map rowIndices, uiRow=0 renders first (top of screen), uiRow=11 renders last (bottom of screen)
+  // HOME's goal is at row 11 (should be at bottom of screen, so uiRow=11)
+  // AWAY's goal is at row 0 (should be at bottom of screen, so uiRow=11)
   const rowIndices = useMemo(
     () =>
       playerRole === "home"
-        ? [...Array(BOARD_ROWS).keys()].reverse() // Row 11 (HOME goal) at bottom, row 0 (AWAY goal) at top
-        : [...Array(BOARD_ROWS).keys()], // Row 0 (AWAY goal) at bottom, row 11 (HOME goal) at top
+        ? [...Array(BOARD_ROWS).keys()] // [0,1,2,...,11] - Row 0 (AWAY goal) at top, Row 11 (HOME goal) at bottom
+        : [...Array(BOARD_ROWS).keys()].reverse(), // [11,10,9,...,0] - Row 11 (HOME goal) at top, Row 0 (AWAY goal) at bottom
     [playerRole],
   );
 
@@ -485,6 +494,53 @@ export function GameView({
     );
   };
 
+  // Handle piece hover for move hints
+  const handlePieceMouseEnter = useCallback((position: Position) => {
+    if (!showMoveHints || !canAct) return;
+    
+    const piece = gameState.board[position.row]?.[position.col];
+    if (!piece || piece.owner !== playerRole) return;
+    
+    setHoveredPiece(position);
+    setShowHint(false);
+    
+    // Clear existing timer
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    
+    // Get legal moves for this piece
+    const legalMoves = RuleEngine.getLegalMovesForPiece(gameState, position);
+    setHintMoves(legalMoves);
+    
+    // Set timer to show hint after 5 seconds
+    hoverTimerRef.current = setTimeout(() => {
+      setShowHint(true);
+      hoverTimerRef.current = null;
+    }, 5000);
+  }, [showMoveHints, canAct, gameState, playerRole]);
+
+  const handlePieceMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredPiece(null);
+    setShowHint(false);
+    setHintMoves([]);
+  }, []);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) {
+        clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const historyList = gameState.history ?? [];
   const recentMoves = [...historyList].slice(-8).reverse();
 
@@ -579,47 +635,69 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [gameState.history, playerLabels, showGoalCelebration, playSound]);
 
   // Auto-scroll to board when it's the player's turn
-  // Scroll to the player's goal area (bottom of board for HOME, top for AWAY would be bottom after rotation)
+  // Scroll to show the player's area (their goal and pieces at the bottom of the board)
   useEffect(() => {
     if (canAct && boardRef.current && status === "in_progress") {
       // Small delay to ensure DOM is updated and realtime updates are processed
       const timer = setTimeout(() => {
         if (boardRef.current) {
-          // Scroll to board container, focusing on the player's goal area
-          // For HOME: goal is at bottom (row 11), so scroll to show bottom area
-          // For AWAY: goal is at bottom after rotation (row 0), so scroll to show bottom area
-          boardRef.current.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-            inline: "nearest",
-          });
+          // Find the board container element
+          const boardContainer = boardRef.current.querySelector("#game-board-container") as HTMLElement;
           
-          // Also ensure the window scrolls to show the board if needed
-          // Check if board is fully visible in viewport
-          const rect = boardRef.current.getBoundingClientRect();
-          const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-          const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-          
-          const isFullyVisible = 
-            rect.top >= 0 &&
-            rect.left >= 0 &&
-            rect.bottom <= viewportHeight &&
-            rect.right <= viewportWidth;
-          
-          // If not fully visible, scroll window to center the board
-          if (!isFullyVisible) {
-            const scrollTop = window.scrollY + rect.top - viewportHeight / 2 + rect.height / 2;
-            window.scrollTo({
-              top: Math.max(0, scrollTop),
+          if (boardContainer) {
+            // Find the player's goal row element
+            const playerGoalRow = boardContainer.querySelector('[data-is-player-goal="true"]') as HTMLElement;
+            
+            if (playerGoalRow) {
+              // Scroll to the player's goal row (bottom of their view)
+              const goalRowRect = playerGoalRow.getBoundingClientRect();
+              const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+              
+              // Calculate scroll position to show the player's goal row near the bottom of viewport
+              // We want to show the goal row and a few rows above it
+              const targetScrollTop = window.scrollY + goalRowRect.bottom - viewportHeight + 200; // 200px padding to show rows above
+              
+              window.scrollTo({
+                top: Math.max(0, targetScrollTop),
+                behavior: "smooth",
+              });
+              
+              // Also scroll the board container horizontally if needed
+              const containerRect = boardContainer.getBoundingClientRect();
+              const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+              
+              if (containerRect.left < 0 || containerRect.right > viewportWidth) {
+                boardContainer.scrollIntoView({
+                  behavior: "smooth",
+                  block: "nearest",
+                  inline: "center",
+                });
+              }
+            } else {
+              // Fallback: scroll to show bottom of board container
+              const containerRect = boardContainer.getBoundingClientRect();
+              const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+              const targetScrollTop = window.scrollY + containerRect.bottom - viewportHeight + 200;
+              
+              window.scrollTo({
+                top: Math.max(0, targetScrollTop),
+                behavior: "smooth",
+              });
+            }
+          } else {
+            // Fallback: scroll to board container
+            boardRef.current.scrollIntoView({
               behavior: "smooth",
+              block: "center",
+              inline: "nearest",
             });
           }
         }
-      }, 600); // Increased delay to allow for realtime updates and state changes
+      }, 1000); // Increased delay to allow for realtime updates and state changes
       
       return () => clearTimeout(timer);
     }
-  }, [canAct, status, gameState.turn]);
+  }, [canAct, status, gameState.turn, playerRole]);
 
   return (
     <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
@@ -640,7 +718,10 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           ref={boardRef}
           className="w-full overflow-x-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start"
         >
-          <div className="w-full border border-white/20 shadow-2xl">
+          <div 
+            id="game-board-container"
+            className="w-full border border-white/20 shadow-2xl"
+          >
             {/* Column labels (A-H) */}
             <div
               className="grid border-b border-white/20 w-full"
@@ -660,9 +741,18 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             </div>
 
             {/* Board rows with row labels */}
-            {rowIndices.map((actualRow, uiRow) => (
+            {rowIndices.map((actualRow, uiRow) => {
+              // Add data attribute to identify the player's goal row for scrolling
+              const isPlayerGoalRow = 
+                (playerRole === "home" && actualRow === BOARD_ROWS - 1) ||
+                (playerRole === "away" && actualRow === 0);
+              
+              return (
               <div
                 key={`row-${actualRow}`}
+                data-row-index={uiRow}
+                data-actual-row={actualRow}
+                data-is-player-goal={isPlayerGoalRow}
                 className="grid border-b border-white/20 last:border-b-0 w-full"
                 style={{
                   gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
@@ -703,66 +793,125 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   const displayColLabel = getColumnLabelForDisplay(actualCol, playerRole);
                   const positionLabel = `${displayColLabel}${displayRowLabel}`;
 
-                  return (
-                    <button
-                      key={`${actualRow}-${actualCol}`}
-                      type="button"
-                      onClick={() => handleCellClick(uiRow, uiCol)}
-                      className={[
-                        "aspect-square w-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
-                        isGoalSquare
-                          ? "border-yellow-400/60 bg-yellow-500/20"
-                          : "border-white/10",
-                        !isGoalSquare &&
-                          ((actualRow + actualCol) % 2 === 0
-                            ? "bg-emerald-900/50"
-                            : "bg-emerald-800/50"),
-                        isSelected ? "ring-2 sm:ring-3 md:ring-4 ring-emerald-300/60 z-10" : "",
-                        moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
-                        isLastTo && !isGoalSquare
-                          ? "bg-amber-500/40"
-                          : isLastFrom && !isGoalSquare
-                            ? "bg-amber-500/20"
-                            : "",
-                        !canAct ? "cursor-default" : "cursor-pointer hover:bg-white/5",
-                      ].join(" ")}
-                      disabled={!canAct}
-                      title={
-                        isGoalSquare
-                          ? `Arco - ${positionLabel}`
-                          : cell
-                            ? `${positionLabel} - ${pieceInitials[cell.type]}`
-                            : positionLabel
-                      }
-                    >
-                      {/* Goal icon */}
-                      {isGoalSquare && (
-                        <span className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm md:text-base font-bold text-yellow-300/80">
-                          🥅
-                        </span>
-                      )}
+                  // Check if this cell is hovered for hint display
+                  const isHoveredForHint = 
+                    showMoveHints &&
+                    showHint &&
+                    hoveredPiece &&
+                    hoveredPiece.row === actualRow &&
+                    hoveredPiece.col === actualCol;
+                  
+                  // Check if this cell is a hint move destination
+                  const isHintMove = 
+                    showMoveHints &&
+                    showHint &&
+                    hintMoves.some(
+                      (move) => move.row === actualRow && move.col === actualCol
+                    );
 
-                      {/* Piece */}
-                      {cell && (
-                        <span
-                          className={`relative z-10 flex items-center justify-center rounded-full border ${
-                            cell.owner === playerRole 
-                              ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
-                              : "border-sky-200 bg-sky-500/50 text-sky-950"
-                          } ${
-                            highlightStartingPiece
-                              ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
-                              : ""
-                          } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
-                        >
-                          {pieceInitials[cell.type]}
-                        </span>
+                  return (
+                    <div
+                      key={`${actualRow}-${actualCol}`}
+                      className="relative"
+                      onMouseEnter={() => {
+                        if (cell && cell.owner === playerRole && canAct) {
+                          handlePieceMouseEnter({ row: actualRow, col: actualCol });
+                        }
+                      }}
+                      onMouseLeave={handlePieceMouseLeave}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleCellClick(uiRow, uiCol)}
+                        className={[
+                          "aspect-square w-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
+                          isGoalSquare
+                            ? "border-yellow-400/60 bg-yellow-500/20"
+                            : "border-white/10",
+                          !isGoalSquare &&
+                            ((actualRow + actualCol) % 2 === 0
+                              ? "bg-emerald-900/50"
+                              : "bg-emerald-800/50"),
+                          isSelected ? "ring-2 sm:ring-3 md:ring-4 ring-emerald-300/60 z-10" : "",
+                          moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
+                          isHintMove && !isGoalSquare && !moveOption ? "bg-purple-400/40 ring-2 ring-purple-300/60" : "",
+                          isLastTo && !isGoalSquare && !isHintMove
+                            ? "bg-amber-500/40"
+                            : isLastFrom && !isGoalSquare && !isHintMove
+                              ? "bg-amber-500/20"
+                              : "",
+                          !canAct ? "cursor-default" : "cursor-pointer hover:bg-white/5",
+                        ].join(" ")}
+                        disabled={!canAct}
+                        title={
+                          isGoalSquare
+                            ? `Arco - ${positionLabel}`
+                            : cell
+                              ? `${positionLabel} - ${pieceInitials[cell.type]}`
+                              : positionLabel
+                        }
+                      >
+                        {/* Goal icon */}
+                        {isGoalSquare && (
+                          <span className="absolute inset-0 flex items-center justify-center text-xs sm:text-sm md:text-base font-bold text-yellow-300/80">
+                            🥅
+                          </span>
+                        )}
+
+                        {/* Piece */}
+                        {cell && (
+                          <span
+                            className={`relative z-10 flex items-center justify-center rounded-full border ${
+                              cell.owner === playerRole 
+                                ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
+                                : "border-sky-200 bg-sky-500/50 text-sky-950"
+                            } ${
+                              highlightStartingPiece
+                                ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
+                                : ""
+                            } ${
+                              isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
+                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
+                          >
+                            {pieceInitials[cell.type]}
+                          </span>
+                        )}
+                      </button>
+                      
+                      {/* Hint tooltip */}
+                      {isHoveredForHint && hintMoves.length > 0 && (
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-purple-900/95 border-2 border-purple-400 rounded-xl p-3 shadow-2xl min-w-[200px] max-w-[300px]">
+                          <div className="text-xs font-semibold text-purple-100 mb-2">
+                            💡 Movimientos posibles:
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {hintMoves.map((move, idx) => {
+                              const displayRowLabelHint = getRowLabelForDisplay(move.row, playerRole);
+                              const displayColLabelHint = getColumnLabelForDisplay(move.col, playerRole);
+                              const moveLabel = `${displayColLabelHint}${displayRowLabelHint}`;
+                              return (
+                                <span
+                                  key={`hint-${idx}-${move.row}-${move.col}`}
+                                  className="inline-flex items-center justify-center px-2 py-1 bg-purple-700/80 text-purple-100 text-xs font-semibold rounded border border-purple-400/50"
+                                >
+                                  {moveLabel}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div className="text-xs text-purple-200 mt-2 italic">
+                            {hintMoves.length === 0 
+                              ? "No hay movimientos posibles" 
+                              : `${hintMoves.length} movimiento${hintMoves.length !== 1 ? "s" : ""}`}
+                          </div>
+                        </div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -870,14 +1019,14 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               </p>
             ) : (
               <ul className="mt-2 md:mt-3 flex flex-col gap-2 lg:gap-3 max-h-[200px] md:max-h-[250px] lg:max-h-[300px] overflow-y-auto">
-                <li className="flex items-center justify-between rounded-lg md:rounded-xl border-2 border-yellow-400/60 bg-yellow-500/30 px-2 md:px-3 lg:px-5 py-1.5 md:py-2 lg:py-3 text-xs md:text-sm font-semibold text-yellow-900 shadow-lg">
-                  <span className="text-xs font-bold uppercase tracking-wider text-yellow-800">
+                <li className="flex items-center justify-between rounded-lg md:rounded-xl border-2 border-yellow-400/80 bg-gradient-to-r from-yellow-600/90 to-yellow-500/90 px-2 md:px-3 lg:px-5 py-1.5 md:py-2 lg:py-3 text-xs md:text-sm font-semibold shadow-lg">
+                  <span className="text-xs font-bold uppercase tracking-wider text-yellow-950">
                     Inicio
                   </span>
-                  <span className="flex items-center gap-1 md:gap-2 text-xs md:text-sm">
-                    <span>★ {startingLabel}</span>
+                  <span className="flex items-center gap-1 md:gap-2 text-xs md:text-sm font-semibold text-yellow-950">
+                    <span className="text-yellow-700">★</span> <span>{startingLabel}</span>
                   </span>
-                  <span className="text-xs font-medium text-yellow-800">Sorteo</span>
+                  <span className="text-xs font-medium text-yellow-950">Sorteo</span>
                 </li>
                 {recentMoves.map((move) => (
                   <li
