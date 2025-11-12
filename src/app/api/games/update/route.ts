@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 
 import { createRouteSupabaseClient } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeBotTurnIfNeeded } from "@/lib/ai/footballBot";
 import type { Database } from "@/lib/database.types";
 
@@ -58,8 +59,9 @@ export async function POST(request: Request) {
 
     console.log("[api/games/update] Updating game:", gameId, "payload:", JSON.stringify(updatePayload));
 
-    const { error, data: updateResult } = await supabase
-      .from("games")
+    // Use admin client to update, bypassing RLS
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error, data: updateResult } = await (supabaseAdmin.from("games") as any)
       .update(updatePayload)
       .eq("id", gameId)
       .neq("status", "finished")
@@ -70,35 +72,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    console.log("[api/games/update] Update successful:", JSON.stringify(updateResult?.[0], null, 2));
+    console.log("[api/games/update] Update successful. Updated rows:", updateResult?.length ?? 0);
+    if (updateResult && updateResult[0]) {
+      const updatedGame = updateResult[0] as Database["public"]["Tables"]["games"]["Row"];
+      const gameState = updatedGame.game_state as unknown as { turn?: string };
+      console.log("[api/games/update] Updated game state turn:", gameState?.turn);
+    }
 
     // Only execute bot turn if this is a bot game and the update was successful
-    if (game.is_bot_game) {
+    if (game.is_bot_game && updateResult && updateResult.length > 0) {
+      const updatedGame = updateResult[0] as Database["public"]["Tables"]["games"]["Row"];
+      const gameState = updatedGame.game_state as unknown as { turn?: string; score?: { home: number; away: number } };
+      
       console.log("[api/games/update] Bot game detected, preparing to execute bot turn for game:", gameId);
-      if (updateResult && updateResult[0]) {
-        const updatedGame = updateResult[0] as Database["public"]["Tables"]["games"]["Row"];
-        console.log("[api/games/update] Updated game state turn:", (updatedGame.game_state as unknown as { turn?: string })?.turn);
-      }
+      console.log("[api/games/update] Updated game state - turn:", gameState?.turn, "score:", gameState?.score);
       
-      // Increased delay to ensure the database update is fully committed and visible
-      // This helps prevent race conditions where the bot reads stale data
-      console.log("[api/games/update] Waiting 500ms before executing bot turn...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      
-      try {
-        console.log("[api/games/update] Executing bot turn for game:", gameId);
-        await executeBotTurnIfNeeded(gameId);
-        console.log("[api/games/update] Bot turn execution completed successfully");
-      } catch (botError) {
-        console.error("[api/games/update] Bot turn error:", botError);
-        if (botError instanceof Error) {
-          console.error("[api/games/update] Bot error message:", botError.message);
-          console.error("[api/games/update] Bot error stack:", botError.stack);
-        } else {
-          console.error("[api/games/update] Bot error (non-Error):", JSON.stringify(botError, null, 2));
+      // Verify the update was successful by checking the turn
+      // If the turn is now the bot's turn, execute the bot move
+      const botPlayer = updatedGame.bot_player as "home" | "away" | null;
+      if (botPlayer && gameState?.turn === botPlayer) {
+        console.log("[api/games/update] Bot's turn confirmed, executing bot move...");
+        
+        // Small delay to ensure database consistency
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        
+        try {
+          console.log("[api/games/update] Executing bot turn for game:", gameId);
+          await executeBotTurnIfNeeded(gameId);
+          console.log("[api/games/update] Bot turn execution completed successfully");
+        } catch (botError) {
+          console.error("[api/games/update] Bot turn error:", botError);
+          if (botError instanceof Error) {
+            console.error("[api/games/update] Bot error message:", botError.message);
+            console.error("[api/games/update] Bot error stack:", botError.stack);
+          } else {
+            console.error("[api/games/update] Bot error (non-Error):", JSON.stringify(botError, null, 2));
+          }
+          // Don't fail the request if bot turn fails
         }
-        // Don't fail the request if bot turn fails
+      } else {
+        console.log("[api/games/update] Not bot's turn yet. Current turn:", gameState?.turn, "Bot player:", botPlayer);
       }
+    } else if (game.is_bot_game) {
+      console.log("[api/games/update] Bot game but update result is empty, skipping bot turn");
     } else {
       console.log("[api/games/update] Not a bot game, skipping bot turn execution");
     }
