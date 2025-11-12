@@ -70,27 +70,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    console.log("[api/games/update] Update successful:", updateResult);
+    console.log("[api/games/update] Update successful:", JSON.stringify(updateResult?.[0], null, 2));
 
     // Only execute bot turn if this is a bot game and the update was successful
     if (game.is_bot_game) {
-      console.log("[api/games/update] Executing bot turn for game:", gameId);
+      console.log("[api/games/update] Bot game detected, preparing to execute bot turn for game:", gameId);
+      if (updateResult && updateResult[0]) {
+        const updatedGame = updateResult[0] as Database["public"]["Tables"]["games"]["Row"];
+        console.log("[api/games/update] Updated game state turn:", (updatedGame.game_state as unknown as { turn?: string })?.turn);
+      }
       
-      // Small delay to ensure the database update is fully committed
+      // Increased delay to ensure the database update is fully committed and visible
       // This helps prevent race conditions where the bot reads stale data
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      console.log("[api/games/update] Waiting 500ms before executing bot turn...");
+      await new Promise((resolve) => setTimeout(resolve, 500));
       
       try {
+        console.log("[api/games/update] Executing bot turn for game:", gameId);
         await executeBotTurnIfNeeded(gameId);
-        console.log("[api/games/update] Bot turn execution completed");
+        console.log("[api/games/update] Bot turn execution completed successfully");
       } catch (botError) {
         console.error("[api/games/update] Bot turn error:", botError);
         if (botError instanceof Error) {
           console.error("[api/games/update] Bot error message:", botError.message);
           console.error("[api/games/update] Bot error stack:", botError.stack);
+        } else {
+          console.error("[api/games/update] Bot error (non-Error):", JSON.stringify(botError, null, 2));
         }
         // Don't fail the request if bot turn fails
       }
+    } else {
+      console.log("[api/games/update] Not a bot game, skipping bot turn execution");
     }
 
     return NextResponse.json({ ok: true });

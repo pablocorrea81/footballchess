@@ -198,14 +198,22 @@ export const executeBotTurnIfNeeded = async (
       startingPlayer: currentState.startingPlayer,
     });
     console.log("[bot] Current turn:", currentState.turn, "Bot player:", botPlayer);
-    console.log("[bot] Raw game_state from DB:", JSON.stringify(game.game_state)?.substring(0, 200));
+    console.log("[bot] Raw game_state from DB:", JSON.stringify(game.game_state)?.substring(0, 500));
+    console.log("[bot] Game state turn check:", {
+      currentTurn: currentState.turn,
+      botPlayer: botPlayer,
+      isBotTurn: currentState.turn === botPlayer,
+      gameStatus: game.status,
+      isBotGame: game.is_bot_game,
+    });
 
     if (currentState.turn !== botPlayer) {
-      console.log("[bot] Not bot's turn. Current turn:", currentState.turn, "Expected:", botPlayer);
+      console.log("[bot] ❌ Not bot's turn. Current turn:", currentState.turn, "Expected:", botPlayer);
+      console.log("[bot] Bot will not execute. Waiting for turn to change.");
       return;
     }
 
-    console.log("[bot] Bot's turn detected, picking move...");
+    console.log("[bot] ✅ Bot's turn confirmed! Proceeding with move selection...");
     const difficulty =
       (game.bot_difficulty as BotDifficulty | null) ??
       FOOTBALL_BOT_DEFAULT_DIFFICULTY;
