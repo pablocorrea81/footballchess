@@ -71,29 +71,35 @@ export const BOARD_ROWS = 12;
 export const BOARD_COLS = 8;
 
 const GOAL_ROWS: Record<PlayerId, number> = {
-  home: BOARD_ROWS - 1,
-  away: 0,
+  home: BOARD_ROWS - 1, // Row 11
+  away: 0, // Row 0
 };
+
+// Goal columns are the middle two columns (3 and 4) in the goal rows
+export const GOAL_COLS = [3, 4];
 
 const opponent = (player: PlayerId): PlayerId =>
   player === "home" ? "away" : "home";
 
 const HOME_PIECE_LAYOUT: Array<{ type: PieceType; position: Position }> = [
-  // Back line
-  { type: "carrilero", position: { row: 10, col: 0 } },
-  { type: "defensa", position: { row: 10, col: 2 } },
-  { type: "defensa", position: { row: 10, col: 3 } },
-  { type: "defensa", position: { row: 10, col: 4 } },
-  { type: "defensa", position: { row: 10, col: 5 } },
-  { type: "carrilero", position: { row: 10, col: 7 } },
-  // Midfield
-  { type: "mediocampista", position: { row: 9, col: 1 } },
-  { type: "mediocampista", position: { row: 9, col: 3 } },
-  { type: "mediocampista", position: { row: 9, col: 4 } },
-  { type: "mediocampista", position: { row: 9, col: 6 } },
-  // Forwards
-  { type: "delantero", position: { row: 8, col: 2 } },
-  { type: "delantero", position: { row: 8, col: 5 } },
+  // Back line (row 11) - Goal row, goal is at columns 3 and 4 (empty)
+  // Carrileros en las puntas (columns 0 and 7)
+  { type: "carrilero", position: { row: 11, col: 0 } },
+  { type: "carrilero", position: { row: 11, col: 7 } },
+  // Defensas al costado del arco (columns 2 and 5)
+  // También defensas en columns 1 and 6 para tener 4 defensas totales
+  { type: "defensa", position: { row: 11, col: 1 } },
+  { type: "defensa", position: { row: 11, col: 2 } },
+  { type: "defensa", position: { row: 11, col: 5 } },
+  { type: "defensa", position: { row: 11, col: 6 } },
+  // Mediocampistas adelante del arco (row 10)
+  { type: "mediocampista", position: { row: 10, col: 1 } },
+  { type: "mediocampista", position: { row: 10, col: 3 } },
+  { type: "mediocampista", position: { row: 10, col: 4 } },
+  { type: "mediocampista", position: { row: 10, col: 6 } },
+  // Delanteros delante de los mediocampistas (row 9)
+  { type: "delantero", position: { row: 9, col: 2 } },
+  { type: "delantero", position: { row: 9, col: 5 } },
 ];
 
 const createAwayLayout = (): Array<{ type: PieceType; position: Position }> => {
@@ -186,10 +192,12 @@ const seedBoard = (): BoardCell[][] => {
 };
 
 const isOwnGoalSquare = (piece: Piece, position: Position): boolean =>
-  position.row === GOAL_ROWS[piece.owner];
+  position.row === GOAL_ROWS[piece.owner] &&
+  GOAL_COLS.includes(position.col);
 
 const isOpponentGoalSquare = (piece: Piece, position: Position): boolean =>
-  position.row === GOAL_ROWS[opponent(piece.owner)];
+  position.row === GOAL_ROWS[opponent(piece.owner)] &&
+  GOAL_COLS.includes(position.col);
 
 const asVector = (from: Position, to: Position): { dRow: number; dCol: number } => ({
   dRow: to.row - from.row,

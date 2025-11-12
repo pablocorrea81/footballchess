@@ -20,8 +20,12 @@ describe("RuleEngine", () => {
     expect(state.turn).toBe("home");
     expect(state.score).toEqual({ home: 0, away: 0 });
     expect(state.history).toEqual([]);
-    expect(state.board[10][0]?.type).toBe("carrilero");
-    expect(state.board[1][0]?.owner).toBe("away");
+    // Home carrilero is now at row 11 (BOARD_ROWS - 1), col 0
+    expect(state.board[11][0]?.type).toBe("carrilero");
+    expect(state.board[11][0]?.owner).toBe("home");
+    // Away carrilero is at row 0, col 0
+    expect(state.board[0][0]?.type).toBe("carrilero");
+    expect(state.board[0][0]?.owner).toBe("away");
   });
 
   it("validates and applies a legal carrilero move", () => {
@@ -29,8 +33,8 @@ describe("RuleEngine", () => {
 
     const move: Move = {
       player: "home",
-      from: { row: 10, col: 0 },
-      to: { row: 8, col: 0 },
+      from: { row: 11, col: 0 },
+      to: { row: 9, col: 0 },
     };
 
     const validation = RuleEngine.validateMove(state, move);
@@ -39,8 +43,8 @@ describe("RuleEngine", () => {
     const outcome = RuleEngine.applyMove(state, move);
     state = outcome.nextState;
 
-    expect(state.board[8][0]).not.toBeNull();
-    expect(state.board[10][0]).toBeNull();
+    expect(state.board[9][0]).not.toBeNull();
+    expect(state.board[11][0]).toBeNull();
     expect(state.turn).toBe("away");
     expect(state.history).toHaveLength(1);
   });
@@ -68,17 +72,19 @@ describe("RuleEngine", () => {
       history: [],
     };
 
-    customState.board[1][2] = {
+    // Place defensa near the away goal (row 0, columns 3 and 4 are the goal)
+    customState.board[1][3] = {
       id: "home-defensa",
       owner: "home",
       type: "defensa",
       canScore: false,
     };
 
+    // Try to move to goal square (row 0, col 3) - should be rejected
     const move: Move = {
       player: "home",
-      from: { row: 1, col: 2 },
-      to: { row: 0, col: 2 },
+      from: { row: 1, col: 3 },
+      to: { row: 0, col: 3 },
     };
 
     const validation = RuleEngine.validateMove(customState, move);

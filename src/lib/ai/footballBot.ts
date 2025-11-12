@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   BOARD_ROWS,
+  GOAL_COLS,
   RuleEngine,
   type GameState,
   type Move,
@@ -30,7 +31,9 @@ const positionalBonus = (to: Move["to"], player: PlayerId): number => {
   const targetRow = goalRowForPlayer(player);
   const distance = Math.abs(targetRow - to.row);
   // Reward proximity to goal; closer rows yield higher score
-  return Math.max(0, 10 - distance);
+  // Extra bonus if in goal columns
+  const columnBonus = GOAL_COLS.includes(to.col) ? 5 : 0;
+  return Math.max(0, 10 - distance) + columnBonus;
 };
 
 const rateMove = (

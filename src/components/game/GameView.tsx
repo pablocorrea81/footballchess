@@ -9,6 +9,7 @@ import type { Database, Json } from "@/lib/database.types";
 import {
   BOARD_COLS,
   BOARD_ROWS,
+  GOAL_COLS,
   RuleEngine,
   type GameState,
   type PlayerId,
@@ -444,6 +445,11 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 isInitialPhase &&
                 cell &&
                 cell.owner === gameState.startingPlayer;
+              
+              // Mark goal squares (rows 0 and 11, columns 3 and 4)
+              const isGoalSquare =
+                (actualRow === 0 || actualRow === BOARD_ROWS - 1) &&
+                GOAL_COLS.includes(actualCol);
 
               return (
                 <button
@@ -451,21 +457,31 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   type="button"
                   onClick={() => handleCellClick(uiRow, uiCol)}
                   className={[
-                    "aspect-square flex items-center justify-center border border-white/10 text-lg font-semibold transition",
-                    (actualRow + actualCol) % 2 === 0
-                      ? "bg-emerald-900/50"
-                      : "bg-emerald-800/50",
+                    "aspect-square flex items-center justify-center border text-lg font-semibold transition relative",
+                    isGoalSquare
+                      ? "border-yellow-400/60 bg-yellow-500/20"
+                      : "border-white/10",
+                    !isGoalSquare &&
+                      ((actualRow + actualCol) % 2 === 0
+                        ? "bg-emerald-900/50"
+                        : "bg-emerald-800/50"),
                     isSelected ? "ring-4 ring-emerald-300/60" : "",
-                    moveOption ? "bg-emerald-400/30" : "",
-                    isLastTo
+                    moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
+                    isLastTo && !isGoalSquare
                       ? "bg-amber-500/40"
-                      : isLastFrom
+                      : isLastFrom && !isGoalSquare
                         ? "bg-amber-500/20"
                         : "",
                     !canAct ? "cursor-default" : "",
                   ].join(" ")}
                   disabled={!canAct}
+                  title={isGoalSquare ? "Arco" : undefined}
                 >
+                  {isGoalSquare && (
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-yellow-300/80">
+                      🥅
+                    </span>
+                  )}
                   {cell && (
                     <span
                       className={`flex h-10 w-10 items-center justify-center rounded-full border text-base ${cell.owner === playerRole ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" : "border-sky-200 bg-sky-500/50 text-sky-950"} ${
