@@ -114,14 +114,20 @@ export function GameView({
   const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
 
+  // Row indices: Always show the player's goal at the bottom
+  // HOME's goal is at row 11 (should be at bottom)
+  // AWAY's goal is at row 0 (should be at bottom)
   const rowIndices = useMemo(
     () =>
       playerRole === "home"
-        ? [...Array(BOARD_ROWS).keys()]
-        : [...Array(BOARD_ROWS).keys()].reverse(),
+        ? [...Array(BOARD_ROWS).keys()].reverse() // Row 11 (HOME goal) at bottom, row 0 (AWAY goal) at top
+        : [...Array(BOARD_ROWS).keys()], // Row 0 (AWAY goal) at bottom, row 11 (HOME goal) at top
     [playerRole],
   );
 
+  // Column indices: Always show columns from player's perspective
+  // HOME sees A-H from left to right
+  // AWAY sees H-A from left to right (reversed)
   const colIndices = useMemo(
     () =>
       playerRole === "home"
@@ -573,20 +579,47 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [gameState.history, playerLabels, showGoalCelebration, playSound]);
 
   // Auto-scroll to board when it's the player's turn
+  // Scroll to the player's goal area (bottom of board for HOME, top for AWAY would be bottom after rotation)
   useEffect(() => {
     if (canAct && boardRef.current && status === "in_progress") {
-      // Small delay to ensure DOM is updated
+      // Small delay to ensure DOM is updated and realtime updates are processed
       const timer = setTimeout(() => {
-        boardRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-          inline: "nearest",
-        });
-      }, 300);
+        if (boardRef.current) {
+          // Scroll to board container, focusing on the player's goal area
+          // For HOME: goal is at bottom (row 11), so scroll to show bottom area
+          // For AWAY: goal is at bottom after rotation (row 0), so scroll to show bottom area
+          boardRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest",
+          });
+          
+          // Also ensure the window scrolls to show the board if needed
+          // Check if board is fully visible in viewport
+          const rect = boardRef.current.getBoundingClientRect();
+          const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+          const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+          
+          const isFullyVisible = 
+            rect.top >= 0 &&
+            rect.left >= 0 &&
+            rect.bottom <= viewportHeight &&
+            rect.right <= viewportWidth;
+          
+          // If not fully visible, scroll window to center the board
+          if (!isFullyVisible) {
+            const scrollTop = window.scrollY + rect.top - viewportHeight / 2 + rect.height / 2;
+            window.scrollTo({
+              top: Math.max(0, scrollTop),
+              behavior: "smooth",
+            });
+          }
+        }
+      }, 600); // Increased delay to allow for realtime updates and state changes
       
       return () => clearTimeout(timer);
     }
-  }, [canAct, status]);
+  }, [canAct, status, gameState.turn]);
 
   return (
     <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
