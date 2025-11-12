@@ -13,6 +13,7 @@ import {
   createGameAction,
   deleteGameAction,
 } from "@/app/lobby/create-game/action";
+import { InviteWhatsAppModal } from "./InviteWhatsAppModal";
 
 type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_1_username?: string | null;
@@ -107,6 +108,8 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [isPending, startTransition] = useTransition();
   const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("easy");
   const [showDifficultySelector, setShowDifficultySelector] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [selectedGameForInvite, setSelectedGameForInvite] = useState<{ id: string; inviteCode: string | null; creatorName: string } | null>(null);
 
   const refreshGames = useCallback(async () => {
     try {
@@ -455,24 +458,22 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   </span>
                 )}
 
-                {/* Share button for waiting games */}
+                {/* Invite button for waiting games */}
                 {isOwner && game.status === "waiting" && !isBot && game.invite_code && (
                   <button
-                    onClick={async () => {
-                      const inviteUrl = `${window.location.origin}/invite/${game.invite_code}`;
-                      try {
-                        await navigator.clipboard.writeText(inviteUrl);
-                        // You could add a toast notification here
-                        alert(`Link de invitación copiado: ${inviteUrl}`);
-                      } catch (err) {
-                        // Fallback for browsers that don't support clipboard API
-                        prompt("Copia este link para invitar a un amigo:", inviteUrl);
-                      }
+                    onClick={() => {
+                      setSelectedGameForInvite({
+                        id: game.id,
+                        inviteCode: game.invite_code ?? null,
+                        creatorName: game.player_1_username ?? "Un jugador",
+                      });
+                      setShowInviteModal(true);
                     }}
-                    className="rounded-full border border-blue-400/60 px-3 py-1 text-xs text-blue-200 transition hover:border-blue-200 hover:text-white"
-                    title="Copiar link de invitación"
+                    className="rounded-full border border-green-400/60 px-3 py-1 text-xs text-green-200 transition hover:border-green-200 hover:text-white flex items-center gap-1.5"
+                    title="Invitar por WhatsApp"
                   >
-                    📤 Compartir
+                    <span>💬</span>
+                    <span>Invitar</span>
                   </button>
                 )}
 
@@ -495,6 +496,19 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
         <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-center text-sm text-emerald-100/80">
           No hay partidas disponibles. ¡Crea una nueva para comenzar!
         </div>
+      )}
+
+      {/* Invite WhatsApp Modal */}
+      {showInviteModal && selectedGameForInvite && selectedGameForInvite.inviteCode && (
+        <InviteWhatsAppModal
+          gameId={selectedGameForInvite.id}
+          inviteCode={selectedGameForInvite.inviteCode}
+          creatorName={selectedGameForInvite.creatorName}
+          onClose={() => {
+            setShowInviteModal(false);
+            setSelectedGameForInvite(null);
+          }}
+        />
       )}
     </div>
   );
