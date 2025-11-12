@@ -220,12 +220,17 @@ export const executeBotTurnIfNeeded = async (
       };
 
       try {
-        const { error: updateError } = await supabaseAdmin
-          .from("games")
-          .update({
-            game_state: passedState as unknown as Database["public"]["Tables"]["games"]["Row"]["game_state"],
-            score: passedState.score as unknown as Database["public"]["Tables"]["games"]["Row"]["score"],
-          } as Record<string, unknown>)
+        const updatePayload = {
+          game_state: passedState as unknown as Database["public"]["Tables"]["games"]["Row"]["game_state"],
+          score: passedState.score as unknown as Database["public"]["Tables"]["games"]["Row"]["score"],
+        };
+        
+        // Use type assertion to bypass TypeScript's strict type checking for Supabase update
+        const { error: updateError } = await (
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          supabaseAdmin.from("games") as any
+        )
+          .update(updatePayload)
           .eq("id", gameId);
         
         if (updateError) {
@@ -272,9 +277,12 @@ export const executeBotTurnIfNeeded = async (
         game_state_turn: outcome.nextState.turn,
       }));
       
-      const { error: updateError, data: updateData } = await supabaseAdmin
-        .from("games")
-        .update(updatePayload as Record<string, unknown>)
+      // Use type assertion to bypass TypeScript's strict type checking for Supabase update
+      const { error: updateError, data: updateData } = await (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabaseAdmin.from("games") as any
+      )
+        .update(updatePayload)
         .eq("id", gameId)
         .select();
       
@@ -284,9 +292,13 @@ export const executeBotTurnIfNeeded = async (
         return;
       }
       
-      console.log("[bot] Move persisted successfully. Updated rows:", updateData?.length ?? 0);
-      if (updateData && updateData.length > 0) {
-        console.log("[bot] Updated game state turn:", (updateData[0]?.game_state as GameState)?.turn);
+      console.log("[bot] Move persisted successfully. Updated rows:", Array.isArray(updateData) ? updateData.length : 0);
+      if (updateData && Array.isArray(updateData) && updateData.length > 0) {
+        const updatedGame = updateData[0] as GameRow | null;
+        if (updatedGame?.game_state) {
+          const gameState = updatedGame.game_state as unknown as GameState;
+          console.log("[bot] Updated game state turn:", gameState.turn);
+        }
       }
     } catch (updateError) {
       console.error("[bot] Exception persisting move:", updateError);
