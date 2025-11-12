@@ -44,6 +44,9 @@ const GAME_SELECT = `
         bot_player,
         bot_difficulty,
         bot_display_name,
+        winning_score,
+        timeout_enabled,
+        turn_started_at,
         player_one:profiles!games_player_1_id_fkey(username, avatar_url),
         player_two:profiles!games_player_2_id_fkey(username, avatar_url)
       `;
@@ -135,6 +138,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
         .update({
           player_2_id: session.user.id,
           status: "in_progress",
+          turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
         } as Record<string, unknown>)
         .eq("id", gameId)
         .is("player_2_id", null)
@@ -147,6 +151,7 @@ export default async function PlayPage({ params }: PlayPageProps) {
             player_1_id,
             player_2_id,
             winner_id,
+            turn_started_at,
             player_one:profiles!games_player_1_id_fkey(username, avatar_url),
             player_two:profiles!games_player_2_id_fkey(username, avatar_url)
           `,
@@ -198,12 +203,24 @@ export default async function PlayPage({ params }: PlayPageProps) {
   const playerRole = game.player_1_id === session.user.id ? "home" : "away";
   const opponentRole = playerRole === "home" ? "away" : "home";
 
+  // Get player labels - if username is null or empty, use fallback
   const playerLabels = {
-    home: game.player_one_username ?? "Jugador 1",
+    home: (game.player_one_username && game.player_one_username.trim() !== "") 
+      ? game.player_one_username.trim() 
+      : "Jugador 1",
     away: game.is_bot_game
       ? game.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME
-      : game.player_two_username ?? "Jugador 2",
+      : (game.player_two_username && game.player_two_username.trim() !== "") 
+          ? game.player_two_username.trim() 
+          : "Jugador 2",
   };
+  
+  console.log("[play] Player labels:", {
+    player_one_username: game.player_one_username,
+    player_two_username: game.player_two_username,
+    playerLabels,
+    is_bot_game: game.is_bot_game,
+  });
 
   // Get user's show_move_hints preference
   const { data: userProfile } = await supabase
@@ -230,6 +247,8 @@ export default async function PlayPage({ params }: PlayPageProps) {
       botPlayer={game.bot_player as "home" | "away" | null}
       botDisplayName={game.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME}
       showMoveHints={showMoveHints}
+      winningScore={game.winning_score ?? 3}
+      timeoutEnabled={game.timeout_enabled ?? true}
     />
   );
 }

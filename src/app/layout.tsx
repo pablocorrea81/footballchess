@@ -16,6 +16,26 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icon.svg",
     apple: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
+  openGraph: {
+    title: "Football Chess",
+    description: "Juego web multijugador de Football Chess con Supabase y Next.js.",
+    type: "website",
+    images: [
+      {
+        url: "/icon.svg",
+        width: 512,
+        height: 512,
+        alt: "Football Chess",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary",
+    title: "Football Chess",
+    description: "Juego web multijugador de Football Chess con Supabase y Next.js.",
+    images: ["/icon.svg"],
   },
 };
 

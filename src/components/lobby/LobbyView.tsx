@@ -80,6 +80,8 @@ const GAME_SELECT = `
   bot_difficulty,
   bot_display_name,
   invite_code,
+  winning_score,
+  timeout_enabled,
   player1:profiles!games_player_1_id_fkey(username, avatar_url),
   player2:profiles!games_player_2_id_fkey(username, avatar_url)
 `;
@@ -108,6 +110,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [isPending, startTransition] = useTransition();
   const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("easy");
   const [showDifficultySelector, setShowDifficultySelector] = useState(false);
+  const [showGameSettings, setShowGameSettings] = useState(false);
+  const [selectedWinningScore, setSelectedWinningScore] = useState<1 | 2 | 3>(3);
+  const [selectedTimeoutEnabled, setSelectedTimeoutEnabled] = useState<boolean>(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedGameForInvite, setSelectedGameForInvite] = useState<{ id: string; inviteCode: string | null; creatorName: string } | null>(null);
 
@@ -156,10 +161,11 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     setLoading(true);
     startTransition(async () => {
       try {
-        await createGameAction(profileId);
+        await createGameAction(profileId, selectedWinningScore, selectedTimeoutEnabled);
         // Refresh games list and server page
         await refreshGames();
         router.refresh();
+        setShowGameSettings(false);
       } catch (actionError) {
         setError(
           actionError instanceof Error
@@ -309,13 +315,74 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
               </button>
             )}
           </div>
-          <button
-            onClick={createGame}
-            disabled={loading || isPending}
-            className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
-          >
-            {loading ? "Procesando..." : "Crear partida"}
-          </button>
+          <div className="relative">
+            {showGameSettings ? (
+              <div className="flex flex-col gap-3 rounded-2xl border-2 border-emerald-400/60 bg-emerald-900/80 p-4 shadow-xl min-w-[280px]">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-emerald-100">Configuración de partida:</span>
+                  <button
+                    onClick={() => setShowGameSettings(false)}
+                    className="text-emerald-200 hover:text-white text-lg"
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                {/* Winning Score Selection */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-emerald-200">Goles para ganar:</label>
+                  <div className="flex gap-2">
+                    {([1, 2, 3] as const).map((score) => (
+                      <button
+                        key={score}
+                        onClick={() => setSelectedWinningScore(score)}
+                        className={`flex-1 rounded-full px-3 py-2 text-xs font-semibold transition ${
+                          selectedWinningScore === score
+                            ? "bg-emerald-500 text-white shadow-lg"
+                            : "bg-emerald-700/50 text-emerald-200 hover:bg-emerald-600/70"
+                        }`}
+                      >
+                        {score} {score === 1 ? "Gol" : "Goles"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Timeout Toggle */}
+                <div className="flex items-center justify-between gap-3">
+                  <label className="text-xs font-semibold text-emerald-200">Límite de tiempo (60s):</label>
+                  <button
+                    onClick={() => setSelectedTimeoutEnabled(!selectedTimeoutEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      selectedTimeoutEnabled ? "bg-emerald-500" : "bg-emerald-700/50"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        selectedTimeoutEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <button
+                  onClick={createGame}
+                  disabled={loading || isPending}
+                  className="mt-2 rounded-full border-2 border-emerald-300/50 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50 disabled:opacity-60"
+                >
+                  {loading ? "Creando..." : `Crear partida (${selectedWinningScore} ${selectedWinningScore === 1 ? "gol" : "goles"}, ${selectedTimeoutEnabled ? "con tiempo" : "sin tiempo"})`}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowGameSettings(true)}
+                disabled={loading || isPending}
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
+              >
+                {loading ? "Procesando..." : "Crear partida"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -429,6 +496,21 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                           : "🔴 Difícil"}
                     </span>
                   </p>
+                )}
+                {/* Game settings display */}
+                {!isBot && (game.winning_score || game.timeout_enabled !== null) && (
+                  <div className="flex flex-col gap-1 text-xs text-emerald-100/60">
+                    {game.winning_score && (
+                      <p>
+                        Goles para ganar: <span className="font-semibold text-emerald-200">{game.winning_score}</span>
+                      </p>
+                    )}
+                    {game.timeout_enabled !== null && (
+                      <p>
+                        Límite de tiempo: <span className="font-semibold text-emerald-200">{game.timeout_enabled ? "Activado (60s)" : "Desactivado"}</span>
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 

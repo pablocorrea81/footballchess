@@ -50,6 +50,9 @@ export interface Database {
           bot_difficulty: string | null;
           bot_display_name: string | null;
           invite_code: string | null;
+          turn_started_at: string | null;
+          winning_score: number | null;
+          timeout_enabled: boolean | null;
         };
         Insert: {
           id?: string;
@@ -65,6 +68,9 @@ export interface Database {
           bot_difficulty?: string | null;
           bot_display_name?: string | null;
           invite_code?: string | null;
+          turn_started_at?: string | null;
+          winning_score?: number | null;
+          timeout_enabled?: boolean | null;
         };
         Update: {
           id?: string;
@@ -80,6 +86,9 @@ export interface Database {
           bot_difficulty?: string | null;
           bot_display_name?: string | null;
           invite_code?: string | null;
+          turn_started_at?: string | null;
+          winning_score?: number | null;
+          timeout_enabled?: boolean | null;
         };
       };
     };

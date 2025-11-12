@@ -12,7 +12,11 @@ import {
 } from "@/lib/ai/footballBot";
 import { generateInviteCode } from "@/lib/inviteCode";
 
-export async function createGameAction(profileId: string) {
+export async function createGameAction(
+  profileId: string,
+  winningScore: number = 3,
+  timeoutEnabled: boolean = true,
+) {
   const supabase = createServerActionSupabaseClient();
 
   const {
@@ -26,6 +30,11 @@ export async function createGameAction(profileId: string) {
 
   if (sessionData.session.user.id !== profileId) {
     throw new Error("No autorizado para crear partidas con este perfil.");
+  }
+
+  // Validate winning_score (must be 1, 2, or 3)
+  if (![1, 2, 3].includes(winningScore)) {
+    throw new Error("winning_score debe ser 1, 2 o 3.");
   }
 
   const startingPlayer = Math.random() < 0.5 ? "home" : "away";
@@ -56,6 +65,9 @@ export async function createGameAction(profileId: string) {
     game_state: initialState,
     score: initialState.score,
     invite_code: finalInviteCode,
+    turn_started_at: null, // Will be set when game starts (status changes to in_progress)
+    winning_score: winningScore,
+    timeout_enabled: timeoutEnabled,
   });
 
   if (error) {
@@ -100,6 +112,9 @@ export async function createBotGameAction(
       bot_player: botPlayer,
       bot_difficulty: difficulty,
       bot_display_name: FOOTBALL_BOT_DEFAULT_NAME,
+      turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
+      winning_score: 3, // Default for bot games
+      timeout_enabled: true, // Default for bot games
     })
     .select("id, game_state")
     .single();

@@ -57,6 +57,28 @@ export async function POST(request: Request) {
     const updatePayload =
       update as Database["public"]["Tables"]["games"]["Update"];
 
+    // Check if turn changed - if so, update turn_started_at
+    const gameState = updatePayload.game_state as unknown as { turn?: string } | undefined;
+    if (gameState?.turn) {
+      // Get current game state to compare turns
+      const { data: currentGameData } = await supabaseAdmin
+        .from("games")
+        .select("game_state")
+        .eq("id", gameId)
+        .single();
+      
+      const currentGame = currentGameData as { game_state: unknown } | null;
+      const currentGameState = currentGame?.game_state as unknown as { turn?: string } | undefined;
+      const currentTurn = currentGameState?.turn;
+      const newTurn = gameState.turn;
+      
+      // If turn changed, update turn_started_at to now
+      if (currentTurn !== newTurn) {
+        console.log("[api/games/update] Turn changed from", currentTurn, "to", newTurn, "- updating turn_started_at");
+        updatePayload.turn_started_at = new Date().toISOString();
+      }
+    }
+
     console.log("[api/games/update] Updating game:", gameId, "payload:", JSON.stringify(updatePayload));
 
     // Use admin client to update, bypassing RLS

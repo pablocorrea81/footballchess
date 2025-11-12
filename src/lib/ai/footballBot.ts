@@ -570,9 +570,10 @@ const resolveWinnerId = (
   move: Move,
   outcome: ReturnType<typeof RuleEngine.applyMove>,
   game: GameRow,
+  winningScore: number = 3,
 ): string | null => {
   const goalsForMover = outcome.nextState.score[move.player] ?? 0;
-  if (goalsForMover < 3) {
+  if (goalsForMover < winningScore) {
     return game.winner_id;
   }
 
@@ -603,7 +604,8 @@ export const executeBotTurnIfNeeded = async (
          is_bot_game,
          bot_player,
          bot_difficulty,
-         bot_display_name`,
+         bot_display_name,
+         winning_score`,
       )
       .eq("id", gameId)
       .single()) as PostgrestSingleResponse<GameRow>;
@@ -673,6 +675,7 @@ export const executeBotTurnIfNeeded = async (
         const updatePayload = {
           game_state: passedState as unknown as Database["public"]["Tables"]["games"]["Row"]["game_state"],
           score: passedState.score as unknown as Database["public"]["Tables"]["games"]["Row"]["score"],
+          turn_started_at: new Date().toISOString(), // Update turn_started_at when turn changes
         };
         
         // Use type assertion to bypass TypeScript's strict type checking for Supabase update
@@ -702,29 +705,42 @@ export const executeBotTurnIfNeeded = async (
     const outcome = RuleEngine.applyMove(currentState, move);
     let nextStatus = game.status;
     let winnerId = game.winner_id;
+    
+    // Get winning_score from game (default to 3 if not set)
+    const winningScore = (game.winning_score as number | null) ?? 3;
 
     if (outcome.goal?.scoringPlayer === botPlayer) {
-      console.log("[bot] Bot scored a goal! Score:", outcome.nextState.score);
-      nextStatus = outcome.nextState.score[botPlayer] >= 3 ? "finished" : "in_progress";
+      console.log("[bot] Bot scored a goal! Score:", outcome.nextState.score, "Winning score:", winningScore);
+      nextStatus = outcome.nextState.score[botPlayer] >= winningScore ? "finished" : "in_progress";
       if (nextStatus === "finished") {
-        winnerId = resolveWinnerId(move, outcome, game);
+        winnerId = resolveWinnerId(move, outcome, game, winningScore);
         console.log("[bot] Game finished! Winner:", winnerId);
       }
     }
 
     try {
-      const updatePayload = {
+      // Check if turn changed (it should always change after a move)
+      const turnChanged = currentState.turn !== outcome.nextState.turn;
+      
+      const updatePayload: Record<string, unknown> = {
         game_state: outcome.nextState as unknown as Database["public"]["Tables"]["games"]["Row"]["game_state"],
         score: outcome.nextState.score as unknown as Database["public"]["Tables"]["games"]["Row"]["score"],
         status: nextStatus,
         winner_id: winnerId,
       };
       
+      // Update turn_started_at when turn changes
+      if (turnChanged) {
+        updatePayload.turn_started_at = new Date().toISOString();
+        console.log("[bot] Turn changed from", currentState.turn, "to", outcome.nextState.turn, "- updating turn_started_at");
+      }
+      
       console.log("[bot] Updating game with payload:", JSON.stringify({
         status: nextStatus,
         winner_id: winnerId,
         score: outcome.nextState.score,
         game_state_turn: outcome.nextState.turn,
+        turn_started_at: updatePayload.turn_started_at,
       }));
       
       // Use type assertion to bypass TypeScript's strict type checking for Supabase update

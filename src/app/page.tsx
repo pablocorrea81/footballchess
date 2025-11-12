@@ -10,7 +10,7 @@ const gameRules = [
   {
     title: "🎯 Objetivo del Juego",
     description:
-      "El primer jugador en marcar 3 goles gana la partida.",
+      "El primer jugador en marcar el número de goles establecido (1, 2 o 3) gana la partida. El creador de la partida puede elegir cuántos goles se necesitan para ganar.",
   },
   {
     title: "🏁 Inicio del Juego",
@@ -45,7 +45,7 @@ const gameRules = [
   {
     title: "📋 Reglas Generales",
     description:
-      "• No puedes saltar sobre otras piezas (amigas o enemigas).\n• Puedes capturar piezas del oponente moviéndote a su casilla.\n• No puedes terminar tu movimiento dentro de tu propia portería.\n• Si intentas un movimiento ilegal, debes hacer un movimiento válido diferente.\n• Si no tienes movimientos legales, pierdes el turno.",
+      "• No puedes saltar sobre otras piezas (amigas o enemigas).\n• Puedes capturar piezas del oponente moviéndote a su casilla.\n• No puedes terminar tu movimiento dentro de tu propia portería.\n• Si intentas un movimiento ilegal, debes hacer un movimiento válido diferente.\n• Si no tienes movimientos legales, pierdes el turno.\n• ⏱️ TIMEOUT: En partidas multijugador, puedes activar o desactivar el límite de tiempo. Si está activado, tienes 60 segundos para hacer tu movimiento. Si se agota el tiempo, pierdes tu turno automáticamente.",
   },
   {
     title: "🎊 Marcar un Gol",

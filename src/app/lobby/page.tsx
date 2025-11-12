@@ -77,6 +77,9 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       bot_player,
       bot_display_name,
       invite_code,
+      turn_started_at,
+      winning_score,
+      timeout_enabled,
       player1:profiles!games_player_1_id_fkey(username, avatar_url),
       player2:profiles!games_player_2_id_fkey(username, avatar_url)`,
     )

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -14,6 +15,40 @@ type InvitePageProps = {
 };
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: InvitePageProps): Promise<Metadata> {
+  const resolvedParams = params instanceof Promise ? await params : params;
+  const inviteCode = resolvedParams?.code?.toUpperCase().trim();
+  
+  return {
+    title: `Invitación a Football Chess - ${inviteCode}`,
+    description: "Únete a una partida de Football Chess. Juego web multijugador.",
+    icons: {
+      icon: "/icon.svg",
+      apple: "/icon.svg",
+      shortcut: "/icon.svg",
+    },
+    openGraph: {
+      title: `Invitación a Football Chess - ${inviteCode}`,
+      description: "Únete a una partida de Football Chess. Juego web multijugador.",
+      type: "website",
+      images: [
+        {
+          url: "/icon.svg",
+          width: 512,
+          height: 512,
+          alt: "Football Chess",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary",
+      title: `Invitación a Football Chess - ${inviteCode}`,
+      description: "Únete a una partida de Football Chess. Juego web multijugador.",
+      images: ["/icon.svg"],
+    },
+  };
+}
 
 export default async function InvitePage({ params }: InvitePageProps) {
   const supabase = createServerSupabaseClient();
@@ -97,6 +132,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
       .update({
         player_2_id: session.user.id,
         status: "in_progress",
+        turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
       })
       .eq("id", game.id)
       .is("player_2_id", null);

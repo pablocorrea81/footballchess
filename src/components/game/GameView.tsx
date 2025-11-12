@@ -33,6 +33,8 @@ type GameViewProps = {
   botPlayer: PlayerId | null;
   botDisplayName: string;
   showMoveHints: boolean;
+  winningScore: number;
+  timeoutEnabled: boolean;
 };
 
 const BOARD_CHANNEL_PREFIX = "game";
@@ -95,6 +97,8 @@ export function GameView({
   botPlayer,
   botDisplayName,
   showMoveHints,
+  winningScore,
+  timeoutEnabled,
 }: GameViewProps) {
   const { supabase } = useSupabase();
 
@@ -112,6 +116,13 @@ export function GameView({
   const [goalScorer, setGoalScorer] = useState<string | null>(null);
   const [hasPlayedStartSound, setHasPlayedStartSound] = useState(false);
   const [previousScore, setPreviousScore] = useState<GameState["score"]>(initialScore ?? initialState.score);
+  const [showYourTurnAlert, setShowYourTurnAlert] = useState(false);
+  const [showTimeoutAlert, setShowTimeoutAlert] = useState(false);
+  const [showVictoryAlert, setShowVictoryAlert] = useState(false);
+  const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
+  const [isSurrendering, setIsSurrendering] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [turnStartedAt, setTurnStartedAt] = useState<Date | null>(null);
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
   const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
@@ -119,6 +130,17 @@ export function GameView({
   const isProcessingLocalMoveRef = useRef<boolean>(false);
   // Track the last move we processed to avoid duplicate updates
   const lastProcessedHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
+  // Track previous turn to detect turn changes
+  const previousTurnRef = useRef<PlayerId | null>(initialState.turn);
+  // Track previous status and winner_id to detect game end
+  const previousStatusRef = useRef<string>(initialStatus);
+  const previousWinnerIdRef = useRef<string | null>(initialWinnerId);
+  // Track if timeout was just executed to show alert
+  const timeoutJustExecutedRef = useRef<boolean>(false);
+  // Timeout constants
+  const TURN_TIMEOUT_SECONDS = 60;
+  const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const timeRemainingTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Move hints state
   const [hoveredPiece, setHoveredPiece] = useState<Position | null>(null);
@@ -180,8 +202,9 @@ export function GameView({
           winner_id,
           is_bot_game,
           bot_display_name,
-          player_one:profiles!games_player_1_id_fkey(username),
-          player_two:profiles!games_player_2_id_fkey(username)
+          turn_started_at,
+          player_one:profiles!games_player_1_id_fkey(id, username),
+          player_two:profiles!games_player_2_id_fkey(id, username)
         `)
         .eq("id", initialGameId)
         .single();
@@ -197,6 +220,7 @@ export function GameView({
       }
 
       // Type assertion to handle Supabase's type inference
+      // Supabase can return player_one and player_two as objects or arrays
       const gameData = data as {
         game_state: GameState | null;
         score: GameState["score"] | null;
@@ -206,8 +230,18 @@ export function GameView({
         winner_id: string | null;
         is_bot_game: boolean;
         bot_display_name: string | null;
-        player_one: { username: string | null } | null;
-        player_two: { username: string | null } | null;
+        turn_started_at: string | null;
+        player_one: { username: string | null } | { username: string | null }[] | null;
+        player_two: { username: string | null } | { username: string | null }[] | null;
+      };
+      
+      // Extract usernames - handle both object and array cases
+      const extractUsername = (profile: { username: string | null } | { username: string | null }[] | null): string | null => {
+        if (!profile) return null;
+        if (Array.isArray(profile)) {
+          return profile[0]?.username ?? null;
+        }
+        return profile.username ?? null;
       };
 
       const nextState =
@@ -217,18 +251,32 @@ export function GameView({
         (gameData.score as GameState["score"] | null) ??
         RuleEngine.createInitialState().score;
 
-      // Extract usernames
-      const playerOneUsername = gameData.player_one?.username ?? null;
-      const playerTwoUsername = gameData.player_two?.username ?? null;
+      // Extract usernames - handle both object and array cases
+      const playerOneUsername = extractUsername(gameData.player_one);
+      const playerTwoUsername = extractUsername(gameData.player_two);
+      
+      console.log("[GameView] Extracted usernames:", {
+        playerOneUsername,
+        playerTwoUsername,
+        player_one_raw: gameData.player_one,
+        player_two_raw: gameData.player_two,
+        is_bot_game: gameData.is_bot_game,
+      });
       
       // Update player labels dynamically
+      // If username is null or empty, use fallback
       const updatedLabels: Record<PlayerId, string> = {
-        home: playerOneUsername ?? "Jugador 1",
+        home: playerOneUsername && playerOneUsername.trim() !== "" 
+          ? playerOneUsername.trim() 
+          : "Jugador 1",
         away: gameData.is_bot_game
           ? (gameData.bot_display_name ?? botDisplayName)
-          : (playerTwoUsername ?? "Jugador 2"),
+          : (playerTwoUsername && playerTwoUsername.trim() !== "" 
+              ? playerTwoUsername.trim() 
+              : "Jugador 2"),
       };
       
+      console.log("[GameView] Updated player labels:", updatedLabels);
       setDynamicPlayerLabels(updatedLabels);
 
       // Check if game just started
@@ -245,10 +293,13 @@ export function GameView({
         playerLabels: updatedLabels,
       });
 
+      // Always update player labels, even if we're skipping the state update
+      // This ensures names are always up to date
+      
       // Don't overwrite local state if we're processing a move and history hasn't increased
       if (isProcessingLocalMoveRef.current && historyLength <= currentHistoryLength) {
         console.log("[GameView] Skipping fetchGameState update - processing local move and history hasn't increased");
-        // Still update player labels (already done above)
+        // Player labels were already updated above, so we can return now
         return;
       }
       
@@ -264,8 +315,25 @@ export function GameView({
         home: gameData.player_1_id,
         away: gameData.player_2_id,
       });
-      setWinnerId(gameData.winner_id ?? null);
+      const newWinnerId = gameData.winner_id ?? null;
+      setWinnerId(newWinnerId);
       setPreviousScore(nextScore);
+      
+      // Update previous status and winner_id refs for victory detection
+      if (previousStatusRef.current !== gameData.status) {
+        previousStatusRef.current = gameData.status;
+      }
+      if (previousWinnerIdRef.current !== newWinnerId) {
+        previousWinnerIdRef.current = newWinnerId;
+      }
+      
+      // Update turn_started_at if available
+      if (gameData.turn_started_at) {
+        setTurnStartedAt(new Date(gameData.turn_started_at));
+      } else if (status === "in_progress") {
+        // If game is in progress but no turn_started_at, set it to now
+        setTurnStartedAt(new Date());
+      }
       
       // Update history length ref
       previousHistoryLengthRef.current = historyLength;
@@ -281,6 +349,12 @@ export function GameView({
       console.error("[GameView] Exception fetching game state:", error);
     }
   }, [initialGameId, supabase, botDisplayName, status, hasPlayedStartSound, playSound]);
+
+  // Fetch player names on mount to ensure they're up to date
+  useEffect(() => {
+    console.log("[GameView] Initial mount - fetching player names");
+    void fetchGameState();
+  }, [fetchGameState]);
 
   useEffect(() => {
     console.log("[GameView] Setting up Realtime subscription for game:", initialGameId);
@@ -411,8 +485,25 @@ export function GameView({
             home: payload.new.player_1_id,
             away: payload.new.player_2_id,
           });
-          setWinnerId(payload.new.winner_id ?? null);
+          const newWinnerId = payload.new.winner_id ?? null;
+          setWinnerId(newWinnerId);
           setPreviousScore(nextScore);
+          
+          // Update previous status and winner_id refs for victory detection
+          if (previousStatusRef.current !== payload.new.status) {
+            previousStatusRef.current = payload.new.status;
+          }
+          if (previousWinnerIdRef.current !== newWinnerId) {
+            previousWinnerIdRef.current = newWinnerId;
+          }
+          
+          // Update turn_started_at from Realtime update
+          if (payload.new.turn_started_at) {
+            setTurnStartedAt(new Date(payload.new.turn_started_at));
+          } else if (payload.new.status === "in_progress") {
+            // If game is in progress but no turn_started_at, set it to now
+            setTurnStartedAt(new Date());
+          }
           
           // Update history length ref
           previousHistoryLengthRef.current = historyLength;
@@ -428,15 +519,11 @@ export function GameView({
           // Goal detection and resume sound are handled by the useEffect that monitors gameState.history
           // This avoids duplicate triggers
           
-          // Only fetch player names if history increased (new move from opponent)
-          // Don't fetch if we're just confirming our own move
-          if (historyLength > currentHistoryLength) {
-            // Fetch player names asynchronously after state update (don't block the update)
-            // Use a small delay to avoid race conditions
-            setTimeout(() => {
-              void fetchGameState();
-            }, 100);
-          }
+          // Always fetch player names after Realtime update to ensure they're up to date
+          // Use a small delay to avoid race conditions
+          setTimeout(() => {
+            void fetchGameState();
+          }, 100);
         },
       )
       .subscribe((status) => {
@@ -582,7 +669,7 @@ export function GameView({
       if (goalScored) {
         const scoringLabel = effectivePlayerLabels[playerRole];
         const updatedScore = newScore[playerRole] ?? 0;
-        if (updatedScore >= 3) {
+        if (updatedScore >= winningScore) {
           setFeedback(`¡Victoria de ${scoringLabel}!`);
         } else {
           setFeedback(
@@ -597,7 +684,7 @@ export function GameView({
       let nextWinnerId: string | null = winnerId;
       if (goalScored) {
         const updatedScore = newScore[playerRole] ?? 0;
-        if (updatedScore >= 3) {
+        if (updatedScore >= winningScore) {
           nextStatus = "finished";
           nextWinnerId = players[playerRole] ?? null;
         }
@@ -817,6 +904,313 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     }
   }, [gameState.history, effectivePlayerLabels, showGoalCelebration, playSound]);
 
+  // Monitor game status and winner_id to detect victory
+  useEffect(() => {
+    const currentStatus = status;
+    const currentWinnerId = winnerId;
+    const previousStatus = previousStatusRef.current;
+    const previousWinnerId = previousWinnerIdRef.current;
+    
+    // Check if game just finished and player won
+    const gameJustFinished = currentStatus === "finished" && previousStatus !== "finished";
+    
+    if (!gameJustFinished) {
+      // Game hasn't finished yet, just update refs
+      if (previousStatus !== currentStatus) {
+        previousStatusRef.current = currentStatus;
+      }
+      if (previousWinnerId !== currentWinnerId) {
+        previousWinnerIdRef.current = currentWinnerId;
+      }
+      return;
+    }
+    
+    // Game just finished - determine if player won
+    // For both multiplayer and bot games: if winner_id === profileId, the player won
+    // For bot games: if winner_id is null, the bot won (player lost)
+    // For multiplayer games: if winner_id !== profileId, the opponent won (player lost)
+    const playerWon = currentWinnerId === profileId;
+    
+    if (playerWon) {
+      console.log("[GameView] Player won the game! Showing victory alert", {
+        currentStatus,
+        previousStatus,
+        currentWinnerId,
+        profileId,
+        isBotGame,
+        playerWon,
+      });
+      setShowVictoryAlert(true);
+      playSound("goal"); // Use goal sound for victory
+      
+      // Hide alert after 5 seconds
+      const timer = setTimeout(() => {
+        setShowVictoryAlert(false);
+      }, 5000);
+      
+      previousStatusRef.current = currentStatus;
+      previousWinnerIdRef.current = currentWinnerId;
+      
+      return () => clearTimeout(timer);
+    } else {
+      // Player didn't win (or game finished but player lost)
+      console.log("[GameView] Game finished but player didn't win", {
+        currentStatus,
+        currentWinnerId,
+        profileId,
+        isBotGame,
+        playerWon,
+      });
+      
+      // Update refs
+      if (previousStatus !== currentStatus) {
+        previousStatusRef.current = currentStatus;
+      }
+      if (previousWinnerId !== currentWinnerId) {
+        previousWinnerIdRef.current = currentWinnerId;
+      }
+    }
+  }, [status, winnerId, profileId, playSound, isBotGame]);
+
+  // Function to handle surrender
+  const handleSurrender = useCallback(async () => {
+    if (status !== "in_progress" || isSurrendering) {
+      return;
+    }
+
+    setIsSurrendering(true);
+    console.log("[GameView] Surrendering game");
+    
+    try {
+      const response = await fetch("/api/games/surrender", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameId: initialGameId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        console.error("[GameView] Surrender error:", data.error);
+        setFeedback(data.error ?? "Error al rendirse");
+      } else {
+        console.log("[GameView] Surrender successful");
+        setFeedback("Te has rendido. La partida ha terminado.");
+        setShowSurrenderConfirm(false);
+        // Fetch updated game state to reflect the surrender
+        setTimeout(() => {
+          void fetchGameState();
+        }, 500);
+      }
+    } catch (error) {
+      console.error("[GameView] Surrender exception:", error);
+      setFeedback("Error al rendirse. Intenta nuevamente.");
+    } finally {
+      setIsSurrendering(false);
+    }
+  }, [status, isSurrendering, initialGameId, fetchGameState]);
+
+  // Function to execute timeout (lose turn)
+  const executeTimeout = useCallback(async () => {
+    if (!canAct || status !== "in_progress" || gameState.turn !== playerRole) {
+      return;
+    }
+
+    console.log("[GameView] Executing timeout - player lost turn");
+    
+    // Mark that timeout was just executed to show alert
+    timeoutJustExecutedRef.current = true;
+    
+    // Call API to execute timeout
+    try {
+      const response = await fetch("/api/games/timeout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameId: initialGameId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        console.error("[GameView] Timeout execution error:", data.error);
+        timeoutJustExecutedRef.current = false;
+      } else {
+        console.log("[GameView] Timeout executed successfully");
+        setFeedback("⏱️ ¡Tiempo agotado! Has perdido tu turno.");
+        setTimeRemaining(null);
+        setTurnStartedAt(null);
+        // Show timeout alert
+        setShowTimeoutAlert(true);
+        // Hide alert after 5 seconds
+        setTimeout(() => {
+          setShowTimeoutAlert(false);
+          timeoutJustExecutedRef.current = false;
+        }, 5000);
+      }
+    } catch (error) {
+      console.error("[GameView] Timeout execution exception:", error);
+      timeoutJustExecutedRef.current = false;
+    }
+  }, [canAct, status, gameState.turn, playerRole, initialGameId]);
+
+  // Monitor turn changes to show "¡Tu turno!" alert and initialize timeout
+  // Also detect timeout by checking if turn changed from player to opponent (timeout was executed)
+  useEffect(() => {
+    const currentTurn = gameState.turn;
+    const previousTurn = previousTurnRef.current;
+    
+    // Check if timeout was just executed (turn changed from player to opponent)
+    // The alert is already shown in executeTimeout, but we also handle it here in case
+    // the turn change is detected via Realtime before executeTimeout completes
+    if (
+      status === "in_progress" &&
+      previousTurn === playerRole &&
+      currentTurn === opponentRole &&
+      players[playerRole] === profileId &&
+      timeoutJustExecutedRef.current
+    ) {
+      // Turn changed from player to opponent - this is a timeout
+      console.log("[GameView] Turn changed from player to opponent - timeout confirmed");
+      // The alert should already be shown by executeTimeout, but ensure it's shown
+      setShowTimeoutAlert(true);
+      setTurnStartedAt(null);
+      setTimeRemaining(null);
+      // Hide alert after 5 seconds (if not already scheduled)
+      const timer = setTimeout(() => {
+        setShowTimeoutAlert(false);
+        timeoutJustExecutedRef.current = false;
+      }, 5000);
+      
+      previousTurnRef.current = currentTurn;
+      return () => clearTimeout(timer);
+    }
+    
+    // Check if turn changed to the player's turn
+    if (
+      status === "in_progress" &&
+      currentTurn === playerRole &&
+      players[playerRole] === profileId &&
+      previousTurn !== null &&
+      previousTurn !== currentTurn &&
+      previousTurn === opponentRole
+    ) {
+      // Turn changed from opponent to player - show alert and start timeout
+      console.log("[GameView] Turn changed to player - showing '¡Tu turno!' alert");
+      setShowYourTurnAlert(true);
+      // Hide timeout alert if it was showing
+      setShowTimeoutAlert(false);
+      timeoutJustExecutedRef.current = false;
+      
+      // Initialize timeout timer when it's the player's turn
+      if (!turnStartedAt || previousTurn !== currentTurn) {
+        setTurnStartedAt(new Date());
+      }
+      
+      // Hide alert after 5 seconds
+      const timer = setTimeout(() => {
+        setShowYourTurnAlert(false);
+      }, 5000);
+      
+      // Update previous turn ref
+      previousTurnRef.current = currentTurn;
+      
+      return () => clearTimeout(timer);
+    } else {
+      // Update previous turn ref if turn changed but not to player
+      if (previousTurn !== currentTurn) {
+        previousTurnRef.current = currentTurn;
+        // Reset turn_started_at when turn changes away from player
+        if (currentTurn !== playerRole || players[playerRole] !== profileId) {
+          setTurnStartedAt(null);
+          setTimeRemaining(null);
+        }
+      }
+    }
+  }, [gameState.turn, status, playerRole, opponentRole, players, profileId, turnStartedAt]);
+
+  // Hide "¡Tu turno!" alert when player makes a move
+  useEffect(() => {
+    if (pendingMove && showYourTurnAlert) {
+      setShowYourTurnAlert(false);
+    }
+  }, [pendingMove, showYourTurnAlert]);
+
+  // Timeout timer: Check if player has exceeded 60 seconds on their turn
+  useEffect(() => {
+    // Clear existing timers
+    if (timeoutTimerRef.current) {
+      clearTimeout(timeoutTimerRef.current);
+      timeoutTimerRef.current = null;
+    }
+    if (timeRemainingTimerRef.current) {
+      clearInterval(timeRemainingTimerRef.current);
+      timeRemainingTimerRef.current = null;
+    }
+
+    // Only run timeout check if it's the player's turn and game is in progress
+    // and timeout is enabled
+    if (
+      status === "in_progress" &&
+      canAct &&
+      gameState.turn === playerRole &&
+      players[playerRole] === profileId &&
+      !isBotGame &&
+      timeoutEnabled
+    ) {
+      // Initialize turn_started_at if not set
+      const startTime = turnStartedAt ?? new Date();
+      if (!turnStartedAt) {
+        setTurnStartedAt(startTime);
+      }
+
+      // Update time remaining every second
+      const updateTimeRemaining = () => {
+        const now = new Date();
+        const elapsed = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+        const remaining = Math.max(0, TURN_TIMEOUT_SECONDS - elapsed);
+        setTimeRemaining(remaining);
+
+        // If timeout exceeded, execute timeout
+        if (remaining === 0) {
+          console.log("[GameView] Timeout exceeded - executing timeout");
+          void executeTimeout();
+        }
+      };
+
+      // Initial update
+      updateTimeRemaining();
+
+      // Update every second
+      timeRemainingTimerRef.current = setInterval(updateTimeRemaining, 1000);
+
+      // Set timeout to execute after 60 seconds
+      timeoutTimerRef.current = setTimeout(() => {
+        console.log("[GameView] Timeout timer fired - executing timeout");
+        void executeTimeout();
+      }, TURN_TIMEOUT_SECONDS * 1000);
+
+      return () => {
+        if (timeoutTimerRef.current) {
+          clearTimeout(timeoutTimerRef.current);
+          timeoutTimerRef.current = null;
+        }
+        if (timeRemainingTimerRef.current) {
+          clearInterval(timeRemainingTimerRef.current);
+          timeRemainingTimerRef.current = null;
+        }
+      };
+    } else {
+      // Not player's turn - reset time remaining
+      setTimeRemaining(null);
+    }
+  }, [canAct, status, gameState.turn, playerRole, players, profileId, isBotGame, turnStartedAt, executeTimeout]);
+
   // Auto-scroll to board when it's the player's turn
   // Scroll to focus on the board edge (top for HOME, bottom for AWAY) without including footer
   useEffect(() => {
@@ -896,6 +1290,90 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             setGoalScorer(null);
           }}
         />
+      )}
+
+      {/* "¡Tu turno!" Alert */}
+      {showYourTurnAlert && canAct && status === "in_progress" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="animate-bounce-in rounded-3xl border-4 border-yellow-400 bg-gradient-to-br from-yellow-500 to-yellow-600 px-8 md:px-12 py-6 md:py-8 shadow-2xl backdrop-blur-sm pointer-events-auto">
+            <div className="text-center">
+              <div className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-2 md:mb-3 animate-pulse">
+                ⚽ ¡Tu turno!
+              </div>
+              <div className="text-lg md:text-xl lg:text-2xl font-semibold text-yellow-100">
+                Es tu momento de jugar
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* "¡Perdiste tu turno!" Alert */}
+      {showTimeoutAlert && status === "in_progress" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="animate-bounce-in rounded-3xl border-4 border-red-500 bg-gradient-to-br from-red-600 to-red-700 px-8 md:px-12 py-6 md:py-8 shadow-2xl backdrop-blur-sm pointer-events-auto">
+            <div className="text-center">
+              <div className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-2 md:mb-3 animate-pulse">
+                ⏱️ ¡Perdiste tu turno!
+              </div>
+              <div className="text-lg md:text-xl lg:text-2xl font-semibold text-red-100">
+                Se agotó el tiempo de 60 segundos
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* "¡Ganaste!" Victory Alert */}
+      {showVictoryAlert && status === "finished" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="animate-bounce-in rounded-3xl border-4 border-yellow-400 bg-gradient-to-br from-yellow-500 via-emerald-500 to-yellow-500 px-8 md:px-12 py-6 md:py-8 shadow-2xl backdrop-blur-sm pointer-events-auto">
+            <div className="text-center">
+              <div className="text-6xl md:text-7xl lg:text-8xl mb-4 md:mb-5 animate-pulse">
+                🏆
+              </div>
+              <div className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-2 md:mb-3 animate-pulse">
+                ¡Ganaste!
+              </div>
+              <div className="text-lg md:text-xl lg:text-2xl font-semibold text-yellow-100">
+                ¡Felicidades por la victoria!
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Surrender Confirmation Modal */}
+      {showSurrenderConfirm && status === "in_progress" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl md:rounded-3xl border-2 border-red-500/80 p-6 md:p-8 shadow-2xl max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="text-5xl md:text-6xl mb-4">🏳️</div>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-4">
+                ¿Rendirse?
+              </h2>
+              <p className="text-base md:text-lg text-slate-200 mb-6">
+                ¿Estás seguro de que quieres rendirte? La partida terminará y tu oponente ganará.
+              </p>
+              <div className="flex gap-4 justify-center">
+                <button
+                  onClick={() => setShowSurrenderConfirm(false)}
+                  className="px-6 py-3 rounded-xl border-2 border-slate-500 bg-slate-700 text-white font-semibold hover:bg-slate-600 transition-colors"
+                  disabled={isSurrendering}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSurrender}
+                  disabled={isSurrendering}
+                  className="px-6 py-3 rounded-xl border-2 border-red-500 bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSurrendering ? "Rindiéndose..." : "Sí, rendirme"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
@@ -1106,10 +1584,44 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:sticky md:top-6 md:self-start md:max-h-[calc(100vh-3rem)] md:overflow-y-auto">
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
-            <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1 md:mb-2">
-              <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
-                Partido #{initialGameId.slice(0, 8)}
-              </h1>
+            {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
+                  Partido #{initialGameId.slice(0, 8)}
+                </h1>
+                {/* Turn indicator badge - always visible, especially on mobile */}
+                {status === "in_progress" && (
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 text-xs sm:text-sm font-semibold shadow-lg ${
+                    currentTurnIsPlayer
+                      ? "bg-emerald-600/90 text-white border-emerald-400/80 ring-2 ring-emerald-400/60"
+                      : "bg-sky-600/90 text-white border-sky-400/80"
+                  }`}>
+                    <span className={currentTurnIsPlayer ? "text-emerald-100" : "text-sky-100"}>
+                      {currentTurnIsPlayer ? "✅" : "⏳"}
+                    </span>
+                    <span className="font-bold">
+                      {currentTurnLabel}
+                    </span>
+                  </div>
+                )}
+                {status === "finished" && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
+                    <span>🏁</span>
+                    <span className="font-bold">
+                      {computedWinnerLabel
+                        ? `Ganó: ${computedWinnerLabel}`
+                        : "Finalizado"}
+                    </span>
+                  </div>
+                )}
+                {status === "waiting" && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
+                    <span>⏳</span>
+                    <span className="font-bold">Esperando</span>
+                  </div>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Link
                   href="/lobby"
@@ -1125,18 +1637,22 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 </Link>
               </div>
             </div>
-            <p className="text-sm md:text-base font-medium text-emerald-50">
-              {status === "finished"
-                ? computedWinnerLabel
-                  ? `Ganador: ${computedWinnerLabel}`
-                  : "Partida finalizada"
-                : `Turno actual: ${currentTurnLabel}`}
-            </p>
-            {status !== "finished" && (
-              <p className="mt-1 text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200">
-                Inicio: <span className="text-yellow-300">{startingLabel}</span>
+            {/* Additional info - hidden on mobile, visible on desktop */}
+            <div className="hidden md:block">
+              <p className="text-sm md:text-base font-medium text-emerald-50">
+                {status === "finished"
+                  ? computedWinnerLabel
+                    ? `Ganador: ${computedWinnerLabel}`
+                    : "Partida finalizada"
+                  : `Turno actual: ${currentTurnLabel}`}
               </p>
-            )}
+              {status !== "finished" && (
+                <p className="mt-1 text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200">
+                  Inicio: <span className="text-yellow-300">{startingLabel}</span>
+                </p>
+              )}
+            </div>
+            {/* Scores */}
             <div className="flex items-center gap-3 md:gap-4 mt-2 md:mt-3 text-sm md:text-base">
               <div
                 className={badgeClass(
@@ -1187,6 +1703,43 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {!isBotGame && !isBotTurn && !currentTurnIsPlayer && status === "in_progress" && (
             <div className="rounded-xl md:rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
               ⏳ Esperando que {effectivePlayerLabels[opponentRole]} haga su movimiento...
+            </div>
+          )}
+
+          {/* Surrender button - show when game is in progress (both multiplayer and bot games) */}
+          {status === "in_progress" && (
+            <button
+              onClick={() => setShowSurrenderConfirm(true)}
+              disabled={isSurrendering}
+              className="rounded-xl md:rounded-2xl border-2 border-red-500/80 bg-red-600/90 hover:bg-red-700/90 px-4 md:px-6 py-3 md:py-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <span>🏳️</span>
+              <span>Rendirse</span>
+            </button>
+          )}
+
+          {/* Time remaining counter for player's turn */}
+          {canAct && status === "in_progress" && timeRemaining !== null && timeRemaining >= 0 && !isBotGame && timeoutEnabled && (
+            <div className={`rounded-xl md:rounded-2xl border-2 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm ${
+              timeRemaining <= 10
+                ? "border-red-500/80 bg-red-600/80 animate-pulse"
+                : timeRemaining <= 20
+                ? "border-orange-500/80 bg-orange-600/80"
+                : "border-emerald-400/60 bg-emerald-600/80"
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="text-base md:text-lg font-bold">
+                  ⏱️ Tiempo restante: {timeRemaining}s
+                </span>
+                {timeRemaining <= 10 && (
+                  <span className="text-lg md:text-xl animate-pulse">⚠️</span>
+                )}
+              </div>
+              {timeRemaining <= 10 && (
+                <p className="mt-2 text-xs md:text-sm text-red-100">
+                  ¡Apúrate! Si no mueves en {timeRemaining} segundos, perderás tu turno.
+                </p>
+              )}
             </div>
           )}
 

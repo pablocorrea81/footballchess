@@ -153,6 +153,7 @@ export async function POST(request: Request) {
       .update({
         player_2_id: userId,
         status: "in_progress",
+        turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
       })
       .eq("id", game.id)
       .is("player_2_id", null); // Use .is() instead of .eq() for null check
