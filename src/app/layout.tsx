@@ -27,10 +27,19 @@ export default async function RootLayout({
 
   return (
     <html lang="es">
-      <body className="antialiased">
+      <body className="antialiased flex flex-col min-h-screen">
         <SupabaseProvider initialSession={session}>
           <SupabaseListener accessToken={session?.access_token ?? undefined} />
-          {children}
+          <div className="flex-1">
+            {children}
+          </div>
+          <footer className="border-t border-emerald-200 bg-white/80 py-6 mt-auto">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <p className="text-center text-sm text-emerald-900/80">
+                Creado por Santino Correa
+              </p>
+            </div>
+          </footer>
         </SupabaseProvider>
       </body>
     </html>

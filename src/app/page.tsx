@@ -6,26 +6,51 @@ import { createServerSupabaseClient } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
 
-const setupSteps = [
+const gameRules = [
   {
-    title: "1. Configura Supabase",
+    title: "🎯 Objetivo del Juego",
     description:
-      "Crea el proyecto, habilita Auth y Realtime, y añade las tablas `profiles` y `games`.",
+      "El primer jugador en marcar 3 goles gana la partida.",
   },
   {
-    title: "2. Conecta el Frontend",
+    title: "🏁 Inicio del Juego",
     description:
-      "Guarda las claves en `.env.local`, despliega en Vercel y replica las variables ahí mismo.",
+      "El tablero tiene 12 filas y 8 columnas. Cada jugador tiene 12 piezas en sus posiciones iniciales. Al comenzar, se realiza un sorteo aleatorio para determinar qué jugador mueve primero.",
   },
   {
-    title: "3. Construye el Lobby",
+    title: "⚽ Las Porterías",
     description:
-      "Implementa la lista de partidas `waiting` y el flujo para crear o unirse a un juego.",
+      "Las porterías están ubicadas en las filas extremas (filas 1 y 12), en las columnas centrales (columnas D y E). Estas casillas están marcadas con un icono de portería (🥅) en el tablero.",
   },
   {
-    title: "4. Motor de Reglas",
+    title: "👤 Carrileros (2 piezas)",
     description:
-      "Modela el tablero inicial y codifica la lógica de Football Chess en `RuleEngine`.",
+      "Pueden moverse horizontal y verticalmente. Distancia máxima: 2 casillas. Pueden marcar goles.",
+  },
+  {
+    title: "🛡️ Defensas (4 piezas)",
+    description:
+      "Pueden moverse 1 casilla en cualquier dirección (horizontal, vertical o diagonal). ⚠️ IMPORTANTE: Los defensas NO pueden marcar goles.",
+  },
+  {
+    title: "⚙️ Mediocampistas (4 piezas)",
+    description:
+      "Pueden moverse en diagonal (como el alfil en ajedrez). Distancia: cualquier número de casillas. Pueden marcar goles.",
+  },
+  {
+    title: "⚡ Delanteros (2 piezas)",
+    description:
+      "Pueden moverse en cualquier dirección (horizontal, vertical o diagonal, como la reina en ajedrez). Distancia: cualquier número de casillas. Pueden marcar goles.",
+  },
+  {
+    title: "📋 Reglas Generales",
+    description:
+      "• No puedes saltar sobre otras piezas (amigas o enemigas).\n• Puedes capturar piezas del oponente moviéndote a su casilla.\n• No puedes terminar tu movimiento dentro de tu propia portería.\n• Si intentas un movimiento ilegal, debes hacer un movimiento válido diferente.\n• Si no tienes movimientos legales, pierdes el turno.",
+  },
+  {
+    title: "🎊 Marcar un Gol",
+    description:
+      "Un gol se marca cuando una pieza (que no sea defensa) termina su movimiento en la portería del oponente. Después de un gol, el tablero se reinicia a las posiciones iniciales y el jugador que recibió el gol mueve primero en la nueva ronda.",
   },
 ];
 
@@ -45,72 +70,88 @@ export default async function Home({ searchParams }: HomeProps) {
   } = await supabase.auth.getSession();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-sky-100 py-24">
-      <main className="mx-auto flex max-w-4xl flex-col gap-16 px-6">
-        <header className="rounded-3xl border border-emerald-100 bg-white/80 p-10 shadow-lg shadow-emerald-100">
-          <p className="text-sm font-medium uppercase tracking-widest text-emerald-600">
-            footballchess.club
-          </p>
-          <h1 className="mt-4 text-4xl font-semibold text-emerald-950 sm:text-5xl">
-            Football Chess Multiplayer
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-sky-100 py-12 sm:py-16 lg:py-24">
+      <main className="mx-auto flex max-w-5xl flex-col gap-8 sm:gap-12 lg:gap-16 px-4 sm:px-6">
+        <header className="rounded-3xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-600 to-emerald-700 p-8 sm:p-10 shadow-2xl text-white">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
+            ⚽ Football Chess
           </h1>
-          <p className="mt-6 text-lg text-emerald-900/80">
-            Base inicial lista. Supabase será la fuente de verdad del tablero,
-            mientras que Next.js renderiza el lobby y la partida en tiempo
-            real. Sigue los pasos para conectar todo y lanzar la primera
-            versión jugable.
+          <p className="text-lg sm:text-xl text-emerald-50 mb-6">
+            El juego que combina estrategia de ajedrez con la emoción del fútbol
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {session ? (
               <>
                 <Link
                   href="/lobby"
-                  className="inline-flex items-center rounded-full bg-emerald-600 px-5 py-2 text-white transition hover:bg-emerald-700"
+                  className="inline-flex items-center rounded-full bg-white text-emerald-600 px-6 py-3 font-semibold transition hover:bg-emerald-50 shadow-lg"
                 >
-                  Ir al lobby
+                  🎮 Ir al Lobby
                 </Link>
-                <SignOutButton />
+                <SignOutButton variant="dark" />
               </>
             ) : (
               <Link
                 href="/login"
-                className="inline-flex items-center rounded-full bg-emerald-600 px-5 py-2 text-white transition hover:bg-emerald-700"
+                className="inline-flex items-center rounded-full bg-white text-emerald-600 px-6 py-3 font-semibold transition hover:bg-emerald-50 shadow-lg"
               >
-                Iniciar sesión con Magic Link
+                🔐 Iniciar Sesión
               </Link>
             )}
           </div>
         </header>
 
-        <section className="grid gap-6 md:grid-cols-2">
-          {setupSteps.map((step) => (
-            <article
-              key={step.title}
-              className="group rounded-2xl border border-emerald-100 bg-white/90 p-6 shadow-md transition hover:-translate-y-1 hover:shadow-lg"
-            >
-              <h2 className="text-xl font-semibold text-emerald-950">
-                {step.title}
-              </h2>
-              <p className="mt-3 text-base text-emerald-900/80">
-                {step.description}
-              </p>
-            </article>
-          ))}
+        <section className="rounded-3xl border-2 border-emerald-200 bg-white/95 p-6 sm:p-8 lg:p-10 shadow-xl">
+          <h2 className="text-2xl sm:text-3xl font-bold text-emerald-950 mb-6">
+            📖 Instrucciones del Juego
+          </h2>
+          <div className="grid gap-6 md:grid-cols-2">
+            {gameRules.map((rule, index) => (
+              <article
+                key={index}
+                className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-6 shadow-md hover:shadow-lg transition-shadow"
+              >
+                <h3 className="text-xl font-bold text-emerald-950 mb-3">
+                  {rule.title}
+                </h3>
+                <p className="text-base text-emerald-900/90 whitespace-pre-line leading-relaxed">
+                  {rule.description}
+                </p>
+              </article>
+            ))}
+          </div>
         </section>
 
-        <section className="rounded-3xl border border-sky-100 bg-white/90 p-8 shadow-md">
-          <h2 className="text-2xl font-semibold text-sky-900">
-            Variables requeridas
+        <section className="rounded-3xl border-2 border-sky-200 bg-gradient-to-br from-sky-50 to-white p-6 sm:p-8 lg:p-10 shadow-xl">
+          <h2 className="text-2xl sm:text-3xl font-bold text-sky-950 mb-4">
+            🎮 ¿Cómo Jugar?
           </h2>
-          <p className="mt-4 text-sky-900/80">
-            Crea un archivo `.env.local` con tus claves de Supabase antes de
-            arrancar el servidor local:
-          </p>
-          <pre className="mt-4 rounded-xl bg-slate-950 px-4 py-3 text-sm text-slate-50">
-            NEXT_PUBLIC_SUPABASE_URL=...
-            {"\n"}
-            NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-          </pre>
+          <ol className="space-y-4 text-base sm:text-lg text-sky-900/90">
+            <li className="flex gap-3">
+              <span className="font-bold text-sky-600">1.</span>
+              <span>Inicia sesión o crea una cuenta usando Magic Link.</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-sky-600">2.</span>
+              <span>Ve al lobby para crear una nueva partida o unirte a una existente.</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-sky-600">3.</span>
+              <span>También puedes jugar contra la IA seleccionando "Partida vs IA".</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-sky-600">4.</span>
+              <span>Selecciona una de tus piezas para ver sus movimientos legales.</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-sky-600">5.</span>
+              <span>Haz clic en una casilla válida para mover tu pieza.</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-sky-600">6.</span>
+              <span>¡Marca 3 goles antes que tu oponente para ganar!</span>
+            </li>
+          </ol>
         </section>
       </main>
     </div>

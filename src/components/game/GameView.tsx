@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RealtimePostgresUpdatePayload } from "@supabase/supabase-js";
 import Link from "next/link";
 
@@ -134,7 +134,65 @@ export function GameView({
     return () => window.clearTimeout(timeout);
   }, [feedback, status]);
 
+  // Function to fetch latest game state from Supabase
+  const fetchGameState = useCallback(async () => {
+    try {
+      console.log("[GameView] Fetching latest game state from Supabase...");
+      const { data, error } = await supabase
+        .from("games")
+        .select("game_state, score, status, player_1_id, player_2_id, winner_id")
+        .eq("id", initialGameId)
+        .single();
+
+      if (error) {
+        console.error("[GameView] Error fetching game state:", error);
+        return;
+      }
+
+      if (!data) {
+        console.warn("[GameView] No game data returned from fetch");
+        return;
+      }
+
+      // Type assertion to handle Supabase's type inference
+      const gameData = data as {
+        game_state: GameState | null;
+        score: GameState["score"] | null;
+        status: string;
+        player_1_id: string;
+        player_2_id: string | null;
+        winner_id: string | null;
+      };
+
+      const nextState =
+        (gameData.game_state as GameState | null) ??
+        RuleEngine.createInitialState();
+      const nextScore =
+        (gameData.score as GameState["score"] | null) ??
+        RuleEngine.createInitialState().score;
+
+      console.log("[GameView] Fetched game state:", {
+        turn: nextState.turn,
+        score: nextScore,
+        status: gameData.status,
+        historyLength: nextState.history?.length ?? 0,
+      });
+
+      setGameState(nextState);
+      setScore(nextScore);
+      setStatus(gameData.status);
+      setPlayers({
+        home: gameData.player_1_id,
+        away: gameData.player_2_id,
+      });
+      setWinnerId(gameData.winner_id ?? null);
+    } catch (error) {
+      console.error("[GameView] Exception fetching game state:", error);
+    }
+  }, [initialGameId, supabase]);
+
   useEffect(() => {
+    console.log("[GameView] Setting up Realtime subscription for game:", initialGameId);
     const channel = supabase
       .channel(`${BOARD_CHANNEL_PREFIX}:${initialGameId}`)
       .on(
@@ -146,13 +204,32 @@ export function GameView({
           filter: `id=eq.${initialGameId}`,
         },
         (payload: RealtimePostgresUpdatePayload<Database["public"]["Tables"]["games"]["Row"]>) => {
-          if (!payload.new) return;
+          console.log("[GameView] Realtime update received:", {
+            gameId: initialGameId,
+            hasNew: !!payload.new,
+            status: payload.new?.status,
+            turn: (payload.new?.game_state as GameState | null)?.turn,
+            score: payload.new?.score,
+          });
+          
+          if (!payload.new) {
+            console.warn("[GameView] Realtime update has no payload.new");
+            return;
+          }
+          
           const nextState =
             (payload.new.game_state as GameState | null) ??
             RuleEngine.createInitialState();
           const nextScore =
             (payload.new.score as GameState["score"] | null) ??
             RuleEngine.createInitialState().score;
+
+          console.log("[GameView] Updating local state:", {
+            turn: nextState.turn,
+            score: nextScore,
+            status: payload.new.status,
+            historyLength: nextState.history?.length ?? 0,
+          });
 
           setGameState(nextState);
           setScore(nextScore);
@@ -164,12 +241,47 @@ export function GameView({
           setWinnerId(payload.new.winner_id ?? null);
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("[GameView] Realtime subscription status:", status);
+      });
 
     return () => {
+      console.log("[GameView] Cleaning up Realtime subscription for game:", initialGameId);
       void supabase.removeChannel(channel);
     };
   }, [initialGameId, supabase]);
+
+  // Poll for updates when it's the bot's turn (fallback for Realtime not working with admin updates)
+  useEffect(() => {
+    if (!isBotGame || !botPlayer || status !== "in_progress") return;
+    
+    const isBotTurnNow = gameState.turn === botPlayer;
+
+    if (!isBotTurnNow) {
+      console.log("[GameView] Not bot's turn, stopping polling");
+      return;
+    }
+
+    console.log("[GameView] Bot's turn detected, starting polling for updates...");
+    
+    // Initial fetch after a short delay to allow bot to process
+    const initialTimeout = setTimeout(() => {
+      console.log("[GameView] Initial fetch after bot turn...");
+      void fetchGameState();
+    }, 1000);
+    
+    // Poll every 500ms while it's the bot's turn
+    const pollInterval = setInterval(() => {
+      console.log("[GameView] Polling for bot move update...");
+      void fetchGameState();
+    }, 500);
+
+    return () => {
+      console.log("[GameView] Cleaning up polling interval and timeout");
+      clearTimeout(initialTimeout);
+      clearInterval(pollInterval);
+    };
+  }, [isBotGame, botPlayer, status, gameState.turn, fetchGameState]);
 
   const currentTurnLabel =
     gameState.turn === playerRole
@@ -362,12 +474,28 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   })();
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10">
+    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-7xl">
       <section className="flex flex-col gap-4 rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-6 text-white shadow-2xl backdrop-blur-sm md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">
-            Partido #{initialGameId.slice(0, 8)}
-          </h1>
+        <div className="flex-1">
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">
+              Partido #{initialGameId.slice(0, 8)}
+            </h1>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/lobby"
+                className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
+              >
+                ← Lobby
+              </Link>
+              <Link
+                href="/"
+                className="rounded-full border-2 border-white/30 bg-white/10 px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50"
+              >
+                🏠 Home
+              </Link>
+            </div>
+          </div>
           <p className="mt-2 text-base font-medium text-emerald-50">
             {status === "finished"
               ? computedWinnerLabel
@@ -407,14 +535,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             </span>
           </div>
         </div>
-        {status === "finished" && (
-          <Link
-            href="/lobby"
-            className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-6 py-3 text-base font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
-          >
-            ← Volver al lobby
-          </Link>
-        )}
       </section>
 
       {status === "waiting" && (
@@ -446,20 +566,20 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="w-full overflow-x-auto -mx-2 sm:mx-0 px-2 sm:px-0">
         <div className="mx-auto inline-block border border-white/20 shadow-2xl">
           {/* Column labels (A-H) */}
           <div
             className="grid border-b border-white/20"
             style={{
-              gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(0, 4rem))`,
+              gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(2.5rem, 5rem))`,
             }}
           >
-            <div className="w-8"></div>
+            <div className="w-6 sm:w-8 md:w-10 lg:w-12"></div>
             {colIndices.map((actualCol) => (
               <div
                 key={`col-label-${actualCol}`}
-                className="flex h-8 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-sm font-bold text-emerald-100 shadow-sm"
+                className="flex h-6 sm:h-7 md:h-8 lg:h-9 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base font-bold text-emerald-100 shadow-sm"
               >
                 {getColumnLabelForDisplay(actualCol, playerRole)}
               </div>
@@ -472,11 +592,11 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               key={`row-${actualRow}`}
               className="grid border-b border-white/20 last:border-b-0"
               style={{
-                gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(0, 4rem))`,
+                gridTemplateColumns: `auto repeat(${BOARD_COLS}, minmax(2.5rem, 5rem))`,
               }}
             >
               {/* Row label (1-12) */}
-              <div className="flex w-8 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-sm font-bold text-emerald-100 shadow-sm">
+              <div className="flex w-6 sm:w-8 md:w-10 lg:w-12 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base font-bold text-emerald-100 shadow-sm">
                 {getRowLabelForDisplay(actualRow, playerRole)}
               </div>
 
@@ -516,7 +636,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     type="button"
                     onClick={() => handleCellClick(uiRow, uiCol)}
                     className={[
-                      "aspect-square flex h-16 w-16 items-center justify-center border-l border-t border-white/10 text-lg font-semibold transition relative",
+                      "aspect-square flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
+                      "h-10 w-10 sm:h-12 sm:w-12 md:h-14 md:w-14 lg:h-16 lg:w-16 xl:h-20 xl:w-20",
                       isGoalSquare
                         ? "border-yellow-400/60 bg-yellow-500/20"
                         : "border-white/10",
@@ -524,7 +645,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         ((actualRow + actualCol) % 2 === 0
                           ? "bg-emerald-900/50"
                           : "bg-emerald-800/50"),
-                      isSelected ? "ring-4 ring-emerald-300/60 z-10" : "",
+                      isSelected ? "ring-2 sm:ring-3 md:ring-4 ring-emerald-300/60 z-10" : "",
                       moveOption && !isGoalSquare ? "bg-emerald-400/30" : "",
                       isLastTo && !isGoalSquare
                         ? "bg-amber-500/40"
@@ -541,13 +662,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     }
                   >
                     {/* Position label (small, top-left corner) - from player's perspective */}
-                    <span className="absolute left-1 top-1 text-[0.65rem] font-mono font-bold text-white/80 bg-black/40 px-1 rounded">
+                    <span className="absolute left-0.5 top-0.5 sm:left-1 sm:top-1 text-[0.5rem] sm:text-[0.65rem] font-mono font-bold text-white/80 bg-black/40 px-0.5 sm:px-1 rounded">
                       {positionLabel}
                     </span>
 
                     {/* Goal icon */}
                     {isGoalSquare && (
-                      <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-yellow-300/80">
+                      <span className="absolute inset-0 flex items-center justify-center text-[0.625rem] sm:text-xs font-bold text-yellow-300/80">
                         🥅
                       </span>
                     )}
@@ -555,11 +676,15 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     {/* Piece */}
                     {cell && (
                       <span
-                        className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full border text-base ${cell.owner === playerRole ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" : "border-sky-200 bg-sky-500/50 text-sky-950"} ${
+                        className={`relative z-10 flex items-center justify-center rounded-full border ${
+                          cell.owner === playerRole 
+                            ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
+                            : "border-sky-200 bg-sky-500/50 text-sky-950"
+                        } ${
                           highlightStartingPiece
-                            ? "shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
+                            ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
                             : ""
-                        }`}
+                        } h-6 w-6 text-xs sm:h-7 sm:w-7 sm:text-sm md:h-8 md:w-8 md:text-base lg:h-10 lg:w-10 lg:text-lg xl:h-12 xl:w-12 xl:text-xl`}
                       >
                         {pieceInitials[cell.type]}
                       </span>
