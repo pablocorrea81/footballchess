@@ -40,6 +40,10 @@ type GameViewProps = {
 
 const BOARD_CHANNEL_PREFIX = "game";
 
+// Feature flag: Enable/disable "¡Tu turno!" alert
+// Set to true to show the alert when it's the player's turn
+const ENABLE_YOUR_TURN_ALERT = false;
+
 const pieceInitials = {
   carrilero: "C",
   defensa: "D",
@@ -363,8 +367,9 @@ export function GameView({
         }
       }
       
-      // Update history length ref
-      previousHistoryLengthRef.current = historyLength;
+      // Don't update previousHistoryLengthRef here - let the useEffect that monitors gameState.history
+      // handle it. This ensures goal detection works correctly for both local and remote moves (bot, other player)
+      // The useEffect will detect the change when gameState.history updates and trigger goal celebration
 
       // Play start sound if game just started
       if (isGameStart) {
@@ -558,8 +563,9 @@ export function GameView({
             }
           }
           
-          // Update history length ref
-          previousHistoryLengthRef.current = historyLength;
+          // Don't update previousHistoryLengthRef here - let the useEffect that monitors gameState.history
+          // handle it. This ensures goal detection works correctly for both local and remote moves (bot, other player)
+          // The useEffect will detect the change when gameState.history updates and trigger goal celebration
 
           // Play start sound when game begins
           if (isGameStart && !hasPlayedStartSound) {
@@ -570,7 +576,7 @@ export function GameView({
           }
           
           // Goal detection and resume sound are handled by the useEffect that monitors gameState.history
-          // This avoids duplicate triggers
+          // This ensures it works correctly for both local moves (player) and remote moves (bot, other player)
           
           // Always fetch player names after Realtime update to ensure they're up to date
           // Use a small delay to avoid race conditions
@@ -1161,9 +1167,16 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       previousTurn !== currentTurn &&
       previousTurn === opponentRole
     ) {
-      // Turn changed from opponent to player - show alert and start timeout
-      console.log("[GameView] Turn changed to player - showing '¡Tu turno!' alert");
-      setShowYourTurnAlert(true);
+      // Turn changed from opponent to player
+      // Show alert only if ENABLE_YOUR_TURN_ALERT is true
+      if (ENABLE_YOUR_TURN_ALERT) {
+        console.log("[GameView] Turn changed to player - showing '¡Tu turno!' alert");
+        setShowYourTurnAlert(true);
+        // Hide alert after 3 seconds
+        const timer = setTimeout(() => {
+          setShowYourTurnAlert(false);
+        }, 3000);
+      }
       // Hide timeout alert if it was showing
       setShowTimeoutAlert(false);
       timeoutJustExecutedRef.current = false;
@@ -1180,15 +1193,15 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         // This ensures synchronization across clients
       }
       
-      // Hide alert after 3 seconds
-      const timer = setTimeout(() => {
-        setShowYourTurnAlert(false);
-      }, 3000);
-      
       // Update previous turn ref
       previousTurnRef.current = currentTurn;
       
-      return () => clearTimeout(timer);
+      if (ENABLE_YOUR_TURN_ALERT) {
+        return () => {
+          // Cleanup timer if alert was enabled
+          // Timer cleanup is handled by the setTimeout above
+        };
+      }
     } else {
       // Update previous turn ref if turn changed but not to player
       if (previousTurn !== currentTurn) {
@@ -1369,8 +1382,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         />
       )}
 
-      {/* "¡Tu turno!" Alert */}
-      {showYourTurnAlert && canAct && status === "in_progress" && (
+      {/* "¡Tu turno!" Alert - Only shown if ENABLE_YOUR_TURN_ALERT is true */}
+      {ENABLE_YOUR_TURN_ALERT && showYourTurnAlert && canAct && status === "in_progress" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
           <div className="animate-bounce-in rounded-2xl border-3 border-yellow-400 bg-gradient-to-br from-yellow-500 to-yellow-600 px-4 md:px-6 py-3 md:py-4 shadow-2xl backdrop-blur-sm pointer-events-auto">
             <div className="text-center">
