@@ -119,6 +119,13 @@ export function GameView({
   const [pendingMove, setPendingMove] = useState(false);
   const [showGoalCelebration, setShowGoalCelebration] = useState(false);
   const [goalScorer, setGoalScorer] = useState<string | null>(null);
+  
+  // Stable callback for goal celebration completion
+  const handleGoalComplete = useCallback(() => {
+    setShowGoalCelebration(false);
+    setGoalScorer(null);
+  }, []);
+  
   const [hasPlayedStartSound, setHasPlayedStartSound] = useState(false);
   const [previousScore, setPreviousScore] = useState<GameState["score"]>(initialScore ?? initialState.score);
   const [showYourTurnAlert, setShowYourTurnAlert] = useState(false);
@@ -1374,11 +1381,9 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
       {showGoalCelebration && goalScorer && (
         <GoalCelebration
+          key={`goal-${goalScorer}-${gameState.history?.length ?? 0}`}
           playerName={goalScorer}
-          onComplete={() => {
-            setShowGoalCelebration(false);
-            setGoalScorer(null);
-          }}
+          onComplete={handleGoalComplete}
         />
       )}
 
