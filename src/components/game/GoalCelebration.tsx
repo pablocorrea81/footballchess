@@ -8,22 +8,32 @@ type GoalCelebrationProps = {
 };
 
 export function GoalCelebration({ onComplete, playerName }: GoalCelebrationProps) {
-  const [show, setShow] = useState(true);
+  const [isVisible, setIsVisible] = useState(true);
+  const [shouldRender, setShouldRender] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShow(false);
-      setTimeout(onComplete, 500);
+    // Automatically hide celebration after 3 seconds
+    const hideTimer = setTimeout(() => {
+      setIsVisible(false);
     }, 3000);
 
-    return () => clearTimeout(timer);
+    // Unmount component and call onComplete after fade-out (3 seconds + 500ms)
+    const completeTimer = setTimeout(() => {
+      setShouldRender(false);
+      onComplete();
+    }, 3500);
+
+    return () => {
+      clearTimeout(hideTimer);
+      clearTimeout(completeTimer);
+    };
   }, [onComplete]);
 
-  if (!show) return null;
+  if (!shouldRender) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="relative flex flex-col items-center justify-center gap-8 p-12 rounded-3xl bg-gradient-to-br from-emerald-600 via-yellow-500 to-emerald-600 shadow-2xl animate-bounceIn">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-500 ${isVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+      <div className={`relative flex flex-col items-center justify-center gap-8 p-12 rounded-3xl bg-gradient-to-br from-emerald-600 via-yellow-500 to-emerald-600 shadow-2xl transition-all duration-500 ${isVisible ? 'opacity-100 scale-100 animate-bounceIn' : 'opacity-0 scale-95'}`}>
         {/* Animated soccer ball */}
         <div className="relative">
           <div className="text-9xl sm:text-[12rem] md:text-[15rem] animate-spin-slow">

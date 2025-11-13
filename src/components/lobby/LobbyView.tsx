@@ -313,7 +313,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
             ) : (
               <button
                 onClick={() => setShowDifficultySelector(true)}
-                disabled={botLoading || isPending || loading}
+                disabled={botLoading || isPending || loading || showGameSettings}
                 className="rounded-full border border-sky-300/50 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-200 hover:text-white disabled:cursor-not-allowed disabled:border-sky-100/30 disabled:text-sky-100/40"
               >
                 {botLoading ? "Invocando IA..." : "🤖 Partida vs IA"}
@@ -372,7 +372,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
 
                 <button
                   onClick={createGame}
-                  disabled={loading || isPending || botLoading}
+                  disabled={loading || isPending || botLoading || showDifficultySelector}
                   className="mt-2 rounded-full border-2 border-emerald-300/50 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50 disabled:opacity-60"
                 >
                   {loading ? "Creando..." : `Crear partida (${selectedWinningScore} ${selectedWinningScore === 1 ? "gol" : "goles"}, ${selectedTimeoutEnabled ? "con tiempo" : "sin tiempo"})`}
@@ -381,7 +381,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
             ) : (
               <button
                 onClick={() => setShowGameSettings(true)}
-                disabled={loading || isPending || botLoading}
+                disabled={loading || isPending || botLoading || showDifficultySelector}
                 className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
               >
                 {loading ? "Procesando..." : "Crear partida"}
