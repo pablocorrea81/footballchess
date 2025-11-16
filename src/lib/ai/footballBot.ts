@@ -209,10 +209,23 @@ const rateMove = (
   difficulty: BotDifficulty,
   lookAhead: boolean = false,
 ): { score: number; outcome: ReturnType<typeof RuleEngine.applyMove> } => {
+  // Ensure state turn matches move player for simulation
+  // This is important because we're rating moves for a specific player
   const simulationState: GameState = {
     ...state,
     turn: move.player,
   };
+  
+  // Validate that the move player matches the state turn (after setting it)
+  if (simulationState.turn !== move.player) {
+    console.error("[bot] ERROR in rateMove: State turn doesn't match move player after setting!", {
+      stateTurn: simulationState.turn,
+      movePlayer: move.player,
+      originalStateTurn: state.turn,
+    });
+    // This should never happen, but if it does, fix it
+    simulationState.turn = move.player;
+  }
 
   const outcome = RuleEngine.applyMove(simulationState, move);
   const goal = outcome.goal?.scoringPlayer === move.player;
@@ -807,6 +820,16 @@ export const executeBotTurnIfNeeded = async (
     }
 
     console.log("[bot] ✅ Bot's turn confirmed! Proceeding with move selection...");
+    
+    // Ensure state turn matches bot player before selecting move
+    if (currentState.turn !== botPlayer) {
+      console.warn("[bot] WARNING: State turn doesn't match bot player, fixing it...", {
+        stateTurn: currentState.turn,
+        botPlayer: botPlayer,
+      });
+      currentState.turn = botPlayer;
+    }
+    
     const difficulty =
       (game.bot_difficulty as BotDifficulty | null) ??
       FOOTBALL_BOT_DEFAULT_DIFFICULTY;
@@ -851,6 +874,23 @@ export const executeBotTurnIfNeeded = async (
     }
 
     console.log("[bot] Move selected:", JSON.stringify(move));
+    console.log("[bot] Verifying state before applyMove:", {
+      stateTurn: currentState.turn,
+      movePlayer: move.player,
+      match: currentState.turn === move.player,
+    });
+    
+    // Ensure state turn matches move player before applying
+    if (currentState.turn !== move.player) {
+      console.error("[bot] ERROR: State turn doesn't match move player!", {
+        stateTurn: currentState.turn,
+        movePlayer: move.player,
+      });
+      // Fix the state turn to match the move player
+      currentState.turn = move.player;
+      console.log("[bot] Fixed state turn to match move player");
+    }
+    
     const outcome = RuleEngine.applyMove(currentState, move);
     let nextStatus = game.status;
     let winnerId = game.winner_id;

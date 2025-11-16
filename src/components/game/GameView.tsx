@@ -345,13 +345,7 @@ export function GameView({
       setWinnerId(newWinnerId);
       setPreviousScore(nextScore);
       
-      // Update previous status and winner_id refs for victory detection
-      if (previousStatusRef.current !== gameData.status) {
-        previousStatusRef.current = gameData.status;
-      }
-      if (previousWinnerIdRef.current !== newWinnerId) {
-        previousWinnerIdRef.current = newWinnerId;
-      }
+      // Don't update refs here - let the useEffect handle it to properly detect transitions
       
       // Update turn_started_at if available
       // Only use turn_started_at if it's the current player's turn
@@ -541,13 +535,7 @@ export function GameView({
           setWinnerId(newWinnerId);
           setPreviousScore(nextScore);
           
-          // Update previous status and winner_id refs for victory detection
-          if (previousStatusRef.current !== payload.new.status) {
-            previousStatusRef.current = payload.new.status;
-          }
-          if (previousWinnerIdRef.current !== newWinnerId) {
-            previousWinnerIdRef.current = newWinnerId;
-          }
+          // Don't update refs here - let the useEffect handle it to properly detect transitions
           
           // Update turn_started_at from Realtime update
           // Only use turn_started_at if it's the current player's turn
@@ -993,46 +981,41 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     // Check if game just finished and player won
     const gameJustFinished = currentStatus === "finished" && previousStatus !== "finished";
     
-    if (!gameJustFinished) {
-      // Game hasn't finished yet, just update refs
-      if (previousStatus !== currentStatus) {
-        previousStatusRef.current = currentStatus;
-      }
-      if (previousWinnerId !== currentWinnerId) {
-        previousWinnerIdRef.current = currentWinnerId;
-      }
-      return;
-    }
+    // Also check if winner_id just changed to profileId (in case status was already finished)
+    const winnerJustChanged = currentWinnerId === profileId && previousWinnerId !== profileId && currentStatus === "finished";
     
-    // Game just finished - determine if player won
+    // Determine if player won
     // For both multiplayer and bot games: if winner_id === profileId, the player won
-    // For bot games: if winner_id is null, the bot won (player lost)
-    // For multiplayer games: if winner_id !== profileId, the opponent won (player lost)
     const playerWon = currentWinnerId === profileId;
     
-    if (playerWon) {
+    // Show victory alert if game just finished and player won, or if winner just changed to player
+    if ((gameJustFinished || winnerJustChanged) && playerWon && !showVictoryAlert) {
       console.log("[GameView] Player won the game! Showing victory alert", {
         currentStatus,
         previousStatus,
         currentWinnerId,
+        previousWinnerId,
         profileId,
         isBotGame,
         playerWon,
+        gameJustFinished,
+        winnerJustChanged,
       });
       setShowVictoryAlert(true);
       playSound("goal"); // Use goal sound for victory
       
-      // Hide alert after 5 seconds
+      // Hide alert after 3 seconds
       const timer = setTimeout(() => {
         setShowVictoryAlert(false);
-      }, 5000);
+      }, 3000);
       
-      // Redirect to lobby after 5 seconds
+      // Redirect to lobby after 3 seconds
       const redirectTimer = setTimeout(() => {
         console.log("[GameView] Redirecting to lobby after victory");
         router.push("/lobby");
-      }, 5000);
+      }, 3000);
       
+      // Update refs after showing alert
       previousStatusRef.current = currentStatus;
       previousWinnerIdRef.current = currentWinnerId;
       
@@ -1040,25 +1023,16 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         clearTimeout(timer);
         clearTimeout(redirectTimer);
       };
-    } else {
-      // Player didn't win (or game finished but player lost)
-      console.log("[GameView] Game finished but player didn't win", {
-        currentStatus,
-        currentWinnerId,
-        profileId,
-        isBotGame,
-        playerWon,
-      });
-      
-      // Update refs
-      if (previousStatus !== currentStatus) {
-        previousStatusRef.current = currentStatus;
-      }
-      if (previousWinnerId !== currentWinnerId) {
-        previousWinnerIdRef.current = currentWinnerId;
-      }
     }
-  }, [status, winnerId, profileId, playSound, isBotGame, router]);
+    
+    // Update refs if status or winner changed (but don't show alert again if already shown)
+    if (previousStatus !== currentStatus) {
+      previousStatusRef.current = currentStatus;
+    }
+    if (previousWinnerId !== currentWinnerId) {
+      previousWinnerIdRef.current = currentWinnerId;
+    }
+  }, [status, winnerId, profileId, playSound, isBotGame, router, showVictoryAlert]);
 
   // Function to handle surrender
   const handleSurrender = useCallback(async () => {
@@ -1400,7 +1374,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [canAct, status, gameState.turn, playerRole]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 md:h-screen md:max-h-screen md:max-w-none md:px-4 md:py-4 md:overflow-hidden lg:px-6 lg:py-6">
+    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 md:h-screen md:max-h-screen md:max-w-none md:px-4 md:py-4 md:overflow-hidden lg:px-6 lg:py-6 md:flex md:flex-col">
       {showGoalCelebration && goalScorer && (
         <GoalCelebration
           key={`goal-${goalScorer}-${gameState.history?.length ?? 0}`}
@@ -1510,7 +1484,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
-      <div className="grid grid-cols-1 md:grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_400px] gap-4 md:gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
+      <div className="grid grid-cols-1 md:grid md:grid-cols-[1fr_420px] lg:grid-cols-[1fr_450px] xl:grid-cols-[1fr_480px] gap-4 md:gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
@@ -1676,7 +1650,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 : ""
                             } ${
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
-                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
+                            } w-[32%] h-[32%] sm:w-[35%] sm:h-[35%] md:w-[38%] md:h-[38%] text-xs sm:text-sm md:text-base lg:text-lg`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
@@ -1721,7 +1695,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
 
         {/* Header and Info panel - Right side on all screen sizes */}
-        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:h-full md:overflow-y-auto md:overflow-x-hidden">
+        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:h-full md:min-h-0 md:overflow-y-auto md:overflow-x-hidden md:pr-2">
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
