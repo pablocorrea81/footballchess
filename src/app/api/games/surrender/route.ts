@@ -94,12 +94,13 @@ export async function POST(request: Request) {
       isBotGame: game.is_bot_game,
     });
 
-    // Update game: set status to finished and winner_id
+    // Update game: set status to finished, winner_id, and finished_at
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: updateError } = await (supabaseAdmin.from("games") as any)
       .update({
         status: "finished",
         winner_id: winnerId,
+        finished_at: new Date().toISOString(),
       })
       .eq("id", gameId)
       .eq("status", "in_progress");

@@ -735,6 +735,12 @@ export const executeBotTurnIfNeeded = async (
         console.log("[bot] Turn changed from", currentState.turn, "to", outcome.nextState.turn, "- updating turn_started_at");
       }
       
+      // Set finished_at when game finishes
+      if (nextStatus === "finished") {
+        updatePayload.finished_at = new Date().toISOString();
+        console.log("[bot] Game finished, setting finished_at:", updatePayload.finished_at);
+      }
+      
       console.log("[bot] Updating game with payload:", JSON.stringify({
         status: nextStatus,
         winner_id: winnerId,

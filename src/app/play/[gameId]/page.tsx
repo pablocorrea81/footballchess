@@ -47,6 +47,7 @@ const GAME_SELECT = `
         winning_score,
         timeout_enabled,
         turn_started_at,
+        finished_at,
         player_one:profiles!games_player_1_id_fkey(username, avatar_url),
         player_two:profiles!games_player_2_id_fkey(username, avatar_url)
       `;

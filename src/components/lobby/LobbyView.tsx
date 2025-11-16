@@ -82,6 +82,7 @@ const GAME_SELECT = `
   invite_code,
   winning_score,
   timeout_enabled,
+  finished_at,
   player1:profiles!games_player_1_id_fkey(username, avatar_url),
   player2:profiles!games_player_2_id_fkey(username, avatar_url)
 `;

@@ -84,6 +84,12 @@ export async function POST(request: Request) {
     // Check if the update is trying to set status to "finished"
     const isFinishingGame = updatePayload.status === "finished";
     
+    // If finishing the game, set finished_at to current timestamp
+    if (isFinishingGame && !updatePayload.finished_at) {
+      updatePayload.finished_at = new Date().toISOString();
+      console.log("[api/games/update] Game finishing, setting finished_at:", updatePayload.finished_at);
+    }
+    
     // Use admin client to update, bypassing RLS
     // If we're finishing the game, we need to allow the update even if status is already "finished"
     // (this shouldn't happen, but we handle it)

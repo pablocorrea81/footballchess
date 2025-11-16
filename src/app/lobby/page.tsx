@@ -80,6 +80,7 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       turn_started_at,
       winning_score,
       timeout_enabled,
+      finished_at,
       player1:profiles!games_player_1_id_fkey(username, avatar_url),
       player2:profiles!games_player_2_id_fkey(username, avatar_url)`,
     )
@@ -123,6 +124,12 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
                 </div>
               )}
               <span>{profile?.username ?? "Jugador"}</span>
+            </Link>
+            <Link
+              href="/stats"
+              className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100 transition hover:border-emerald-200 hover:text-white"
+            >
+              📊 Estadísticas
             </Link>
             <Link
               href="/"

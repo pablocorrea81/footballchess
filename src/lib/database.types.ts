@@ -53,6 +53,7 @@ export interface Database {
           turn_started_at: string | null;
           winning_score: number | null;
           timeout_enabled: boolean | null;
+          finished_at: string | null;
         };
         Insert: {
           id?: string;
@@ -71,6 +72,7 @@ export interface Database {
           turn_started_at?: string | null;
           winning_score?: number | null;
           timeout_enabled?: boolean | null;
+          finished_at?: string | null;
         };
         Update: {
           id?: string;
@@ -89,6 +91,7 @@ export interface Database {
           turn_started_at?: string | null;
           winning_score?: number | null;
           timeout_enabled?: boolean | null;
+          finished_at?: string | null;
         };
       };
     };
