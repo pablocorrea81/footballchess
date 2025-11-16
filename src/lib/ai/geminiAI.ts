@@ -18,14 +18,27 @@ const getGeminiApiKey = (): string | null => {
   // In local development, they're in .env.local
   if (typeof process !== 'undefined' && process.env) {
     // Prioritize GEMINI_API_KEY (server-side only, more secure)
+    const hasGeminiKey = !!process.env.GEMINI_API_KEY;
+    const hasPublicKey = !!process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || null;
     
-    // Debug logging
+    // Enhanced debug logging
+    console.log(`[Gemini] Environment variable check:`);
+    console.log(`  - process.env exists: ${!!process.env}`);
+    console.log(`  - GEMINI_API_KEY exists: ${hasGeminiKey}`);
+    console.log(`  - NEXT_PUBLIC_GEMINI_API_KEY exists: ${hasPublicKey}`);
+    if (hasGeminiKey) {
+      console.log(`  - GEMINI_API_KEY length: ${process.env.GEMINI_API_KEY?.length || 0}`);
+      console.log(`  - GEMINI_API_KEY starts with: ${process.env.GEMINI_API_KEY?.substring(0, 5) || 'N/A'}`);
+    }
+    
     if (apiKey) {
-      const source = process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : 'NEXT_PUBLIC_GEMINI_API_KEY';
-      console.log(`[Gemini] API key loaded from ${source} (${apiKey.substring(0, 10)}...)`);
+      const source = hasGeminiKey ? 'GEMINI_API_KEY' : 'NEXT_PUBLIC_GEMINI_API_KEY';
+      console.log(`[Gemini] ✅ API key loaded from ${source} (${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)})`);
     } else {
-      console.warn(`[Gemini] No API key found in process.env - GEMINI_API_KEY: ${!!process.env.GEMINI_API_KEY}, NEXT_PUBLIC_GEMINI_API_KEY: ${!!process.env.NEXT_PUBLIC_GEMINI_API_KEY}`);
+      console.warn(`[Gemini] ⚠️ No API key found in process.env`);
+      console.warn(`[Gemini] In Vercel, make sure GEMINI_API_KEY is set in Environment Variables`);
+      console.warn(`[Gemini] Go to: Settings → Environment Variables → Add GEMINI_API_KEY`);
     }
     
     return apiKey;
