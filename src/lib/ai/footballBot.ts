@@ -50,8 +50,24 @@ const canOpponentScoreNextMove = (state: GameState, player: PlayerId): boolean =
   const opponentMoves = RuleEngine.getLegalMoves(state, opponentPlayer);
   
   // Check if any opponent move would result in a goal
+  // CRITICAL: Create a simulation state with opponent's turn to apply their moves
+  const simulationState: GameState = {
+    ...state,
+    turn: opponentPlayer,
+  };
+  
   for (const oppMove of opponentMoves) {
-    const outcome = RuleEngine.applyMove(state, oppMove);
+    // Ensure move player matches simulation state turn
+    if (oppMove.player !== simulationState.turn) {
+      console.error("[bot] ERROR in canOpponentScoreNextMove: Move player doesn't match simulation state turn!", {
+        movePlayer: oppMove.player,
+        simulationStateTurn: simulationState.turn,
+        opponentPlayer: opponentPlayer,
+      });
+      continue; // Skip this move
+    }
+    
+    const outcome = RuleEngine.applyMove(simulationState, oppMove);
     if (outcome.goal?.scoringPlayer === opponentPlayer) {
       return true; // Opponent can score on their next move!
     }
@@ -74,9 +90,25 @@ const defensiveThreat = (state: GameState, player: PlayerId): number => {
   const opponentPlayer = opponent(player);
   const opponentMoves = RuleEngine.getLegalMoves(state, opponentPlayer);
   
+  // CRITICAL: Create a simulation state with opponent's turn to apply their moves
+  const simulationState: GameState = {
+    ...state,
+    turn: opponentPlayer,
+  };
+  
   // Check if any opponent move can reach our goal row in goal columns
   for (const oppMove of opponentMoves) {
-    const outcome = RuleEngine.applyMove(state, oppMove);
+    // Ensure move player matches simulation state turn
+    if (oppMove.player !== simulationState.turn) {
+      console.error("[bot] ERROR in defensiveThreat: Move player doesn't match simulation state turn!", {
+        movePlayer: oppMove.player,
+        simulationStateTurn: simulationState.turn,
+        opponentPlayer: opponentPlayer,
+      });
+      continue; // Skip this move
+    }
+    
+    const outcome = RuleEngine.applyMove(simulationState, oppMove);
     // Check if move gets opponent piece to goal position
     if (oppMove.to.row === goalRow && GOAL_COLS.includes(oppMove.to.col)) {
       const piece = state.board[oppMove.from.row]?.[oppMove.from.col];
