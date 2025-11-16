@@ -1521,7 +1521,14 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start">
+      <div 
+        className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start transition-transform duration-200"
+        style={{
+          transform: `scale(${boardZoom})`,
+          transformOrigin: "top center",
+          minWidth: boardZoom !== 1 ? `${100 / boardZoom}%` : "100%",
+        }}
+      >
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
@@ -1571,18 +1578,9 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             {Math.round(boardZoom * 100)}%
           </div>
           <div 
-            className="flex items-center justify-center"
-            style={{
-              transform: `scale(${boardZoom})`,
-              transformOrigin: "center center",
-              minWidth: boardZoom !== 1 ? `${100 / boardZoom}%` : "100%",
-              minHeight: boardZoom !== 1 ? `${100 / boardZoom}%` : "auto",
-            }}
+            id="game-board-container"
+            className="w-full border border-white/20 shadow-2xl"
           >
-            <div 
-              id="game-board-container"
-              className="w-full border border-white/20 shadow-2xl transition-transform duration-200"
-            >
             {/* Column labels (A-H) */}
             <div
               className="grid border-b border-white/20 w-full"
@@ -1774,8 +1772,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               );
             })}
           </div>
-            </div>
-          </div>
+        </div>
 
         {/* Header and Info panel - Right side on all screen sizes */}
         <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2">
@@ -2118,6 +2115,56 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               validan localmente con la lógica oficial y se sincronizan en Supabase.
               {status === "finished" ? " Esta partida ya finalizó." : ""}
             </p>
+          </div>
+          
+          {/* Zoom controls (mobile only) */}
+          <div 
+            className="flex md:hidden items-center justify-center gap-3 pt-2 border-t border-white/20 mt-4"
+            style={{
+              transform: `scale(${1 / boardZoom})`,
+              transformOrigin: "center center",
+            }}
+          >
+            <span className="text-xs text-emerald-200 font-semibold">Zoom:</span>
+            <button
+              onClick={() => {
+                const newZoom = Math.max(0.5, boardZoom - 0.1);
+                setBoardZoom(newZoom);
+                localStorage.setItem("boardZoom", newZoom.toString());
+              }}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors"
+              title="Reducir zoom"
+              aria-label="Reducir zoom"
+            >
+              −
+            </button>
+            <span className="text-sm text-emerald-100 font-semibold min-w-[50px] text-center">
+              {Math.round(boardZoom * 100)}%
+            </span>
+            <button
+              onClick={() => {
+                const newZoom = 1.0;
+                setBoardZoom(newZoom);
+                localStorage.setItem("boardZoom", newZoom.toString());
+              }}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg border-2 border-emerald-400/70 transition-colors"
+              title="Restablecer zoom"
+              aria-label="Restablecer zoom"
+            >
+              ⌂
+            </button>
+            <button
+              onClick={() => {
+                const newZoom = Math.min(2.0, boardZoom + 0.1);
+                setBoardZoom(newZoom);
+                localStorage.setItem("boardZoom", newZoom.toString());
+              }}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors"
+              title="Aumentar zoom"
+              aria-label="Aumentar zoom"
+            >
+              +
+            </button>
           </div>
         </div>
       </div>
