@@ -96,7 +96,7 @@ export function GoalCelebration({ onComplete, playerName }: GoalCelebrationProps
           </div>
         </div>
 
-        {/* Player name */}
+        {/* Team name */}
         <div className="text-3xl sm:text-4xl md:text-5xl font-bold text-white text-center drop-shadow-lg">
           ¡Gol de {playerName}!
         </div>
