@@ -1400,7 +1400,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [canAct, status, gameState.turn, playerRole]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
+    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 md:h-screen md:max-h-screen md:max-w-none md:px-4 md:py-4 md:overflow-hidden lg:px-6 lg:py-6">
       {showGoalCelebration && goalScorer && (
         <GoalCelebration
           key={`goal-${goalScorer}-${gameState.history?.length ?? 0}`}
@@ -1510,15 +1510,22 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid md:grid-cols-[1fr_380px] lg:grid-cols-[1fr_400px] gap-4 md:gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
-          className="w-full overflow-x-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start"
+          className="w-full overflow-x-auto order-1 md:order-1 md:h-full md:flex md:items-center md:justify-center md:min-h-0 md:min-w-0 md:overflow-hidden"
         >
           <div 
             id="game-board-container"
-            className="w-full border border-white/20 shadow-2xl"
+            className="w-full border border-white/20 shadow-2xl md:mx-auto md:my-auto"
+            style={{
+              aspectRatio: `${(BOARD_COLS + 1)} / ${(BOARD_ROWS + 1)}`,
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: 'auto',
+              height: 'auto',
+            }}
           >
             {/* Column labels (A-H) */}
             <div
@@ -1714,7 +1721,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
 
         {/* Header and Info panel - Right side on all screen sizes */}
-        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:sticky md:top-6 md:self-start md:max-h-[calc(100vh-3rem)] md:overflow-y-auto">
+        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:h-full md:overflow-y-auto md:overflow-x-hidden">
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}

@@ -44,12 +44,62 @@ const positionalBonus = (to: Move["to"], player: PlayerId, pieceType?: string): 
   return Math.max(0, 15 - distance) + columnBonus + centerBonus + forwardBonus;
 };
 
+// Check if opponent can score a goal in their next move (CRITICAL threat)
+const canOpponentScoreNextMove = (state: GameState, player: PlayerId): boolean => {
+  const opponentPlayer = opponent(player);
+  const opponentMoves = RuleEngine.getLegalMoves(state, opponentPlayer);
+  
+  // Check if any opponent move would result in a goal
+  for (const oppMove of opponentMoves) {
+    const outcome = RuleEngine.applyMove(state, oppMove);
+    if (outcome.goal?.scoringPlayer === opponentPlayer) {
+      return true; // Opponent can score on their next move!
+    }
+  }
+  
+  return false;
+};
+
 // Evaluate defensive threat (opponent pieces threatening our goal)
 const defensiveThreat = (state: GameState, player: PlayerId): number => {
   const goalRow = goalRowForPlayer(player);
   let threatScore = 0;
   
+  // CRITICAL: If opponent can score next move, return maximum threat score
+  if (canOpponentScoreNextMove(state, player)) {
+    return 100000; // Maximum threat - must be blocked!
+  }
+  
   // Check for opponent pieces near our goal
+  const opponentPlayer = opponent(player);
+  const opponentMoves = RuleEngine.getLegalMoves(state, opponentPlayer);
+  
+  // Check if any opponent move can reach our goal row in goal columns
+  for (const oppMove of opponentMoves) {
+    const outcome = RuleEngine.applyMove(state, oppMove);
+    // Check if move gets opponent piece to goal position
+    if (oppMove.to.row === goalRow && GOAL_COLS.includes(oppMove.to.col)) {
+      const piece = state.board[oppMove.from.row]?.[oppMove.from.col];
+      if (piece && piece.type === "delantero") {
+        // Forward in goal position - extremely dangerous!
+        threatScore += 5000; // Very high threat
+      } else {
+        threatScore += 2000; // Still dangerous but less so
+      }
+    }
+    // Check if opponent can get within 1 move of scoring
+    const distanceToGoal = Math.abs(oppMove.to.row - goalRow);
+    if (distanceToGoal <= 1 && GOAL_COLS.includes(oppMove.to.col)) {
+      const piece = state.board[oppMove.from.row]?.[oppMove.from.col];
+      if (piece && piece.type === "delantero") {
+        threatScore += 2000; // Forward very close to goal - very dangerous
+      } else if (distanceToGoal === 1) {
+        threatScore += 800; // Other piece close to goal
+      }
+    }
+  }
+  
+  // Also check for opponent pieces already near our goal
   for (let row = Math.max(0, goalRow - 3); row <= Math.min(BOARD_ROWS - 1, goalRow + 3); row += 1) {
     for (let col = 0; col < BOARD_COLS; col += 1) {
       const piece = state.board[row]?.[col];
@@ -214,7 +264,28 @@ const rateMove = (
     const threatBefore = defensiveThreat(state, move.player);
     const threatAfter = defensiveThreat(outcome.nextState, move.player);
     const threatReduction = threatBefore - threatAfter;
-    score += threatReduction * (difficulty === "hard" ? 3 : 2); // Hard considers threats more heavily
+    
+    // CRITICAL: If opponent can score next move, prioritize defensive moves MUCH more
+    const canOpponentScoreBefore = canOpponentScoreNextMove(state, move.player);
+    const canOpponentScoreAfter = canOpponentScoreNextMove(outcome.nextState, move.player);
+    
+    if (canOpponentScoreBefore && !canOpponentScoreAfter) {
+      // This move blocks an immediate goal threat - EXTREMELY valuable!
+      score += difficulty === "hard" ? 50000 : difficulty === "medium" ? 30000 : 20000;
+    } else if (canOpponentScoreBefore && canOpponentScoreAfter) {
+      // This move doesn't block the threat - VERY bad unless we also score
+      if (!goal) {
+        score -= difficulty === "hard" ? 50000 : difficulty === "medium" ? 30000 : 20000;
+      }
+    } else if (!canOpponentScoreBefore && canOpponentScoreAfter) {
+      // This move creates a goal threat for opponent - VERY bad
+      if (!goal) {
+        score -= difficulty === "hard" ? 30000 : difficulty === "medium" ? 20000 : 10000;
+      }
+    }
+    
+    // Regular threat reduction (multiplied more heavily for hard difficulty)
+    score += threatReduction * (difficulty === "hard" ? 10 : difficulty === "medium" ? 5 : 3);
     
     // Piece safety (protecting our pieces)
     // Forwards are especially important to protect
@@ -362,11 +433,13 @@ const rateMove = (
         score -= 1000; // Smaller penalty since we scored
       }
       
-      // Heavy penalty if opponent can score on next move (unless we also scored)
+      // CRITICAL: Heavy penalty if opponent can score on next move (unless we also scored)
       if (opponentCanScore && !goal) {
-        score -= 3000; // Very bad move if it allows opponent to score
+        // This is EXTREMELY bad - must be avoided at all costs
+        score -= difficulty === "hard" ? 50000 : difficulty === "medium" ? 30000 : 20000;
       } else if (opponentCanScore && goal) {
-        score -= 500; // Less bad if we also scored (game resets)
+        // Less bad if we also scored (game resets), but still not ideal
+        score -= difficulty === "hard" ? 5000 : difficulty === "medium" ? 3000 : 2000;
       }
       
       // Penalty if opponent can capture other valuable pieces (but not forwards - handled above)
@@ -456,9 +529,10 @@ const rateMove = (
           const deepLookAheadWeight = difficulty === "hard" ? 0.4 : 0.2;
           score += bestOurResponse * deepLookAheadWeight;
           
-          // Penalty if opponent can score after our move (even if we can respond)
+          // CRITICAL: Penalty if opponent can score after our move (even if we can respond)
           if (bestOpponentScore2 >= 8000 && !goal) {
-            score -= difficulty === "hard" ? 2000 : 1000; // Heavy penalty for allowing opponent goals
+            // This is VERY bad - opponent can score in 2 moves
+            score -= difficulty === "hard" ? 25000 : difficulty === "medium" ? 15000 : 10000;
           }
         }
       }
