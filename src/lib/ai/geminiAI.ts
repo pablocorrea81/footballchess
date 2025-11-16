@@ -121,19 +121,47 @@ GOAL AREAS:
           }
         }
         
+        // Analyze current board to see if opponent has similar pieces in attack positions
+        const currentThreats: string[] = [];
+        for (let row = 0; row < 12; row++) {
+          for (let col = 0; col < 8; col++) {
+            const piece = state.board[row]?.[col];
+            if (piece && piece.owner === opponent && piece.type !== "defensa") {
+              // Check if piece is in goal column or advancing toward goal
+              const distanceToGoal = botPlayer === "home" ? row : (11 - row);
+              if ((col === goalCol || [2, 5].includes(col)) && distanceToGoal <= 5) {
+                const pieceRowLabel = row + 1;
+                const pieceColLabel = String.fromCharCode(65 + col);
+                const pieceType = piece.type === "delantero" ? "F" : 
+                                 piece.type === "mediocampista" ? "M" : "C";
+                currentThreats.push(`${pieceType} at ${pieceColLabel}${pieceRowLabel} (${distanceToGoal} rows from goal)`);
+              }
+            }
+          }
+        }
+        
         lastGoalAnalysis = `
 
-⚠️ LAST GOAL RECEIVED (LEARN FROM THIS!):
-- Opponent scored on column ${goalColLabel} (${goalColLabel}${toRow})
-- Attacking piece moved from ${fromCol}${fromRow} to ${toCol}${toRow}
-- Estimated piece type: ${pieceTypeEstimate}
-- Attack buildup: ${attackBuildUp.length > 0 ? attackBuildUp.join(" → ") : "Direct attack"}
-- You MUST block this pattern! Protect column ${goalColLabel} and position pieces to intercept similar attacks!
+🚨 LAST GOAL RECEIVED - CRITICAL LEARNING OPPORTUNITY:
+==========================================
+The opponent JUST scored using this pattern:
+- Goal column: ${goalColLabel} (${goalColLabel}${toRow})
+- Attack path: ${fromCol}${fromRow} → ${toCol}${toRow}
+- Piece type: ${pieceTypeEstimate}
+- Attack sequence: ${attackBuildUp.length > 0 ? attackBuildUp.join(" → ") : "Direct attack"}
 
-STRATEGY: 
-- Block opponent pieces approaching your goal from similar positions
-- Position defenders near column ${goalColLabel} (your goal columns D-E)
-- Capture opponent pieces that are positioned for similar attacks
+⚠️ PREVENT THIS FROM HAPPENING AGAIN!
+${currentThreats.length > 0 ? 
+  `CURRENT THREATS: Opponent has ${currentThreats.length} pieces in similar attack positions:\n${currentThreats.map(t => `  - ${t}`).join("\n")}\n` : 
+  "No similar threats detected yet, but stay alert!\n"}
+
+IMMEDIATE ACTION REQUIRED:
+1. BLOCK column ${goalColLabel} - Position pieces in column ${goalColLabel} to intercept
+2. CAPTURE threatening pieces - If opponent has pieces in columns D/E near goal, capture them!
+3. PROTECT goal columns D-E - Keep defenders ready in rows near your goal
+4. INTERCEPT attack paths - Position pieces to block the path from ${fromCol}${fromRow} direction
+
+DO NOT let opponent use the same pattern again!
 `;
         break; // Only analyze the most recent goal
       }
@@ -418,6 +446,26 @@ export const getGeminiRecommendation = async (
     const movesToConsider = validMoves.length > 0 ? validMoves : moves;
     const movesToEvaluate = movesToConsider.slice(0, 20); // More moves for better selection
     
+    // Detect current threats on board for annotation and prompt
+    const currentThreatsList: string[] = [];
+    for (let row = 0; row < 12; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = state.board[row]?.[col];
+        if (piece && piece.owner === opponent && piece.type !== "defensa") {
+          if ([3, 4].includes(col)) {
+            const distanceToGoal = botPlayer === "home" ? row : (11 - row);
+            if (distanceToGoal <= 5) {
+              const colLabel = String.fromCharCode(65 + col);
+              const rowLabel = row + 1;
+              const pieceType = piece.type === "delantero" ? "F" : 
+                               piece.type === "mediocampista" ? "M" : "C";
+              currentThreatsList.push(`${pieceType}${colLabel}${rowLabel}`);
+            }
+          }
+        }
+      }
+    }
+    
     // Create move list with annotations
     const gameDescription = gameStateToText(state, botPlayer);
     const movesList = movesToEvaluate
@@ -430,10 +478,28 @@ export const getGeminiRecommendation = async (
         const label = `${idx + 1}. ${moveToText(move)} (${pieceType})`;
         let extra = "";
         if (immediateGoals.includes(originalIdx)) extra += " [GOAL!]";
-        else if (forwardCaptures.includes(originalIdx)) extra += " [CAPTURE F]";
-        else if (midfielderCaptures.includes(originalIdx)) extra += " [CAPTURE M]";
+        else if (blockingMoves.includes(originalIdx)) extra += " [BLOCKS THREAT]";
+        else if (forwardCaptures.includes(originalIdx)) {
+          // Check if capture is in goal column
+          const isGoalColCapture = [3, 4].includes(move.to.col);
+          extra += isGoalColCapture ? " [CAPTURE F in GOAL COL] ⚠️" : " [CAPTURE F]";
+        }
+        else if (midfielderCaptures.includes(originalIdx)) {
+          const isGoalColCapture = [3, 4].includes(move.to.col);
+          extra += isGoalColCapture ? " [CAPTURE M in GOAL COL] ⚠️" : " [CAPTURE M]";
+        }
         else if (forwardAdvances.includes(originalIdx)) extra += " [F ADVANCE]";
         else if (midfielderAdvances.includes(originalIdx)) extra += " [M ADVANCE]";
+        
+        // Check if move blocks a threat
+        const moveToColLabel = String.fromCharCode(65 + move.to.col);
+        if ([3, 4].includes(move.to.col)) {
+          const threatsInSameCol = currentThreatsList.filter(t => t.includes(moveToColLabel));
+          if (threatsInSameCol.length > 0) {
+            extra += ` [BLOCKS ${moveToColLabel}]`;
+          }
+        }
+        
         return label + extra;
       })
       .join("\n");
@@ -449,12 +515,21 @@ GAME RULES:
 
 STRATEGY PRIORITIES (in order):
 1. SCORE A GOAL NOW: If you can move C/M/F to opponent goal (⚽O), do it!
-2. BLOCK OPPONENT GOAL: If opponent can score next turn, block them with ANY piece (including defensas)
-3. CAPTURE OPPONENT DELANTERO (F): Remove their best attacking piece
-4. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal
-5. CAPTURE VALUABLE PIECES: Capture opponent C/M pieces
-6. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal
-7. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal
+2. BLOCK OPPONENT GOAL (CRITICAL): If opponent can score next turn OR has pieces advancing in goal columns (D-E), BLOCK THEM!
+   - Position pieces in the SAME column as attacking opponent pieces
+   - Capture opponent pieces that are in goal columns (D-E) near your goal
+   - Move defenders to intercept the path between opponent pieces and your goal
+3. CAPTURE OPPONENT PIECES IN GOAL COLUMNS: If opponent has F/M/C in columns D or E, capture them immediately!
+4. CAPTURE OPPONENT DELANTERO (F): Remove their best attacking piece
+5. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal
+6. CAPTURE VALUABLE PIECES: Capture opponent C/M pieces elsewhere
+7. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal
+8. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal
+
+DEFENSE IS CRITICAL:
+- If opponent has pieces in columns D or E approaching your goal, you MUST block or capture
+- Don't let opponent pieces advance unchecked in goal columns!
+- Watch for straight-line attacks: if opponent piece moves toward your goal in same column, intercept!
 
 CRITICAL RULES FOR DEFENSAS (D):
 - Defensas (D) CAN ONLY MOVE TO:
@@ -477,8 +552,16 @@ IMPORTANT:
 
 ${gameDescription}
 
+${currentThreatsList.length > 0 ? `\n⚠️ CURRENT THREATS ON BOARD:\nOpponent pieces in goal columns: ${currentThreatsList.join(", ")}\nYou MUST block or capture these!\n` : ""}
+
 AVAILABLE MOVES (choose the BEST strategic move):
 ${movesList}
+
+REMEMBER:
+- Moves marked [BLOCKS THREAT] or [BLOCKS D/E] are HIGH PRIORITY
+- Moves marked [CAPTURE F/M in GOAL COL] are CRITICAL - capture pieces in goal columns!
+- Don't let opponent pieces advance unchecked in columns D or E toward your goal
+- If opponent just scored, prevent the SAME pattern from happening again!
 
 Think carefully: Which move best follows the priorities above?
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
