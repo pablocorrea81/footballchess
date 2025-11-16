@@ -1399,7 +1399,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [canAct, status, gameState.turn, playerRole]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
+    <div className="flex w-full h-screen max-h-screen flex-col gap-1 md:gap-2 px-1 py-1 sm:px-2 sm:py-2 md:px-3 md:py-3 overflow-hidden">
       {showGoalCelebration && goalScorer && (
         <GoalCelebration
           key={`goal-${goalScorer}-${gameState.history?.length ?? 0}`}
@@ -1509,28 +1509,35 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] lg:grid-cols-[1fr_340px] gap-1 md:gap-2 items-start flex-1 min-h-0 overflow-hidden">
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
-          className="w-full overflow-x-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start"
+          className="w-full h-full min-h-0 flex items-center justify-center order-1 md:order-1 overflow-hidden"
+          style={{
+            maxHeight: '100%',
+          }}
         >
           <div 
             id="game-board-container"
-            className="w-full border border-white/20 shadow-2xl"
+            className="w-full h-full border border-white/20 shadow-2xl flex flex-col max-w-full max-h-full min-h-0"
           >
             {/* Column labels (A-H) */}
             <div
-              className="grid border-b border-white/20 w-full"
+              className="grid border-b border-white/20 w-full flex-shrink-0"
               style={{
-                gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
+                gridTemplateColumns: `minmax(2rem, auto) repeat(${BOARD_COLS}, 1fr)`,
+                minHeight: `calc(100% / ${BOARD_ROWS + 1})`,
               }}
             >
-              <div className="w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16"></div>
+              <div></div>
               {colIndices.map((actualCol) => (
                 <div
                   key={`col-label-${actualCol}`}
-                  className="flex h-8 sm:h-9 md:h-10 lg:h-12 xl:h-14 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm aspect-square"
+                  className="flex items-center justify-center border-l border-white/20 bg-emerald-950/80 text-[clamp(0.625rem,1.5vw,0.875rem)] sm:text-[clamp(0.75rem,1.5vw,1rem)] font-bold text-emerald-100 shadow-sm"
+                  style={{
+                    height: '100%',
+                  }}
                 >
                   {getColumnLabelForDisplay(actualCol, playerRole)}
                 </div>
@@ -1550,13 +1557,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 data-row-index={uiRow}
                 data-actual-row={actualRow}
                 data-is-player-goal={isPlayerGoalRow}
-                className="grid border-b border-white/20 last:border-b-0 w-full"
+                className="grid border-b border-white/20 last:border-b-0 w-full flex-1 min-h-0"
                 style={{
-                  gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
+                  gridTemplateColumns: `minmax(2rem, auto) repeat(${BOARD_COLS}, 1fr)`,
                 }}
               >
                 {/* Row label (1-12) */}
-                <div className="flex w-8 sm:w-10 md:w-12 lg:w-14 xl:w-16 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-base lg:text-lg font-bold text-emerald-100 shadow-sm">
+                <div className="flex min-w-[2rem] items-center justify-center border-r border-white/20 bg-emerald-950/80 text-[clamp(0.625rem,1.5vw,0.875rem)] font-bold text-emerald-100 shadow-sm">
                   {getRowLabelForDisplay(actualRow, playerRole)}
                 </div>
 
@@ -1621,7 +1628,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         type="button"
                         onClick={() => handleCellClick(uiRow, uiCol)}
                         className={[
-                          "aspect-square w-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
+                          "aspect-square w-full h-full flex items-center justify-center border-l border-t border-white/10 font-semibold transition relative",
                           isGoalSquare
                             ? "border-yellow-400/60 bg-yellow-500/20"
                             : "border-white/10",
@@ -1668,7 +1675,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 : ""
                             } ${
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
-                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
+                            } w-[45%] h-[45%] sm:w-[50%] sm:h-[50%] md:w-[55%] md:h-[55%] text-[clamp(0.875rem,2vw,1.5rem)] sm:text-[clamp(1rem,2.5vw,2rem)] md:text-[clamp(1.25rem,3vw,2.5rem)]`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
@@ -1713,13 +1720,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
 
         {/* Header and Info panel - Right side on all screen sizes */}
-        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:sticky md:top-6 md:self-start md:max-h-[calc(100vh-3rem)] md:overflow-y-auto">
+        <div className="flex flex-col gap-2 md:gap-3 order-2 md:order-2 h-full md:max-h-full md:overflow-y-auto">
           {/* Header */}
-          <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
+          <section className="flex flex-col gap-2 rounded-xl md:rounded-2xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-2 md:p-3 lg:p-4 text-white shadow-2xl backdrop-blur-sm flex-shrink-0">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
+                <h1 className="text-base md:text-lg lg:text-xl font-bold text-white">
                   Partido #{initialGameId.slice(0, 8)}
                 </h1>
                 {/* Turn indicator badge - always visible, especially on mobile */}
@@ -1816,8 +1823,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               </div>
             )}
             {/* Additional info - hidden on mobile, visible on desktop */}
-            <div className="hidden md:block">
-              <p className="text-sm md:text-base font-medium text-emerald-50">
+            <div className="hidden md:block text-xs md:text-sm">
+              <p className="font-medium text-emerald-50">
                 {status === "finished"
                   ? computedWinnerLabel
                     ? `Ganador: ${computedWinnerLabel}`
@@ -1825,13 +1832,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   : `Turno actual: ${currentTurnLabel}`}
               </p>
               {status !== "finished" && (
-                <p className="mt-1 text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200">
+                <p className="mt-0.5 text-[10px] md:text-xs font-semibold uppercase tracking-wider text-emerald-200">
                   Inicio: <span className="text-yellow-300">{startingLabel}</span>
                 </p>
               )}
             </div>
             {/* Scores */}
-            <div className="flex items-center gap-3 md:gap-4 mt-2 md:mt-3 text-sm md:text-base">
+            <div className="flex items-center gap-2 md:gap-3 mt-1 md:mt-2 text-xs md:text-sm">
               <div
                 className={badgeClass(
                   "home",
@@ -1861,45 +1868,35 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
           {/* Status messages */}
           {status === "waiting" && (
-            <div className="rounded-xl md:rounded-2xl border-2 border-yellow-500/60 bg-yellow-500/30 p-3 md:p-4 text-sm md:text-base font-semibold text-yellow-900 shadow-lg backdrop-blur-sm">
+            <div className="rounded-lg border-2 border-yellow-500/60 bg-yellow-500/30 p-1.5 md:p-2 text-[10px] md:text-xs font-semibold text-yellow-900 shadow-lg backdrop-blur-sm flex-shrink-0">
               ⏳ Esperando a que se una el segundo jugador...
             </div>
           )}
 
           {feedback && status !== "finished" && (
-            <div className="rounded-xl md:rounded-2xl border-2 border-emerald-400/60 bg-emerald-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
+            <div className="rounded-lg border-2 border-emerald-400/60 bg-emerald-500/40 p-1.5 md:p-2 text-[10px] md:text-xs font-semibold text-white shadow-xl backdrop-blur-sm flex-shrink-0">
               {feedback}
             </div>
           )}
 
           {/* Game finished message - show when game is finished */}
           {status === "finished" && (
-            <div className={`rounded-xl md:rounded-2xl border-2 p-4 md:p-5 text-base md:text-lg font-semibold text-white shadow-xl backdrop-blur-sm ${
+            <div className={`rounded-lg border-2 p-2 md:p-2.5 text-xs md:text-sm font-semibold text-white shadow-xl backdrop-blur-sm flex-shrink-0 ${
               winnerId && winnerId === players[playerRole]
                 ? "border-emerald-500/60 bg-emerald-600/40"
                 : "border-red-500/60 bg-red-600/40"
             }`}>
-              <div className="flex flex-col gap-2 md:gap-3">
-                <p className="text-lg md:text-xl font-bold text-center">
+              <div className="flex flex-col gap-1 md:gap-1.5">
+                <p className="text-sm md:text-base font-bold text-center">
                   {winnerId && winnerId === players[playerRole]
                     ? "🎉 ¡Ganaste la partida!"
                     : winnerId === null && isBotGame
                       ? `😔 ${botDisplayName} ganó la partida`
                       : `😔 ${computedWinnerLabel ?? "Tu rival"} ganó la partida`}
                 </p>
-                {winnerId && winnerId !== players[playerRole] && (
-                  <p className="text-sm md:text-base text-center text-white/90">
-                    La partida ha terminado. Puedes volver al lobby para jugar otra partida.
-                  </p>
-                )}
-                {winnerId && winnerId === players[playerRole] && (
-                  <p className="text-sm md:text-base text-center text-white/90">
-                    ¡Felicidades por la victoria! Puedes volver al lobby para jugar otra partida.
-                  </p>
-                )}
-                {winnerId === null && isBotGame && (
-                  <p className="text-sm md:text-base text-center text-white/90">
-                    La partida ha terminado. Puedes volver al lobby para jugar otra partida.
+                {(winnerId !== players[playerRole] || winnerId === null) && (
+                  <p className="text-[10px] md:text-xs text-center text-white/90">
+                    La partida ha terminado.
                   </p>
                 )}
               </div>
@@ -1907,13 +1904,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           )}
 
           {isBotTurn && (
-            <div className="rounded-xl md:rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm animate-pulse">
+            <div className="rounded-lg border-2 border-sky-400/60 bg-sky-500/40 p-1.5 md:p-2 text-[10px] md:text-xs font-semibold text-white shadow-xl backdrop-blur-sm animate-pulse flex-shrink-0">
               🤖 {botDisplayName} está analizando su próximo movimiento…
             </div>
           )}
 
           {!isBotGame && !isBotTurn && !currentTurnIsPlayer && status === "in_progress" && (
-            <div className="rounded-xl md:rounded-2xl border-2 border-sky-400/60 bg-sky-500/40 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm">
+            <div className="rounded-lg border-2 border-sky-400/60 bg-sky-500/40 p-1.5 md:p-2 text-[10px] md:text-xs font-semibold text-white shadow-xl backdrop-blur-sm flex-shrink-0">
               ⏳ Esperando que {effectivePlayerLabels[opponentRole]} haga su movimiento...
             </div>
           )}
@@ -1923,7 +1920,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
             <button
               onClick={() => setShowSurrenderConfirm(true)}
               disabled={isSurrendering}
-              className="rounded-xl md:rounded-2xl border-2 border-red-500/80 bg-red-600/90 hover:bg-red-700/90 px-4 md:px-6 py-3 md:py-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="rounded-lg border-2 border-red-500/80 bg-red-600/90 hover:bg-red-700/90 px-2 md:px-3 py-1.5 md:py-2 text-[10px] md:text-xs font-semibold text-white shadow-xl backdrop-blur-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 flex-shrink-0"
             >
               <span>🏳️</span>
               <span>Rendirse</span>
@@ -1932,7 +1929,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
           {/* Time remaining counter for player's turn */}
           {canAct && status === "in_progress" && timeRemaining !== null && timeRemaining >= 0 && !isBotGame && timeoutEnabled && (
-            <div className={`rounded-xl md:rounded-2xl border-2 p-3 md:p-4 text-sm md:text-base font-semibold text-white shadow-xl backdrop-blur-sm ${
+            <div className={`rounded-lg border-2 p-1.5 md:p-2 text-[10px] md:text-xs font-semibold text-white shadow-xl backdrop-blur-sm flex-shrink-0 ${
               timeRemaining <= 10
                 ? "border-red-500/80 bg-red-600/80 animate-pulse"
                 : timeRemaining <= 20
@@ -1940,61 +1937,61 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 : "border-emerald-400/60 bg-emerald-600/80"
             }`}>
               <div className="flex items-center justify-between">
-                <span className="text-base md:text-lg font-bold">
-                  ⏱️ Tiempo restante: {timeRemaining}s
+                <span className="text-xs md:text-sm font-bold">
+                  ⏱️ {timeRemaining}s
                 </span>
                 {timeRemaining <= 10 && (
-                  <span className="text-lg md:text-xl animate-pulse">⚠️</span>
+                  <span className="text-sm md:text-base animate-pulse">⚠️</span>
                 )}
               </div>
               {timeRemaining <= 10 && (
-                <p className="mt-2 text-xs md:text-sm text-red-100">
-                  ¡Apúrate! Si no mueves en {timeRemaining} segundos, perderás tu turno.
+                <p className="mt-1 text-[9px] md:text-[10px] text-red-100">
+                  ¡Apúrate! {timeRemaining}s
                 </p>
               )}
             </div>
           )}
 
           {lastMoveDescription && (
-            <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-r from-slate-800/90 to-slate-700/90 p-3 md:p-4 text-sm md:text-base text-white shadow-xl backdrop-blur-sm">
+            <div className="rounded-lg border-2 border-white/30 bg-gradient-to-r from-slate-800/90 to-slate-700/90 p-1.5 md:p-2 text-[10px] md:text-xs text-white shadow-xl backdrop-blur-sm flex-shrink-0">
               <p className="font-medium">
-                Último movimiento: <strong className="text-yellow-300">{lastMoveDescription}</strong>
+                Último: <strong className="text-yellow-300">{lastMoveDescription}</strong>
               </p>
               {lastMoveGoalText && (
-                <p className="mt-2 text-base md:text-lg font-bold text-emerald-300">⚽ {lastMoveGoalText}</p>
+                <p className="mt-0.5 text-xs md:text-sm font-bold text-emerald-300">⚽ {lastMoveGoalText}</p>
               )}
             </div>
           )}
 
           {/* History */}
-          <div className="rounded-xl md:rounded-2xl border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-3 md:p-4 lg:p-5 text-white shadow-2xl backdrop-blur-sm">
-            <h2 className="text-base md:text-lg lg:text-xl font-bold text-white mb-2 md:mb-3 lg:mb-4">
-              📜 Historial reciente
+          <div className="rounded-lg border-2 border-white/30 bg-gradient-to-br from-slate-800/95 to-slate-900/95 p-1.5 md:p-2 text-white shadow-2xl backdrop-blur-sm flex-1 min-h-0 flex flex-col">
+            <h2 className="text-xs md:text-sm font-bold text-white mb-1 md:mb-1.5 flex-shrink-0">
+              📜 Historial
             </h2>
             {recentMoves.length === 0 ? (
-              <p className="mt-2 md:mt-3 text-xs md:text-sm lg:text-base text-emerald-200">
+              <p className="mt-1 text-[10px] md:text-xs text-emerald-200 flex-shrink-0">
                 Aún no hay movimientos registrados.
               </p>
             ) : (
-              <ul className="mt-2 md:mt-3 flex flex-col gap-2 lg:gap-3 max-h-[200px] md:max-h-[250px] lg:max-h-[300px] overflow-y-auto">
-                <li className="flex items-center justify-between rounded-lg md:rounded-xl border-2 border-yellow-400/80 bg-gradient-to-r from-yellow-600/90 to-yellow-500/90 px-2 md:px-3 lg:px-5 py-1.5 md:py-2 lg:py-3 text-xs md:text-sm font-semibold shadow-lg">
-                  <span className="text-xs font-bold uppercase tracking-wider text-yellow-950">
+              <ul className="mt-1 flex flex-col gap-1 md:gap-1.5 flex-1 min-h-0 overflow-y-auto">
+                <li className="flex items-center justify-between rounded border border-yellow-400/80 bg-gradient-to-r from-yellow-600/90 to-yellow-500/90 px-1 md:px-1.5 py-0.5 md:py-1 text-[9px] md:text-[10px] font-semibold shadow-lg flex-shrink-0">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-yellow-950">
                     Inicio
                   </span>
-                  <span className="flex items-center gap-1 md:gap-2 text-xs md:text-sm font-semibold text-yellow-950">
+                  <span className="flex items-center gap-0.5 text-[9px] md:text-[10px] font-semibold text-yellow-950">
                     <span className="text-yellow-700">★</span> <span>{startingLabel}</span>
                   </span>
-                  <span className="text-xs font-medium text-yellow-950">Sorteo</span>
+                  <span className="text-[9px] font-medium text-yellow-950">Sorteo</span>
                 </li>
                 {recentMoves.map((move) => (
                   <li
                     key={move.moveNumber}
-                    className="flex items-center justify-between rounded-lg md:rounded-xl border-2 border-white/20 bg-white/10 px-2 md:px-3 lg:px-5 py-1.5 md:py-2 lg:py-3 shadow-md hover:bg-white/15 transition-colors"
+                    className="flex items-center justify-between rounded border border-white/20 bg-white/10 px-1 md:px-1.5 py-0.5 md:py-1 shadow-md hover:bg-white/15 transition-colors flex-shrink-0"
                   >
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-1.5 md:px-2 lg:px-3 py-0.5 md:py-1 rounded-full">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-300 bg-emerald-900/50 px-1 md:px-1.5 py-0.5 rounded-full">
                       #{move.moveNumber}
                     </span>
-                    <span className="text-xs md:text-sm text-white font-medium flex-1 text-center mx-1 md:mx-2">
+                    <span className="text-[9px] md:text-[10px] text-white font-medium flex-1 text-center mx-0.5 md:mx-1">
                       <span className={move.player === "home" ? "text-emerald-300" : "text-sky-300"}>
                         {move.player === "home"
                           ? effectivePlayerLabels.home
@@ -2006,7 +2003,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         <span className="text-rose-300 font-semibold ml-1">⚔️</span>
                       ) : null}
                     </span>
-                    <span className="text-xs font-medium text-emerald-200 bg-emerald-900/50 px-1.5 md:px-2 lg:px-3 py-0.5 md:py-1 rounded-full">
+                    <span className="text-[9px] md:text-[10px] font-medium text-emerald-200 bg-emerald-900/50 px-1 md:px-1.5 py-0.5 rounded-full">
                       {new Date(move.timestamp).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
