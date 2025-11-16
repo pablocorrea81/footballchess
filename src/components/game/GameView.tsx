@@ -163,6 +163,10 @@ export function GameView({
   const previousWinnerIdRef = useRef<string | null>(initialWinnerId);
   // Track if timeout was just executed to show alert
   const timeoutJustExecutedRef = useRef<boolean>(false);
+  // Track victory timers to prevent cleanup issues
+  const victoryTimersRef = useRef<{ hideTimer?: NodeJS.Timeout; redirectTimer?: NodeJS.Timeout }>({});
+  // Track if victory alert has been shown to prevent showing again
+  const victoryAlertShownRef = useRef<boolean>(false);
   // Timeout constants
   const TURN_TIMEOUT_SECONDS = 60;
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -989,7 +993,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     const playerWon = currentWinnerId === profileId;
     
     // Show victory alert if game just finished and player won, or if winner just changed to player
-    if ((gameJustFinished || winnerJustChanged) && playerWon && !showVictoryAlert) {
+    // Use ref to prevent showing multiple times (more reliable than state)
+    if ((gameJustFinished || winnerJustChanged) && playerWon && !victoryAlertShownRef.current) {
       console.log("[GameView] Player won the game! Showing victory alert", {
         currentStatus,
         previousStatus,
@@ -1001,28 +1006,37 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         gameJustFinished,
         winnerJustChanged,
       });
+      
+      // Mark as shown to prevent showing again
+      victoryAlertShownRef.current = true;
       setShowVictoryAlert(true);
       playSound("goal"); // Use goal sound for victory
       
+      // Clear any existing timers first
+      if (victoryTimersRef.current.hideTimer) {
+        clearTimeout(victoryTimersRef.current.hideTimer);
+      }
+      if (victoryTimersRef.current.redirectTimer) {
+        clearTimeout(victoryTimersRef.current.redirectTimer);
+      }
+      
       // Hide alert after 3 seconds
-      const timer = setTimeout(() => {
+      victoryTimersRef.current.hideTimer = setTimeout(() => {
+        console.log("[GameView] Hiding victory alert after 3 seconds");
         setShowVictoryAlert(false);
+        victoryTimersRef.current.hideTimer = undefined;
       }, 3000);
       
       // Redirect to lobby after 3 seconds
-      const redirectTimer = setTimeout(() => {
+      victoryTimersRef.current.redirectTimer = setTimeout(() => {
         console.log("[GameView] Redirecting to lobby after victory");
         router.push("/lobby");
+        victoryTimersRef.current.redirectTimer = undefined;
       }, 3000);
       
       // Update refs after showing alert
       previousStatusRef.current = currentStatus;
       previousWinnerIdRef.current = currentWinnerId;
-      
-      return () => {
-        clearTimeout(timer);
-        clearTimeout(redirectTimer);
-      };
     }
     
     // Update refs if status or winner changed (but don't show alert again if already shown)
@@ -1032,7 +1046,20 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     if (previousWinnerId !== currentWinnerId) {
       previousWinnerIdRef.current = currentWinnerId;
     }
-  }, [status, winnerId, profileId, playSound, isBotGame, router, showVictoryAlert]);
+  }, [status, winnerId, profileId, playSound, isBotGame, router]);
+  
+  // Cleanup victory timers on unmount
+  useEffect(() => {
+    return () => {
+      console.log("[GameView] Cleaning up victory timers on unmount");
+      if (victoryTimersRef.current.hideTimer) {
+        clearTimeout(victoryTimersRef.current.hideTimer);
+      }
+      if (victoryTimersRef.current.redirectTimer) {
+        clearTimeout(victoryTimersRef.current.redirectTimer);
+      }
+    };
+  }, []);
 
   // Function to handle surrender
   const handleSurrender = useCallback(async () => {
