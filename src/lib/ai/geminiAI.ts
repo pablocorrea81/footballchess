@@ -256,6 +256,18 @@ Respond ONLY with a number between 0-10000, nothing else.`;
   }
 };
 
+// Decision explanation type for AI transparency
+export type AIDecisionExplanation = {
+  move: Move;
+  reason: string;
+  detectedThreats: string[];
+  blockingMoves: number;
+  captureMoves: number;
+  goalMoves: number;
+  geminiResponse?: string;
+  analysis: string;
+};
+
 // Get best move recommendation from Gemini
 export const getGeminiRecommendation = async (
   state: GameState,
@@ -265,6 +277,9 @@ export const getGeminiRecommendation = async (
   if (!model || !GEMINI_API_KEY || moves.length === 0) {
     return null;
   }
+  
+  console.log(`[Gemini] ========== AI DECISION ANALYSIS ==========`);
+  console.log(`[Gemini] Bot Player: ${botPlayer}, Total legal moves: ${moves.length}`);
 
   try {
     const opponent = botPlayer === "home" ? "away" : "home";
@@ -298,6 +313,56 @@ export const getGeminiRecommendation = async (
       return false;
     })();
     
+    // Detect opponent pieces that can advance directly toward goal in goal columns
+    // This is CRITICAL - detect delanteros/mediocampistas advancing in columns D-E
+    const opponentThreatsInGoalColumns: Array<{
+      row: number;
+      col: number;
+      pieceType: string;
+      canReachGoal: boolean;
+      distanceToGoal: number;
+    }> = [];
+    
+    for (let row = 0; row < 12; row++) {
+      for (let col = 0; col < 8; col++) {
+        const piece = state.board[row]?.[col];
+        if (piece && piece.owner === opponent && piece.type !== "defensa") {
+          // Check if piece is in goal columns (D=3, E=4) or can reach them
+          if ([3, 4].includes(col)) {
+            const distanceToGoal = botPlayer === "home" ? row : (11 - row);
+            // Check if piece can move toward goal (can reach goal in 1-2 moves)
+            const piecePos = { row, col };
+            const legalMoves = RuleEngine.getLegalMovesForPiece(state, piecePos);
+            
+            let canReachGoal = false;
+            for (const moveTo of legalMoves) {
+              const newDistance = botPlayer === "home" ? moveTo.row : (11 - moveTo.row);
+              // If moving in same column toward goal, or can capture and reach goal
+              if (moveTo.col === col && newDistance < distanceToGoal) {
+                canReachGoal = true;
+                break;
+              }
+              // Check if can reach goal squares
+              if (newDistance === 0 && [3, 4].includes(moveTo.col)) {
+                canReachGoal = true;
+                break;
+              }
+            }
+            
+            if (distanceToGoal <= 6) { // Within 6 rows of goal
+              opponentThreatsInGoalColumns.push({
+                row,
+                col,
+                pieceType: piece.type,
+                canReachGoal,
+                distanceToGoal,
+              });
+            }
+          }
+        }
+      }
+    }
+    
     moves.forEach((move, idx) => {
       const piece = state.board[move.from.row]?.[move.from.col];
       if (!piece) return;
@@ -314,6 +379,51 @@ export const getGeminiRecommendation = async (
       
       // Check if this move prevents opponent from scoring
       let preventsOpponentGoal = false;
+      
+      // CRITICAL: Check if this move blocks an opponent threat in goal columns
+      if (opponentThreatsInGoalColumns.length > 0) {
+        for (const threat of opponentThreatsInGoalColumns) {
+          // Check if we capture this threatening piece
+          if (outcome.capture && move.to.row === threat.row && move.to.col === threat.col) {
+            preventsOpponentGoal = true;
+            blockingMoves.push(idx);
+            if (isDefensa) {
+              validDefensiveMoves.push(idx);
+            }
+            return;
+          }
+          
+          // Check if we position ourselves to block (same column, between threat and goal)
+          if (move.to.col === threat.col) {
+            const ourDistance = botPlayer === "home" ? move.to.row : (11 - move.to.row);
+            const threatDistance = threat.distanceToGoal;
+            
+            // We're positioned between the threat and the goal
+            if (ourDistance < threatDistance && ourDistance <= 3) {
+              preventsOpponentGoal = true;
+              blockingMoves.push(idx);
+              if (isDefensa) {
+                validDefensiveMoves.push(idx);
+              }
+              return;
+            }
+          }
+          
+          // Check if we move adjacent to threat in goal column (can intercept)
+          if ([2, 5].includes(move.to.col) && (move.to.col === threat.col - 1 || move.to.col === threat.col + 1)) {
+            const ourDistance = botPlayer === "home" ? move.to.row : (11 - move.to.row);
+            if (ourDistance <= threat.distanceToGoal + 1 && threat.distanceToGoal <= 4) {
+              preventsOpponentGoal = true;
+              blockingMoves.push(idx);
+              if (isDefensa) {
+                validDefensiveMoves.push(idx);
+              }
+              return;
+            }
+          }
+        }
+      }
+      
       if (opponentCanScoreNow) {
         // Check if after this move, opponent can still score
         const nextOpponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponent);
@@ -417,14 +527,40 @@ export const getGeminiRecommendation = async (
     });
     
     // Priority: immediate goals > blocking > forward captures > forward advances > other captures
+    console.log(`[Gemini] Move Analysis Summary:`);
+    console.log(`  - Immediate goals: ${immediateGoals.length}`);
+    console.log(`  - Blocking moves: ${blockingMoves.length}`);
+    console.log(`  - Forward captures: ${forwardCaptures.length}`);
+    console.log(`  - Forward advances: ${forwardAdvances.length}`);
+    console.log(`  - Midfielder captures: ${midfielderCaptures.length}`);
+    console.log(`  - Midfielder advances: ${midfielderAdvances.length}`);
+    console.log(`  - Valid defensive moves: ${validDefensiveMoves.length}`);
+    console.log(`  - Opponent threats in goal columns: ${opponentThreatsInGoalColumns.length}`);
+    if (opponentThreatsInGoalColumns.length > 0) {
+      console.log(`  - Threat details:`);
+      opponentThreatsInGoalColumns.forEach((threat, i) => {
+        const colLabel = String.fromCharCode(65 + threat.col);
+        console.log(`    ${i + 1}. ${threat.pieceType} at ${colLabel}${threat.row + 1}, distance to goal: ${threat.distanceToGoal}, can reach: ${threat.canReachGoal}`);
+      });
+    }
+    
     if (immediateGoals.length > 0) {
-      console.log("[Gemini] Found immediate goal moves, selecting first");
-      return moves[immediateGoals[0]];
+      const goalMove = moves[immediateGoals[0]];
+      const moveText = moveToText(goalMove);
+      console.log(`[Gemini] ✅ DECISION: Found immediate goal move - ${moveText}`);
+      console.log(`[Gemini] Reason: Can score immediately!`);
+      return goalMove;
     }
     
     if (blockingMoves.length > 0) {
-      console.log("[Gemini] Found blocking moves, prioritizing defense");
-      return moves[blockingMoves[0]];
+      const blockMove = moves[blockingMoves[0]];
+      const moveText = moveToText(blockMove);
+      console.log(`[Gemini] 🛡️ DECISION: Found blocking move - ${moveText}`);
+      console.log(`[Gemini] Reason: Must block opponent threat! ${opponentThreatsInGoalColumns.length} threat(s) detected`);
+      if (opponentCanScoreNow) {
+        console.log(`[Gemini] ⚠️ CRITICAL: Opponent can score next turn if not blocked!`);
+      }
+      return blockMove;
     }
     
     // Filter out defensive moves from consideration unless they block or capture
@@ -574,33 +710,109 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
       },
     });
     
+    console.log(`[Gemini] Sending prompt to Gemini with ${movesToEvaluate.length} moves to evaluate`);
+    console.log(`[Gemini] Current threats: ${currentThreatsList.length > 0 ? currentThreatsList.join(", ") : "None"}`);
+    console.log(`[Gemini] Prompt length: ${prompt.length} characters`);
+    
     const response = await result.response;
     const text = response.text().trim();
-    console.log("[Gemini] Response:", text);
+    console.log(`[Gemini] 📝 Raw response from Gemini: "${text}"`);
 
     // Extract move number
     const moveMatch = text.match(/\d+/);
     if (moveMatch) {
       const moveIndex = parseInt(moveMatch[0], 10) - 1;
       if (moveIndex >= 0 && moveIndex < movesToEvaluate.length) {
-        return movesToEvaluate[moveIndex];
+        const selectedMove = movesToEvaluate[moveIndex];
+        const moveText = moveToText(selectedMove);
+        const originalIdx = moves.indexOf(selectedMove);
+        const piece = state.board[selectedMove.from.row]?.[selectedMove.from.col];
+        const pieceType = piece?.type === "delantero" ? "F" : 
+                         piece?.type === "mediocampista" ? "M" :
+                         piece?.type === "carrilero" ? "C" : "D";
+        
+        console.log(`[Gemini] ✅ SELECTED MOVE #${moveIndex + 1}: ${moveText} (${pieceType})`);
+        
+        // Explain why this move was selected
+        let reason = "";
+        if (immediateGoals.includes(originalIdx)) {
+          reason = "GOAL - Can score immediately!";
+        } else if (blockingMoves.includes(originalIdx)) {
+          reason = `BLOCK - Blocks opponent threat! (${opponentThreatsInGoalColumns.length} threat(s) in goal columns)`;
+        } else if (forwardCaptures.includes(originalIdx)) {
+          const isGoalCol = [3, 4].includes(selectedMove.to.col);
+          reason = isGoalCol ? "CAPTURE FORWARD in GOAL COLUMN - Critical defensive move!" : "CAPTURE FORWARD - Removes opponent's best attacking piece";
+        } else if (midfielderCaptures.includes(originalIdx)) {
+          const isGoalCol = [3, 4].includes(selectedMove.to.col);
+          reason = isGoalCol ? "CAPTURE MIDFIELDER in GOAL COLUMN - Important defensive move" : "CAPTURE MIDFIELDER - Removes valuable piece";
+        } else if (forwardAdvances.includes(originalIdx)) {
+          reason = "ADVANCE FORWARD - Moving best offensive piece toward opponent goal";
+        } else if (midfielderAdvances.includes(originalIdx)) {
+          reason = "ADVANCE MIDFIELDER - Progressing toward opponent goal";
+        } else {
+          reason = "Strategic move chosen by Gemini AI";
+        }
+        
+        console.log(`[Gemini] 💡 REASON: ${reason}`);
+        
+        // Check what move was selected vs what was prioritized
+        if (forwardCaptures.length > 0 && !forwardCaptures.includes(originalIdx) && !blockingMoves.includes(originalIdx)) {
+          console.log(`[Gemini] ⚠️ NOTE: Other forward captures available but not selected`);
+        }
+        if (opponentThreatsInGoalColumns.length > 0 && !blockingMoves.includes(originalIdx)) {
+          console.log(`[Gemini] ⚠️ WARNING: Threats detected but selected move doesn't block them!`);
+        }
+        
+        console.log(`[Gemini] ==========================================`);
+        
+        return selectedMove;
+      } else {
+        console.warn(`[Gemini] ❌ Move number out of range: ${moveIndex} (Available: 0-${movesToEvaluate.length - 1})`);
       }
     }
 
-    console.warn("[Gemini] Could not parse move recommendation, using fallback strategy");
+    console.warn(`[Gemini] ⚠️ Could not parse move recommendation from response: "${text}", using fallback strategy`);
     // Fallback: prefer forward captures, then forward advancement
-    if (forwardCaptures.length > 0) return moves[forwardCaptures[0]];
-    if (forwardAdvances.length > 0) return moves[forwardAdvances[0]];
-    if (midfielderCaptures.length > 0) return moves[midfielderCaptures[0]];
-    if (midfielderAdvances.length > 0) return moves[midfielderAdvances[0]];
+    console.log(`[Gemini] ⚠️ Falling back to priority-based selection (Gemini response unparseable)`);
+    console.log(`[Gemini] Fallback priorities: ${forwardCaptures.length > 0 ? `Forward captures (${forwardCaptures.length})` : ""} ${forwardAdvances.length > 0 ? `Forward advances (${forwardAdvances.length})` : ""}`);
+    
+    if (forwardCaptures.length > 0) {
+      const fallbackMove = moves[forwardCaptures[0]];
+      console.log(`[Gemini] 🔄 FALLBACK: Using forward capture - ${moveToText(fallbackMove)}`);
+      return fallbackMove;
+    }
+    if (forwardAdvances.length > 0) {
+      const fallbackMove = moves[forwardAdvances[0]];
+      console.log(`[Gemini] 🔄 FALLBACK: Using forward advance - ${moveToText(fallbackMove)}`);
+      return fallbackMove;
+    }
+    if (midfielderCaptures.length > 0) {
+      const fallbackMove = moves[midfielderCaptures[0]];
+      console.log(`[Gemini] 🔄 FALLBACK: Using midfielder capture - ${moveToText(fallbackMove)}`);
+      return fallbackMove;
+    }
+    if (midfielderAdvances.length > 0) {
+      const fallbackMove = moves[midfielderAdvances[0]];
+      console.log(`[Gemini] 🔄 FALLBACK: Using midfielder advance - ${moveToText(fallbackMove)}`);
+      return fallbackMove;
+    }
     // Only use defensas if they're valid (blocking/capturing)
-    if (validDefensiveMoves.length > 0) return moves[validDefensiveMoves[0]];
+    if (validDefensiveMoves.length > 0) {
+      const fallbackMove = moves[validDefensiveMoves[0]];
+      console.log(`[Gemini] 🔄 FALLBACK: Using valid defensive move - ${moveToText(fallbackMove)}`);
+      return fallbackMove;
+    }
     // Avoid defensive moves unless no other options
     const offensiveMoves = moves.filter((move, idx) => {
       const piece = state.board[move.from.row]?.[move.from.col];
       return piece && piece.type !== "defensa";
     });
-    if (offensiveMoves.length > 0) return offensiveMoves[0];
+    if (offensiveMoves.length > 0) {
+      const fallbackMove = offensiveMoves[0];
+      console.log(`[Gemini] 🔄 FALLBACK: Using first offensive move - ${moveToText(fallbackMove)}`);
+      return fallbackMove;
+    }
+    console.log(`[Gemini] 🔄 FALLBACK: Last resort - using first available move - ${moveToText(moves[0])}`);
     return moves[0]; // Last resort
   } catch (error) {
     console.error("[Gemini] Error getting recommendation from Gemini:", error);

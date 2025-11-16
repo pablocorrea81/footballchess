@@ -1275,7 +1275,8 @@ export const executeBotTurnIfNeeded = async (
           );
           
           if (geminiRecommendedMove) {
-            console.log("[bot] Gemini recommended move:", geminiRecommendedMove);
+            const moveText = `${String.fromCharCode(65 + geminiRecommendedMove.from.col)}${geminiRecommendedMove.from.row + 1}→${String.fromCharCode(65 + geminiRecommendedMove.to.col)}${geminiRecommendedMove.to.row + 1}`;
+            console.log(`[bot] ✅ Gemini AI selected move: ${moveText}`);
             move = geminiRecommendedMove;
           } else {
             // If Gemini doesn't return a move, wait a bit and try again
