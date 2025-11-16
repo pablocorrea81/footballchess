@@ -604,22 +604,48 @@ export const getGeminiRecommendation = async (
       
       // Check if this move exposes our valuable pieces to capture
       // CRITICAL: Detect if moving a piece exposes a delantero/mediocampista to capture
+      // This includes the piece being moved itself, or any other valuable piece
       if (!outcome.capture && !preventsOpponentGoal) {
         // Check what opponent can do after our move
         const nextOppMoves = RuleEngine.getLegalMoves(outcome.nextState, opponent);
         let exposesValuablePiece = false;
+        let exposedPieceDetails: string | null = null;
         
-        for (const oppMove of nextOppMoves) {
-          const targetPiece = outcome.nextState.board[oppMove.to.row]?.[oppMove.to.col];
-          
-          // If opponent can capture our delantero or mediocampista
-          if (targetPiece && targetPiece.owner === botPlayer && 
-              (targetPiece.type === "delantero" || targetPiece.type === "mediocampista")) {
-            exposesValuablePiece = true;
-            riskyMoves.push(idx);
-            console.log(`[Gemini] ⚠️ Move ${idx + 1} (${moveToText(move)}) RISKY - Exposes ${targetPiece.type} at ${String.fromCharCode(65 + oppMove.to.col)}${oppMove.to.row + 1} to capture`);
-            break; // Only mark once per move
+        // First, check if the piece we're moving itself becomes exposed
+        const movedPiece = outcome.nextState.board[move.to.row]?.[move.to.col];
+        if (movedPiece && movedPiece.owner === botPlayer && 
+            (movedPiece.type === "delantero" || movedPiece.type === "mediocampista")) {
+          // Check if opponent can capture this piece in its new position
+          for (const oppMove of nextOppMoves) {
+            if (oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
+              exposesValuablePiece = true;
+              exposedPieceDetails = `${movedPiece.type} at ${String.fromCharCode(65 + move.to.col)}${move.to.row + 1} (the piece we just moved)`;
+              break;
+            }
           }
+        }
+        
+        // Also check if any other valuable pieces become exposed
+        if (!exposesValuablePiece) {
+          for (const oppMove of nextOppMoves) {
+            const targetPiece = outcome.nextState.board[oppMove.to.row]?.[oppMove.to.col];
+            
+            // If opponent can capture our delantero or mediocampista
+            if (targetPiece && targetPiece.owner === botPlayer && 
+                (targetPiece.type === "delantero" || targetPiece.type === "mediocampista")) {
+              // Skip if this is the piece we just moved (already checked above)
+              if (oppMove.to.row !== move.to.row || oppMove.to.col !== move.to.col) {
+                exposesValuablePiece = true;
+                exposedPieceDetails = `${targetPiece.type} at ${String.fromCharCode(65 + oppMove.to.col)}${oppMove.to.row + 1}`;
+                break;
+              }
+            }
+          }
+        }
+        
+        if (exposesValuablePiece) {
+          riskyMoves.push(idx);
+          console.log(`[Gemini] ⚠️ Move ${idx + 1} (${moveToText(move)}) RISKY - Exposes ${exposedPieceDetails || "valuable piece"} to capture`);
         }
       }
       
@@ -733,10 +759,38 @@ export const getGeminiRecommendation = async (
       return true;
     });
     
-    // If we have valid offensive moves, prefer those over defensive
-    // Only use defensas if they're blocking/capturing or no other options
-    const movesToConsider = validMoves.length > 0 ? validMoves : moves;
-    const movesToEvaluate = movesToConsider.slice(0, 20); // More moves for better selection
+    // CRITICAL: Filter out risky moves that expose delanteros/mediocampistas to capture
+    // Unless the risky move is blocking a goal threat (defense takes priority)
+    const safeMoves = validMoves.filter((move, idx) => {
+      const originalIdx = moves.indexOf(move);
+      // If it's a risky move that doesn't block a threat, exclude it
+      if (riskyMoves.includes(originalIdx)) {
+        // Only allow risky moves if they're blocking an immediate threat
+        if (blockingMoves.includes(originalIdx)) {
+          console.log(`[Gemini] ⚠️ Move ${originalIdx + 1} (${moveToText(move)}) is risky but blocks a threat - keeping it`);
+          return true; // Allow risky moves that block threats
+        }
+        // Otherwise, exclude risky moves
+        const piece = state.board[move.from.row]?.[move.from.col];
+        const pieceType = piece?.type === "delantero" ? "F" : 
+                         piece?.type === "mediocampista" ? "M" : "C";
+        console.log(`[Gemini] 🚫 FILTERED OUT risky move ${originalIdx + 1} (${moveToText(move)}) - Would expose ${pieceType} to capture`);
+        return false;
+      }
+      return true;
+    });
+    
+    // If we have safe moves (after filtering risky ones), use those
+    // Otherwise, fall back to valid moves (but log a warning)
+    const movesToConsider = safeMoves.length > 0 ? safeMoves : validMoves;
+    if (safeMoves.length < validMoves.length) {
+      const filteredCount = validMoves.length - safeMoves.length;
+      console.log(`[Gemini] ⚠️ Filtered out ${filteredCount} risky move(s) that would expose valuable pieces`);
+    }
+    
+    // If we have no safe moves at all (shouldn't happen), use all moves as last resort
+    const finalMovesToConsider = movesToConsider.length > 0 ? movesToConsider : moves;
+    const movesToEvaluate = finalMovesToConsider.slice(0, 20); // More moves for better selection
     
     // Detect current threats on board for annotation and prompt
     const currentThreatsList: string[] = [];
@@ -782,6 +836,11 @@ export const getGeminiRecommendation = async (
         }
         else if (forwardAdvances.includes(originalIdx)) extra += " [F ADVANCE]";
         else if (midfielderAdvances.includes(originalIdx)) extra += " [M ADVANCE]";
+        
+        // CRITICAL: Mark risky moves explicitly (these should already be filtered, but mark them just in case)
+        if (riskyMoves.includes(originalIdx) && !blockingMoves.includes(originalIdx)) {
+          extra += " [⚠️ RISKY - Exposes valuable piece! DO NOT SELECT unless no other option]";
+        }
         
         // Check if move blocks a threat
         const moveToColLabel = String.fromCharCode(65 + move.to.col);
@@ -851,11 +910,17 @@ ${currentThreatsList.length > 0 ? `\n⚠️ CURRENT THREATS ON BOARD:\nOpponent 
 AVAILABLE MOVES (choose the BEST strategic move):
 ${movesList}
 
+CRITICAL WARNINGS:
+- Moves marked [⚠️ RISKY] expose your valuable pieces (F/M) to capture - AVOID THESE unless absolutely necessary!
+- NEVER select a move that exposes your delantero (F) or mediocampista (M) to capture unless it blocks an immediate goal
+- If a move is marked [⚠️ RISKY], only select it if it also blocks a threat or scores a goal
+
 REMEMBER:
 - Moves marked [BLOCKS THREAT] or [BLOCKS D/E] are HIGH PRIORITY
 - Moves marked [CAPTURE F/M in GOAL COL] are CRITICAL - capture pieces in goal columns!
 - Don't let opponent pieces advance unchecked in columns D or E toward your goal
 - If opponent just scored, prevent the SAME pattern from happening again!
+- PROTECT YOUR DELANTEROS - Never expose them to capture!
 
 Think carefully: Which move best follows the priorities above?
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
