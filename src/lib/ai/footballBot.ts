@@ -60,7 +60,7 @@ const detectMultipleForwardsThreat = (state: GameState, player: PlayerId): numbe
     turn: opponentPlayer,
   };
   
-  // Count forwards that can reach each goal column
+  // First pass: Count forwards that can reach each goal column in their next move
   for (const oppMove of opponentMoves) {
     // Ensure move player matches simulation state turn
     if (oppMove.player !== simulationState.turn) {
@@ -74,16 +74,54 @@ const detectMultipleForwardsThreat = (state: GameState, player: PlayerId): numbe
       continue;
     }
     
-    // Check if this forward can reach a goal column
+    // Check if this forward can reach a goal column directly
     if (oppMove.to.row === goalRow && GOAL_COLS.includes(oppMove.to.col)) {
       const goalCol = oppMove.to.col;
       forwardsPerGoalColumn[goalCol] = (forwardsPerGoalColumn[goalCol] || 0) + 1;
     }
-    // Also check if forward is very close (within 2 moves) to a goal column
-    else if (Math.abs(oppMove.to.row - goalRow) <= 2 && GOAL_COLS.includes(oppMove.to.col)) {
-      const goalCol = oppMove.to.col;
-      // Count as partial threat (less dangerous but still significant)
-      forwardsPerGoalColumn[goalCol] = (forwardsPerGoalColumn[goalCol] || 0) + 0.5;
+  }
+  
+  // Second pass: Check forwards that are close and can potentially reach goal columns
+  // This helps detect developing threats before they become immediate
+  for (let row = 0; row < BOARD_ROWS; row++) {
+    for (let col = 0; col < BOARD_COLS; col++) {
+      const piece = state.board[row]?.[col];
+      if (!piece || piece.type !== "delantero" || piece.owner !== opponentPlayer) {
+        continue;
+      }
+      
+      // Check if this forward is already counted in the first pass
+      // (i.e., it has a move that reaches a goal column)
+      let alreadyCounted = false;
+      for (const oppMove of opponentMoves) {
+        if (oppMove.player !== simulationState.turn) continue;
+        if (oppMove.from.row === row && oppMove.from.col === col) {
+          if (oppMove.to.row === goalRow && GOAL_COLS.includes(oppMove.to.col)) {
+            alreadyCounted = true;
+            break;
+          }
+        }
+      }
+      
+      if (alreadyCounted) continue;
+      
+      // Check if forward is close to goal columns (within 3 rows)
+      const distanceToGoal = Math.abs(row - goalRow);
+      if (distanceToGoal <= 3 && GOAL_COLS.includes(col)) {
+        // This forward is in a goal column and close - potential threat
+        // Check if it has any move that gets closer to the goal
+        for (const oppMove of opponentMoves) {
+          if (oppMove.player !== simulationState.turn) continue;
+          if (oppMove.from.row === row && oppMove.from.col === col) {
+            const newDistanceToGoal = Math.abs(oppMove.to.row - goalRow);
+            if (newDistanceToGoal < distanceToGoal && GOAL_COLS.includes(oppMove.to.col)) {
+              // This forward can move closer to goal in a goal column - count as developing threat
+              forwardsPerGoalColumn[col] = (forwardsPerGoalColumn[col] || 0) + 0.7;
+              break;
+            }
+          }
+        }
+      }
     }
   }
   
@@ -94,11 +132,17 @@ const detectMultipleForwardsThreat = (state: GameState, player: PlayerId): numbe
     if (count >= 2) {
       // Two or more forwards targeting the same column - EXTREMELY DANGEROUS!
       // The threat multiplies because we can only block one at a time
-      multipleThreatScore += count * 15000; // Massive threat - each additional forward multiplies the danger
-      console.log(`[bot] CRITICAL THREAT: ${count} forwards targeting goal column ${col}!`);
+      // Use exponential scaling: 2 forwards = 2x danger, 3 forwards = 4x danger, etc.
+      const threatMultiplier = count * count; // Exponential: count^2
+      multipleThreatScore += threatMultiplier * 15000; // Massive threat
+      console.log(`[bot] CRITICAL THREAT: ${count.toFixed(1)} forwards targeting goal column ${col}! Score: ${threatMultiplier * 15000}`);
     } else if (count >= 1.5) {
       // One forward very close, another approaching - very dangerous
-      multipleThreatScore += 8000;
+      multipleThreatScore += 10000; // Increased from 8000
+      console.log(`[bot] DEVELOPING THREAT: ${count.toFixed(1)} forwards approaching goal column ${col}`);
+    } else if (count >= 1.0) {
+      // At least one forward can reach this column - still a threat
+      multipleThreatScore += 3000; // Moderate threat
     }
   }
   
@@ -398,8 +442,35 @@ const rateMove = (
       }
     }
     
+    // Check if there's a multiple forwards threat before this move
+    const multipleForwardsThreatBefore = detectMultipleForwardsThreat(state, move.player);
+    const multipleForwardsThreatAfter = detectMultipleForwardsThreat(outcome.nextState, move.player);
+    const multipleForwardsThreatReduction = multipleForwardsThreatBefore - multipleForwardsThreatAfter;
+    
+    // CRITICAL: If we're blocking a multiple forwards threat, give MASSIVE bonus
+    if (multipleForwardsThreatBefore > 0 && multipleForwardsThreatReduction > 0) {
+      // This move is blocking/capturing a forward that's part of a multiple threat - EXTREMELY valuable!
+      // The more forwards were threatening, the more valuable this block is
+      const blockBonus = multipleForwardsThreatReduction * (difficulty === "hard" ? 2 : difficulty === "medium" ? 1.5 : 1);
+      score += blockBonus;
+      console.log(`[bot] BLOCKING MULTIPLE FORWARDS THREAT: reduction=${multipleForwardsThreatReduction}, bonus=${blockBonus}`);
+      
+      // Also check if this move captures a forward that was part of the threat
+      if (capture && outcome.capture && outcome.capture.type === "delantero") {
+        score += difficulty === "hard" ? 20000 : difficulty === "medium" ? 15000 : 10000; // Huge bonus for capturing threatening forward
+      }
+    } else if (multipleForwardsThreatBefore > 0 && multipleForwardsThreatReduction <= 0) {
+      // We still have the multiple forwards threat and didn't reduce it - BAD unless we scored
+      if (!goal) {
+        score -= difficulty === "hard" ? 25000 : difficulty === "medium" ? 15000 : 10000; // Penalty for ignoring multiple forwards threat
+      }
+    }
+    
     // Regular threat reduction (multiplied more heavily for hard difficulty)
-    score += threatReduction * (difficulty === "hard" ? 10 : difficulty === "medium" ? 5 : 3);
+    // Increase multiplier if there was a multiple forwards threat
+    const baseMultiplier = difficulty === "hard" ? 10 : difficulty === "medium" ? 5 : 3;
+    const multiplier = multipleForwardsThreatBefore > 0 ? baseMultiplier * 1.5 : baseMultiplier;
+    score += threatReduction * multiplier;
     
     // Piece safety (protecting our pieces)
     // Forwards are especially important to protect
