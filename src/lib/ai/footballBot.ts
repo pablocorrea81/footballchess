@@ -1268,11 +1268,23 @@ export const executeBotTurnIfNeeded = async (
         
         try {
           // Get Gemini recommendation - wait for it, no fallback
-          const geminiRecommendedMove = await getGeminiRecommendation(
-            currentState,
-            legalMoves,
-            botPlayer,
-          );
+          console.log(`[bot] Calling getGeminiRecommendation with ${legalMoves.length} legal moves`);
+          console.log(`[bot] Current state turn: ${currentState.turn}, botPlayer: ${botPlayer}`);
+          
+          let geminiRecommendedMove: Move | null = null;
+          try {
+            geminiRecommendedMove = await getGeminiRecommendation(
+              currentState,
+              legalMoves,
+              botPlayer,
+            );
+          } catch (error) {
+            console.error(`[bot] ❌ Exception calling getGeminiRecommendation:`, error);
+            if (error instanceof Error) {
+              console.error(`[bot] Error message: ${error.message}`);
+              console.error(`[bot] Error stack: ${error.stack}`);
+            }
+          }
           
           if (geminiRecommendedMove) {
             const moveText = `${String.fromCharCode(65 + geminiRecommendedMove.from.col)}${geminiRecommendedMove.from.row + 1}→${String.fromCharCode(65 + geminiRecommendedMove.to.col)}${geminiRecommendedMove.to.row + 1}`;
@@ -1280,20 +1292,29 @@ export const executeBotTurnIfNeeded = async (
             move = geminiRecommendedMove;
           } else {
             // If Gemini doesn't return a move, wait a bit and try again
-            console.warn("[bot] Gemini didn't return a move, retrying...");
+            console.warn(`[bot] ⚠️ Gemini didn't return a move (null), retrying after 500ms...`);
+            console.warn(`[bot] Legal moves available: ${legalMoves.length}`);
             // Small delay and retry once
             await new Promise(resolve => setTimeout(resolve, 500));
-            const retryMove = await getGeminiRecommendation(
-              currentState,
-              legalMoves,
-              botPlayer,
-            );
-            if (retryMove) {
-              console.log("[bot] Gemini recommended move on retry:", retryMove);
-              move = retryMove;
-            } else {
-              // Last resort: pick first move if Gemini fails completely
-              console.error("[bot] Gemini failed to provide recommendation, using first available move");
+            try {
+              const retryMove = await getGeminiRecommendation(
+                currentState,
+                legalMoves,
+                botPlayer,
+              );
+              if (retryMove) {
+                const moveText = `${String.fromCharCode(65 + retryMove.from.col)}${retryMove.from.row + 1}→${String.fromCharCode(65 + retryMove.to.col)}${retryMove.to.row + 1}`;
+                console.log(`[bot] ✅ Gemini recommended move on retry: ${moveText}`);
+                move = retryMove;
+              } else {
+                // Last resort: pick first move if Gemini fails completely
+                console.error(`[bot] ❌ Gemini failed to provide recommendation on retry, using first available move`);
+                console.error(`[bot] Using fallback move: ${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`);
+                move = legalMoves[0];
+              }
+            } catch (retryError) {
+              console.error(`[bot] ❌ Exception on retry:`, retryError);
+              console.error(`[bot] Using fallback move`);
               move = legalMoves[0];
             }
           }

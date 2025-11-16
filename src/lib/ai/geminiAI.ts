@@ -274,10 +274,29 @@ export const getGeminiRecommendation = async (
   moves: Move[],
   botPlayer: PlayerId,
 ): Promise<Move | null> => {
-  if (!model || !GEMINI_API_KEY || moves.length === 0) {
+  console.log(`[Gemini] ========== getGeminiRecommendation called ==========`);
+  console.log(`[Gemini] Checking prerequisites:`);
+  console.log(`  - Model available: ${!!model}`);
+  console.log(`  - API key available: ${!!GEMINI_API_KEY}`);
+  console.log(`  - Moves available: ${moves.length}`);
+  console.log(`  - Bot player: ${botPlayer}`);
+  
+  if (!model) {
+    console.error(`[Gemini] ❌ Model not initialized - returning null`);
     return null;
   }
   
+  if (!GEMINI_API_KEY) {
+    console.error(`[Gemini] ❌ API key not available - returning null`);
+    return null;
+  }
+  
+  if (moves.length === 0) {
+    console.error(`[Gemini] ❌ No legal moves available - returning null`);
+    return null;
+  }
+  
+  console.log(`[Gemini] ✅ All prerequisites met, starting analysis...`);
   console.log(`[Gemini] ========== AI DECISION ANALYSIS ==========`);
   console.log(`[Gemini] Bot Player: ${botPlayer}, Total legal moves: ${moves.length}`);
 
@@ -815,7 +834,13 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
     console.log(`[Gemini] 🔄 FALLBACK: Last resort - using first available move - ${moveToText(moves[0])}`);
     return moves[0]; // Last resort
   } catch (error) {
-    console.error("[Gemini] Error getting recommendation from Gemini:", error);
+    console.error(`[Gemini] ❌ ERROR getting recommendation from Gemini:`);
+    console.error(`[Gemini] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
+    console.error(`[Gemini] Error message: ${error instanceof Error ? error.message : String(error)}`);
+    if (error instanceof Error && error.stack) {
+      console.error(`[Gemini] Error stack: ${error.stack}`);
+    }
+    console.error(`[Gemini] Full error object:`, error);
     return null;
   }
 };
