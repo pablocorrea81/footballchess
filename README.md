@@ -21,6 +21,10 @@ Set the following values obtained from the Supabase dashboard:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
+For AI features (optional, only needed for "Hard" difficulty bot):
+
+- `GEMINI_API_KEY` - Google Gemini API key for advanced AI evaluation (get from [Google AI Studio](https://makersuite.google.com/app/apikey))
+
 ## Installing Dependencies
 
 ```bash

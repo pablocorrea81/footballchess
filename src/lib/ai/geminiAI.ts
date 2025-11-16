@@ -2,7 +2,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { RuleEngine, type GameState, type Move, type PlayerId } from "@/lib/ruleEngine";
 
 // Initialize Gemini AI
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || "AIzaSyBnCjbsCFvXMyUA9Usa0fKfnsoRLn2wL2o";
+// IMPORTANT: API key must be set via GEMINI_API_KEY environment variable
+// Never commit API keys to the repository
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || null;
 
 let genAI: GoogleGenerativeAI | null = null;
 let model: any = null;
