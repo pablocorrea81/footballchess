@@ -845,24 +845,35 @@ export const executeBotTurnIfNeeded = async (
 
     console.log("[bot] ✅ Bot's turn confirmed! Proceeding with move selection...");
     
-    // Final verification: ensure state turn matches bot player before selecting move
+    // CRITICAL: Ensure state turn matches bot player BEFORE selecting move
+    // getLegalMoves doesn't validate turn, so we need to ensure it's correct
     if (currentState.turn !== botPlayer) {
-      console.error("[bot] CRITICAL ERROR: State turn doesn't match bot player after fixes!", {
+      console.error("[bot] CRITICAL ERROR: State turn doesn't match bot player before move selection!", {
         stateTurn: currentState.turn,
         botPlayer: botPlayer,
       });
-      // Force fix as last resort
+      // Force fix - create a new state object with correct turn
       currentState = {
         ...currentState,
         turn: botPlayer,
       };
-      console.log("[bot] Force-fixed state turn to match bot player");
+      console.log("[bot] Force-fixed state turn to match bot player before move selection");
+    }
+    
+    // Double-check before proceeding
+    if (currentState.turn !== botPlayer) {
+      console.error("[bot] FATAL: Cannot proceed - state turn still doesn't match bot player after fix!", {
+        stateTurn: currentState.turn,
+        botPlayer: botPlayer,
+      });
+      return;
     }
     
     const difficulty =
       (game.bot_difficulty as BotDifficulty | null) ??
       FOOTBALL_BOT_DEFAULT_DIFFICULTY;
 
+    console.log("[bot] Calling pickBotMove with state.turn:", currentState.turn, "botPlayer:", botPlayer);
     const move = pickBotMove(currentState, botPlayer, difficulty);
 
     if (!move) {
@@ -946,6 +957,27 @@ export const executeBotTurnIfNeeded = async (
     }
     
     console.log("[bot] All validations passed. Applying move...");
+    console.log("[bot] Final state check before applyMove:", {
+      stateTurn: currentState.turn,
+      movePlayer: move.player,
+      botPlayer: botPlayer,
+      stateTurnMatchesMovePlayer: currentState.turn === move.player,
+      movePlayerMatchesBotPlayer: move.player === botPlayer,
+    });
+    
+    // One final check - if anything is off, fix it
+    if (currentState.turn !== move.player) {
+      console.error("[bot] FINAL FIX: State turn doesn't match move player right before applyMove! Fixing...", {
+        stateTurn: currentState.turn,
+        movePlayer: move.player,
+      });
+      currentState = {
+        ...currentState,
+        turn: move.player,
+      };
+      console.log("[bot] Fixed state turn to:", currentState.turn);
+    }
+    
     const outcome = RuleEngine.applyMove(currentState, move);
     let nextStatus = game.status;
     let winnerId = game.winner_id;
