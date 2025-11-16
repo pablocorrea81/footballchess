@@ -44,6 +44,67 @@ const positionalBonus = (to: Move["to"], player: PlayerId, pieceType?: string): 
   return Math.max(0, 15 - distance) + columnBonus + centerBonus + forwardBonus;
 };
 
+// Detect if multiple opponent forwards are targeting the same goal column (CRITICAL threat)
+// This is extremely dangerous because the opponent can move one forward, and if blocked, move the other
+const detectMultipleForwardsThreat = (state: GameState, player: PlayerId): number => {
+  const goalRow = goalRowForPlayer(player);
+  const opponentPlayer = opponent(player);
+  const opponentMoves = RuleEngine.getLegalMoves(state, opponentPlayer);
+  
+  // Map to track how many forwards can reach each goal column
+  const forwardsPerGoalColumn: Record<number, number> = {};
+  
+  // CRITICAL: Create a simulation state with opponent's turn to apply their moves
+  const simulationState: GameState = {
+    ...state,
+    turn: opponentPlayer,
+  };
+  
+  // Count forwards that can reach each goal column
+  for (const oppMove of opponentMoves) {
+    // Ensure move player matches simulation state turn
+    if (oppMove.player !== simulationState.turn) {
+      continue;
+    }
+    
+    const piece = state.board[oppMove.from.row]?.[oppMove.from.col];
+    
+    // Only count forwards
+    if (!piece || piece.type !== "delantero") {
+      continue;
+    }
+    
+    // Check if this forward can reach a goal column
+    if (oppMove.to.row === goalRow && GOAL_COLS.includes(oppMove.to.col)) {
+      const goalCol = oppMove.to.col;
+      forwardsPerGoalColumn[goalCol] = (forwardsPerGoalColumn[goalCol] || 0) + 1;
+    }
+    // Also check if forward is very close (within 2 moves) to a goal column
+    else if (Math.abs(oppMove.to.row - goalRow) <= 2 && GOAL_COLS.includes(oppMove.to.col)) {
+      const goalCol = oppMove.to.col;
+      // Count as partial threat (less dangerous but still significant)
+      forwardsPerGoalColumn[goalCol] = (forwardsPerGoalColumn[goalCol] || 0) + 0.5;
+    }
+  }
+  
+  // Calculate threat score based on multiple forwards targeting same column
+  let multipleThreatScore = 0;
+  for (const [col, forwardCount] of Object.entries(forwardsPerGoalColumn)) {
+    const count = Number(forwardCount);
+    if (count >= 2) {
+      // Two or more forwards targeting the same column - EXTREMELY DANGEROUS!
+      // The threat multiplies because we can only block one at a time
+      multipleThreatScore += count * 15000; // Massive threat - each additional forward multiplies the danger
+      console.log(`[bot] CRITICAL THREAT: ${count} forwards targeting goal column ${col}!`);
+    } else if (count >= 1.5) {
+      // One forward very close, another approaching - very dangerous
+      multipleThreatScore += 8000;
+    }
+  }
+  
+  return multipleThreatScore;
+};
+
 // Check if opponent can score a goal in their next move (CRITICAL threat)
 const canOpponentScoreNextMove = (state: GameState, player: PlayerId): boolean => {
   const opponentPlayer = opponent(player);
@@ -84,6 +145,14 @@ const defensiveThreat = (state: GameState, player: PlayerId): number => {
   // CRITICAL: If opponent can score next move, return maximum threat score
   if (canOpponentScoreNextMove(state, player)) {
     return 100000; // Maximum threat - must be blocked!
+  }
+  
+  // CRITICAL: Detect multiple forwards targeting same goal column - EXTREMELY DANGEROUS
+  const multipleForwardsThreat = detectMultipleForwardsThreat(state, player);
+  if (multipleForwardsThreat > 0) {
+    threatScore += multipleForwardsThreat;
+    // This is so dangerous that we should prioritize it almost as much as immediate goal threat
+    // But we still check other threats below
   }
   
   // Check for opponent pieces near our goal
