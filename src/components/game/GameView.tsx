@@ -151,6 +151,16 @@ export function GameView({
   const [turnStartedAt, setTurnStartedAt] = useState<Date | null>(null);
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
   const boardRef = useRef<HTMLDivElement>(null);
+  
+  // Zoom control for board (desktop only)
+  const [boardZoom, setBoardZoom] = useState<number>(() => {
+    // Load from localStorage if available, default to 1.0
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("boardZoom");
+      return saved ? parseFloat(saved) : 1.0;
+    }
+    return 1.0;
+  });
   const { playSound } = useGameSounds();
   // Track if we're currently processing a local move to avoid overwriting with Realtime updates
   const isProcessingLocalMoveRef = useRef<boolean>(false);
@@ -1515,12 +1525,64 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
-          className="w-full overflow-x-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start"
+          className="w-full overflow-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start relative"
         >
+          {/* Zoom controls (desktop only) */}
+          <div className="hidden md:flex absolute top-2 right-2 z-20 gap-2">
+            <button
+              onClick={() => {
+                const newZoom = Math.max(0.5, boardZoom - 0.1);
+                setBoardZoom(newZoom);
+                localStorage.setItem("boardZoom", newZoom.toString());
+              }}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors backdrop-blur-sm"
+              title="Reducir zoom"
+              aria-label="Reducir zoom"
+            >
+              −
+            </button>
+            <button
+              onClick={() => {
+                const newZoom = 1.0;
+                setBoardZoom(newZoom);
+                localStorage.setItem("boardZoom", newZoom.toString());
+              }}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg border-2 border-emerald-400/70 transition-colors backdrop-blur-sm"
+              title="Restablecer zoom"
+              aria-label="Restablecer zoom"
+            >
+              ⌂
+            </button>
+            <button
+              onClick={() => {
+                const newZoom = Math.min(2.0, boardZoom + 0.1);
+                setBoardZoom(newZoom);
+                localStorage.setItem("boardZoom", newZoom.toString());
+              }}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors backdrop-blur-sm"
+              title="Aumentar zoom"
+              aria-label="Aumentar zoom"
+            >
+              +
+            </button>
+          </div>
+          {/* Zoom indicator (desktop only) */}
+          <div className="hidden md:block absolute top-2 left-2 z-20 px-2 py-1 rounded-full bg-emerald-900/80 text-emerald-100 text-xs font-semibold shadow-lg border border-emerald-600/50 backdrop-blur-sm">
+            {Math.round(boardZoom * 100)}%
+          </div>
           <div 
-            id="game-board-container"
-            className="w-full border border-white/20 shadow-2xl"
+            className="flex items-center justify-center"
+            style={{
+              transform: `scale(${boardZoom})`,
+              transformOrigin: "center center",
+              minWidth: boardZoom !== 1 ? `${100 / boardZoom}%` : "100%",
+              minHeight: boardZoom !== 1 ? `${100 / boardZoom}%` : "auto",
+            }}
           >
+            <div 
+              id="game-board-container"
+              className="w-full border border-white/20 shadow-2xl transition-transform duration-200"
+            >
             {/* Column labels (A-H) */}
             <div
               className="grid border-b border-white/20 w-full"
@@ -1712,7 +1774,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               );
             })}
           </div>
-        </div>
+            </div>
+          </div>
 
         {/* Header and Info panel - Right side on all screen sizes */}
         <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2">
