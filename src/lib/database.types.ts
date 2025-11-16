@@ -16,6 +16,7 @@ export interface Database {
           elo_rating: number | null;
           avatar_url: string | null;
           show_move_hints: boolean | null;
+          is_admin: boolean;
           created_at: string | null;
         };
         Insert: {
@@ -24,6 +25,7 @@ export interface Database {
           elo_rating?: number | null;
           avatar_url?: string | null;
           show_move_hints?: boolean | null;
+          is_admin?: boolean;
           created_at?: string | null;
         };
         Update: {
@@ -32,6 +34,7 @@ export interface Database {
           elo_rating?: number | null;
           avatar_url?: string | null;
           show_move_hints?: boolean | null;
+          is_admin?: boolean;
           created_at?: string | null;
         };
       };

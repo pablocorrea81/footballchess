@@ -38,6 +38,9 @@ export type RankingsEntry = {
   playerId: string;
   username: string | null;
   avatarUrl: string | null;
+  teamName: string | null;
+  teamPrimaryColor: string | null;
+  teamSecondaryColor: string | null;
   totalWins: number;
   totalGames: number;
   winRate: number;
@@ -52,7 +55,7 @@ export type RankingsEntry = {
  */
 export async function getPlayerStats(playerId: string): Promise<PlayerStats | null> {
   try {
-    // Get player profile
+    // Get player profile and team
     const { data: profileData, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("id, username, avatar_url")
@@ -64,6 +67,13 @@ export async function getPlayerStats(playerId: string): Promise<PlayerStats | nu
     }
 
     const profile = profileData as { id: string; username: string | null; avatar_url: string | null };
+
+    // Get player's team
+    const { data: teamData } = await supabaseAdmin
+      .from("teams")
+      .select("name, primary_color, secondary_color")
+      .eq("owner_id", playerId)
+      .maybeSingle();
 
     // Get all finished games where player participated
     const { data: finishedGamesData, error } = await supabaseAdmin
@@ -325,6 +335,7 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
 
     // Aggregate stats by player
     const playerStatsMap = new Map<string, RankingsEntry>();
+    const playerIdsSet = new Set<string>();
 
     for (const game of finishedGames) {
       const player1 = Array.isArray(game.player1) ? game.player1[0] : game.player1;
@@ -333,11 +344,15 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
       // Process player 1
       if (player1) {
         const playerId = player1.id;
+        playerIdsSet.add(playerId);
         if (!playerStatsMap.has(playerId)) {
           playerStatsMap.set(playerId, {
             playerId,
             username: player1.username,
             avatarUrl: player1.avatar_url,
+            teamName: null,
+            teamPrimaryColor: null,
+            teamSecondaryColor: null,
             totalWins: 0,
             totalGames: 0,
             winRate: 0,
@@ -374,11 +389,15 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
       // Process player 2 (if exists and not bot)
       if (player2 && !game.is_bot_game && game.player_2_id) {
         const playerId = player2.id;
+        playerIdsSet.add(playerId);
         if (!playerStatsMap.has(playerId)) {
           playerStatsMap.set(playerId, {
             playerId,
             username: player2.username,
             avatarUrl: player2.avatar_url,
+            teamName: null,
+            teamPrimaryColor: null,
+            teamSecondaryColor: null,
             totalWins: 0,
             totalGames: 0,
             winRate: 0,
@@ -399,6 +418,36 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
         stats.multiplayerGames++;
         if (game.winner_id === playerId) {
           stats.multiplayerWins++;
+        }
+      }
+    }
+
+    // Fetch teams for all players
+    if (playerIdsSet.size > 0) {
+      const { data: teamsData } = await supabaseAdmin
+        .from("teams")
+        .select("owner_id, name, primary_color, secondary_color")
+        .in("owner_id", Array.from(playerIdsSet));
+
+      if (teamsData) {
+        const teams = teamsData as { owner_id: string; name: string; primary_color: string; secondary_color: string }[];
+        const teamsMap = new Map<string, { name: string; primary_color: string; secondary_color: string }>();
+        for (const team of teams) {
+          teamsMap.set(team.owner_id, {
+            name: team.name,
+            primary_color: team.primary_color,
+            secondary_color: team.secondary_color,
+          });
+        }
+
+        // Assign teams to rankings
+        for (const stats of playerStatsMap.values()) {
+          const team = teamsMap.get(stats.playerId);
+          if (team) {
+            stats.teamName = team.name;
+            stats.teamPrimaryColor = team.primary_color;
+            stats.teamSecondaryColor = team.secondary_color;
+          }
         }
       }
     }
@@ -466,17 +515,22 @@ export async function getHardBotRankings(limit: number = 100): Promise<RankingsE
 
     // Aggregate stats by player
     const playerStatsMap = new Map<string, RankingsEntry>();
+    const playerIdsSet = new Set<string>();
 
     for (const game of finishedGames) {
       const player1 = Array.isArray(game.player1) ? game.player1[0] : game.player1;
       if (!player1) continue;
 
       const playerId = player1.id;
+      playerIdsSet.add(playerId);
       if (!playerStatsMap.has(playerId)) {
         playerStatsMap.set(playerId, {
           playerId,
           username: player1.username,
           avatarUrl: player1.avatar_url,
+          teamName: null,
+          teamPrimaryColor: null,
+          teamSecondaryColor: null,
           totalWins: 0,
           totalGames: 0,
           winRate: 0,
@@ -493,6 +547,36 @@ export async function getHardBotRankings(limit: number = 100): Promise<RankingsE
       if (game.winner_id === playerId) {
         stats.hardBotWins++;
         stats.totalWins++;
+      }
+    }
+
+    // Fetch teams for all players
+    if (playerIdsSet.size > 0) {
+      const { data: teamsData } = await supabaseAdmin
+        .from("teams")
+        .select("owner_id, name, primary_color, secondary_color")
+        .in("owner_id", Array.from(playerIdsSet));
+
+      if (teamsData) {
+        const teams = teamsData as { owner_id: string; name: string; primary_color: string; secondary_color: string }[];
+        const teamsMap = new Map<string, { name: string; primary_color: string; secondary_color: string }>();
+        for (const team of teams) {
+          teamsMap.set(team.owner_id, {
+            name: team.name,
+            primary_color: team.primary_color,
+            secondary_color: team.secondary_color,
+          });
+        }
+
+        // Assign teams to rankings
+        for (const stats of playerStatsMap.values()) {
+          const team = teamsMap.get(stats.playerId);
+          if (team) {
+            stats.teamName = team.name;
+            stats.teamPrimaryColor = team.primary_color;
+            stats.teamSecondaryColor = team.secondary_color;
+          }
+        }
       }
     }
 

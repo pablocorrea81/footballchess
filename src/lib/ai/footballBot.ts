@@ -209,8 +209,8 @@ const rateMove = (
     score += positional * 2; // Reduced for other pieces
   }
 
-  // Defensive considerations (medium and hard only)
-  if (difficulty !== "easy") {
+  // Defensive considerations (all difficulties now use this)
+  {
     const threatBefore = defensiveThreat(state, move.player);
     const threatAfter = defensiveThreat(outcome.nextState, move.player);
     const threatReduction = threatBefore - threatAfter;
@@ -248,15 +248,15 @@ const rateMove = (
       if (canBeCaptured && !goal) {
         // CRITICAL: Exposing a forward to capture is extremely bad
         // This penalty should be so high that it's almost never worth it
-        score -= difficulty === "hard" ? 10000 : 5000; // Massive penalty - should prevent this move
+        score -= difficulty === "hard" ? 10000 : difficulty === "medium" ? 7500 : 5000; // Massive penalty - should prevent this move
         // Note: This will be further checked in look-ahead, but this provides immediate feedback
       }
     }
   }
 
-  // Board control (medium and hard only)
+  // Board control (all difficulties now use this)
   // Especially important for forwards - they should control offensive areas
-  if (difficulty !== "easy") {
+  {
     const controlBefore = boardControl(state, move.player);
     const controlAfter = boardControl(outcome.nextState, move.player);
     const controlGain = controlAfter - controlBefore;
@@ -283,9 +283,9 @@ const rateMove = (
     score += 10; // Reward defensive positioning
   }
 
-  // Look-ahead for medium and hard: evaluate opponent's best response
+  // Look-ahead: evaluate opponent's best response (all difficulties now use this)
   // CRITICAL: Never allow losing a forward unless it results in an immediate goal
-  if (lookAhead && difficulty !== "easy") {
+  if (lookAhead) {
     const opponentPlayer = opponent(move.player);
     const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
     
@@ -353,7 +353,7 @@ const rateMove = (
       if (opponentCanCaptureForward && !goal) {
         // For hard difficulty, this should be almost impossible to overcome
         // Set score to negative infinity effectively (make it extremely negative)
-        score -= 50000; // Massive penalty - should never be chosen unless absolutely necessary
+        score -= difficulty === "hard" ? 50000 : difficulty === "medium" ? 30000 : 20000; // Massive penalty - should never be chosen unless absolutely necessary
         // Additionally, check if this is the ONLY move that doesn't lose (in which case we have no choice)
         // But for now, penalize it so heavily that other moves will be preferred
       } else if (opponentCanCaptureForward && goal) {
@@ -387,9 +387,81 @@ const rateMove = (
       
       // Subtract opponent's best response from our score
       // But reduce this penalty if we scored a goal (game resets)
-      const opponentResponseWeight = difficulty === "hard" ? 0.6 : 0.3;
+      const opponentResponseWeight = difficulty === "hard" ? 0.8 : difficulty === "medium" ? 0.6 : 0.5;
       const adjustedWeight = goal ? opponentResponseWeight * 0.3 : opponentResponseWeight; // Less important if we scored
       score -= bestOpponentScore * adjustedWeight;
+    }
+  }
+  
+  // Deep look-ahead for medium and hard: evaluate 2 moves ahead
+  // This helps the AI see deeper into the game and make better strategic decisions
+  if (lookAhead && (difficulty === "medium" || difficulty === "hard")) {
+    const opponentPlayer = opponent(move.player);
+    const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
+    
+    if (opponentMoves.length > 0) {
+      // Find opponent's best move (similar to above but we'll use it for deeper analysis)
+      let bestOpponentMove: Move | null = null;
+      let bestOpponentScore2 = -Infinity;
+      
+      for (const opponentMove of opponentMoves) {
+        const opponentOutcome = RuleEngine.applyMove(outcome.nextState, opponentMove);
+        const opponentGoal = opponentOutcome.goal?.scoringPlayer === opponentPlayer;
+        
+        // Basic scoring for opponent move
+        let opponentScore2 = 0;
+        if (opponentGoal) {
+          opponentScore2 += 8000;
+        }
+        if (opponentOutcome.capture) {
+          const capturedVal = pieceValue(opponentOutcome.capture.type);
+          opponentScore2 += 150 + capturedVal * 3;
+        }
+        
+        if (opponentScore2 > bestOpponentScore2) {
+          bestOpponentScore2 = opponentScore2;
+          bestOpponentMove = opponentMove;
+        }
+      }
+      
+      // Now evaluate our best response to opponent's best move
+      if (bestOpponentMove) {
+        const opponentOutcome = RuleEngine.applyMove(outcome.nextState, bestOpponentMove);
+        const ourMovesAfterOpponent = RuleEngine.getLegalMoves(opponentOutcome.nextState, move.player);
+        
+        if (ourMovesAfterOpponent.length > 0) {
+          let bestOurResponse = -Infinity;
+          
+          for (const ourResponseMove of ourMovesAfterOpponent) {
+            const ourResponseOutcome = RuleEngine.applyMove(opponentOutcome.nextState, ourResponseMove);
+            const ourResponseGoal = ourResponseOutcome.goal?.scoringPlayer === move.player;
+            const ourResponseCapture = Boolean(ourResponseOutcome.capture);
+            const ourResponseProgress = forwardProgress(ourResponseMove.from, ourResponseMove.to, move.player);
+            
+            let ourResponseScore = 0;
+            if (ourResponseGoal) {
+              ourResponseScore += 8000; // Still high value for goals
+            }
+            if (ourResponseCapture && ourResponseOutcome.capture) {
+              const capturedVal = pieceValue(ourResponseOutcome.capture.type);
+              ourResponseScore += 100 + capturedVal * 2;
+            }
+            ourResponseScore += ourResponseProgress * 20;
+            
+            bestOurResponse = Math.max(bestOurResponse, ourResponseScore);
+          }
+          
+          // Add bonus for moves that lead to good positions after opponent's response
+          // Hard difficulty weighs this more heavily
+          const deepLookAheadWeight = difficulty === "hard" ? 0.4 : 0.2;
+          score += bestOurResponse * deepLookAheadWeight;
+          
+          // Penalty if opponent can score after our move (even if we can respond)
+          if (bestOpponentScore2 >= 8000 && !goal) {
+            score -= difficulty === "hard" ? 2000 : 1000; // Heavy penalty for allowing opponent goals
+          }
+        }
+      }
     }
   }
   
@@ -450,13 +522,12 @@ const rateMove = (
     }
   }
 
-  // Add randomness based on difficulty (less for harder difficulties)
-  if (difficulty === "easy") {
-    score += Math.random() * 30;
-  } else if (difficulty === "medium") {
-    score += Math.random() * 8;
+  // Add randomness based on difficulty (only for medium now, reduced)
+  // Easy and Hard have no randomness for consistent play
+  if (difficulty === "medium") {
+    score += Math.random() * 5; // Reduced randomness for medium
   }
-  // Hard has no randomness
+  // Easy and Hard have no randomness
 
   return { score, outcome };
 };
@@ -471,8 +542,8 @@ export const pickBotMove = (
     return null;
   }
 
-  // Use look-ahead for medium and hard difficulties
-  const useLookAhead = difficulty !== "easy";
+  // Use look-ahead for all difficulties now (easy is now like old hard)
+  const useLookAhead = true;
   
   const rated = legalMoves.map((move) => ({
     move,
@@ -480,44 +551,42 @@ export const pickBotMove = (
   }));
 
   // Filter out moves that would result in losing a forward (unless they score a goal)
-  // This is a hard filter for medium and hard difficulties
-  const safeMoves = useLookAhead
-    ? rated.filter((entry) => {
-        // If the move scores a goal, allow it (game resets anyway)
-        const outcome = entry.outcome;
-        if (outcome.goal?.scoringPlayer === player) {
-          return true; // Always allow moves that score
+  // This is a hard filter for all difficulties now
+  const safeMoves = rated.filter((entry) => {
+    // If the move scores a goal, allow it (game resets anyway)
+    const outcome = entry.outcome;
+    if (outcome.goal?.scoringPlayer === player) {
+      return true; // Always allow moves that score
+    }
+    
+    // Filter out moves that would lose a forward
+    // Check if opponent can capture a forward after this move
+    const opponentPlayer = player === "home" ? "away" : "home";
+    const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
+    
+    // Find all our forwards after the move
+    const ourForwards: Array<{ row: number; col: number }> = [];
+    for (let row = 0; row < BOARD_ROWS; row += 1) {
+      for (let col = 0; col < BOARD_COLS; col += 1) {
+        const cell = outcome.nextState.board[row]?.[col];
+        if (cell && cell.owner === player && cell.type === "delantero") {
+          ourForwards.push({ row, col });
         }
-        
-        // For medium and hard, filter out moves that would lose a forward
-        // Check if opponent can capture a forward after this move
-        const opponentPlayer = player === "home" ? "away" : "home";
-        const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
-        
-        // Find all our forwards after the move
-        const ourForwards: Array<{ row: number; col: number }> = [];
-        for (let row = 0; row < BOARD_ROWS; row += 1) {
-          for (let col = 0; col < BOARD_COLS; col += 1) {
-            const cell = outcome.nextState.board[row]?.[col];
-            if (cell && cell.owner === player && cell.type === "delantero") {
-              ourForwards.push({ row, col });
-            }
-          }
-        }
-        
-        // Check if any forward can be captured
-        for (const forward of ourForwards) {
-          const canBeCaptured = opponentMoves.some((oppMove) => 
-            oppMove.to.row === forward.row && oppMove.to.col === forward.col
-          );
-          if (canBeCaptured) {
-            return false; // Filter out this move - it would lose a forward
-          }
-        }
-        
-        return true; // Keep the move
-      })
-    : rated; // For easy difficulty, don't filter (no look-ahead)
+      }
+    }
+    
+    // Check if any forward can be captured
+    for (const forward of ourForwards) {
+      const canBeCaptured = opponentMoves.some((oppMove) => 
+        oppMove.to.row === forward.row && oppMove.to.col === forward.col
+      );
+      if (canBeCaptured) {
+        return false; // Filter out this move - it would lose a forward
+      }
+    }
+    
+    return true; // Keep the move
+  });
 
   // If we filtered out all moves (shouldn't happen, but just in case), use all moves
   const movesToConsider = safeMoves.length > 0 ? safeMoves : rated;
@@ -526,20 +595,26 @@ export const pickBotMove = (
   movesToConsider.sort((a, b) => b.score - a.score);
 
   if (difficulty === "easy") {
-    // Easy: pick randomly from top 5 moves (or fewer if less available)
-    const sampleCount = Math.max(1, Math.min(5, movesToConsider.length));
-    const randomIndex = Math.floor(Math.random() * sampleCount);
-    return movesToConsider[randomIndex]?.move ?? movesToConsider[0]?.move ?? null;
+    // Easy: now picks the best move (like old hard) - no randomness
+    // If multiple moves have similar scores (within 10 points), pick randomly from top tier
+    const bestScore = movesToConsider[0]?.score ?? 0;
+    const topTier = movesToConsider.filter((entry) => entry.score >= bestScore - 10);
+    if (topTier.length > 1) {
+      const randomIndex = Math.floor(Math.random() * topTier.length);
+      return topTier[randomIndex]?.move ?? movesToConsider[0]?.move ?? null;
+    }
+    return movesToConsider[0]?.move ?? null;
   }
 
   if (difficulty === "medium") {
-    // Medium: pick from top tier moves (within 40 points of best)
+    // Medium: pick from top tier moves (within 30 points of best, reduced from 40)
+    // With reduced randomness, this makes it more consistent
     const topTierScore = movesToConsider[0]?.score ?? 0;
-    const threshold = topTierScore - 40;
+    const threshold = topTierScore - 30;
     const candidates = movesToConsider.filter((entry) => entry.score >= threshold);
     if (candidates.length > 0) {
-      // Prefer higher scored moves, but add some randomness
-      const topCandidates = candidates.slice(0, Math.min(3, candidates.length));
+      // Prefer higher scored moves, but add some randomness (reduced)
+      const topCandidates = candidates.slice(0, Math.min(2, candidates.length)); // Reduced from 3 to 2
       const randomIndex = Math.floor(Math.random() * topCandidates.length);
       return topCandidates[randomIndex]?.move ?? movesToConsider[0]?.move ?? null;
     }
@@ -547,7 +622,7 @@ export const pickBotMove = (
   }
 
   // Hard: always pick the best move (no randomness)
-  // If multiple moves have the same score, pick the first one
+  // With deeper look-ahead, this will make even better decisions
   return movesToConsider[0]?.move ?? null;
 };
 

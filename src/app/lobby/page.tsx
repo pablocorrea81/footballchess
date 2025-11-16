@@ -84,6 +84,23 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
     .eq("id", session.user.id)
     .single();
 
+  // Get user's team
+  const { data: userTeam } = await supabase
+    .from("teams")
+    .select("name, primary_color, secondary_color")
+    .eq("owner_id", session.user.id)
+    .maybeSingle();
+
+  // Check if user is admin
+  const { data: adminProfile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", session.user.id)
+    .single();
+  
+  const isAdminByEmail = session.user.email === "pabloco@gmail.com";
+  const isAdmin = adminProfile?.is_admin === true || isAdminByEmail;
+
   const { data: rawGames } = await supabase
     .from("games")
     .select(
@@ -140,7 +157,7 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
           <p className="mt-2 text-sm text-emerald-100/80">
             Crea una partida nueva o únete a un juego esperando contrincante.
           </p>
-          <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100">
+          <div className="mt-6 flex items-center gap-3 text-sm text-emerald-100 flex-wrap">
             <Link
               href="/profile"
               className="flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 transition hover:bg-emerald-500/30"
@@ -158,11 +175,24 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
               )}
               <span>{profile?.username ?? "Jugador"}</span>
             </Link>
+            {userTeam && (
+              <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 border border-white/20">
+                {userTeam.primary_color && (
+                  <div
+                    className="h-5 w-5 rounded-full border-2 border-white/40 shadow-sm"
+                    style={{
+                      background: `linear-gradient(135deg, ${userTeam.primary_color}, ${userTeam.secondary_color || userTeam.primary_color})`,
+                    }}
+                  />
+                )}
+                <span className="font-semibold text-emerald-50">{userTeam.name}</span>
+              </div>
+            )}
             <Link
               href="/team"
               className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100 transition hover:border-emerald-200 hover:text-white"
             >
-              🏟️ Mi equipo
+              🏟️ {userTeam ? "Editar equipo" : "Mi equipo"}
             </Link>
             <Link
               href="/stats"
@@ -170,6 +200,14 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
             >
               📊 Estadísticas
             </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="rounded-full border border-red-400/60 bg-red-500/20 px-3 py-1 text-red-100 transition hover:border-red-300 hover:bg-red-500/30"
+              >
+                ⚙️ Admin
+              </Link>
+            )}
             <Link
               href="/"
               className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100 transition hover:border-emerald-200 hover:text-white"

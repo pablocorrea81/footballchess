@@ -1026,10 +1026,19 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         setShowVictoryAlert(false);
       }, 5000);
       
+      // Redirect to lobby after 5 seconds
+      const redirectTimer = setTimeout(() => {
+        console.log("[GameView] Redirecting to lobby after victory");
+        router.push("/lobby");
+      }, 5000);
+      
       previousStatusRef.current = currentStatus;
       previousWinnerIdRef.current = currentWinnerId;
       
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(redirectTimer);
+      };
     } else {
       // Player didn't win (or game finished but player lost)
       console.log("[GameView] Game finished but player didn't win", {
@@ -1048,7 +1057,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         previousWinnerIdRef.current = currentWinnerId;
       }
     }
-  }, [status, winnerId, profileId, playSound, isBotGame]);
+  }, [status, winnerId, profileId, playSound, isBotGame, router]);
 
   // Function to handle surrender
   const handleSurrender = useCallback(async () => {
@@ -1763,7 +1772,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               </div>
             </div>
             {/* Team names - visible on all screen sizes */}
-            {!isBotGame && (team1Name || team2Name) && (
+            {/* Show team vs team for multiplayer games, or just player team for bot games */}
+            {((!isBotGame && (team1Name || team2Name)) || (isBotGame && team1Name)) && (
               <div className="flex items-center justify-center gap-2 md:gap-3 py-2 md:py-3 border-t border-white/20">
                 <div className="flex items-center gap-2">
                   {team1PrimaryColor && (
@@ -1775,25 +1785,34 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     />
                   )}
                   <span className="text-sm md:text-base font-bold text-emerald-50">
-                    {team1Name || "Equipo 1"}
+                    {team1Name || "Mi equipo"}
                   </span>
                 </div>
-                <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200/60">
-                  vs
-                </span>
-                <div className="flex items-center gap-2">
-                  {team2PrimaryColor && (
-                    <div
-                      className="h-4 w-4 md:h-5 md:w-5 rounded-full border-2 border-white/40 shadow-sm"
-                      style={{
-                        background: `linear-gradient(135deg, ${team2PrimaryColor}, ${team2SecondaryColor || team2PrimaryColor})`,
-                      }}
-                    />
-                  )}
-                  <span className="text-sm md:text-base font-bold text-emerald-50">
-                    {team2Name || "Equipo 2"}
+                {!isBotGame && (
+                  <>
+                    <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200/60">
+                      vs
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {team2PrimaryColor && (
+                        <div
+                          className="h-4 w-4 md:h-5 md:w-5 rounded-full border-2 border-white/40 shadow-sm"
+                          style={{
+                            background: `linear-gradient(135deg, ${team2PrimaryColor}, ${team2SecondaryColor || team2PrimaryColor})`,
+                          }}
+                        />
+                      )}
+                      <span className="text-sm md:text-base font-bold text-emerald-50">
+                        {team2Name || "Equipo 2"}
+                      </span>
+                    </div>
+                  </>
+                )}
+                {isBotGame && (
+                  <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200/60">
+                    vs {botDisplayName}
                   </span>
-                </div>
+                )}
               </div>
             )}
             {/* Additional info - hidden on mobile, visible on desktop */}

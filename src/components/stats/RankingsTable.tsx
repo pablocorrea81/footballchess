@@ -99,12 +99,29 @@ export function RankingsTable({ rankings, type, currentPlayerId }: RankingsTable
                           {entry.username?.charAt(0).toUpperCase() ?? "J"}
                         </div>
                       )}
-                      <Link
-                        href={`/stats/player/${entry.playerId}`}
-                        className="hover:text-emerald-200 hover:underline"
-                      >
-                        {entry.username || "Jugador sin nombre"}
-                      </Link>
+                      <div className="flex flex-col">
+                        <Link
+                          href={`/stats/player/${entry.playerId}`}
+                          className="hover:text-emerald-200 hover:underline font-medium"
+                        >
+                          {entry.username || "Jugador sin nombre"}
+                        </Link>
+                        {entry.teamName && (
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {entry.teamPrimaryColor && (
+                              <div
+                                className="h-3 w-3 rounded-full border border-white/40"
+                                style={{
+                                  background: `linear-gradient(135deg, ${entry.teamPrimaryColor}, ${entry.teamSecondaryColor || entry.teamPrimaryColor})`,
+                                }}
+                              />
+                            )}
+                            <span className="text-xs text-emerald-100/70 font-medium">
+                              {entry.teamName}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                       {isCurrentPlayer && (
                         <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs text-white">
                           Tú
