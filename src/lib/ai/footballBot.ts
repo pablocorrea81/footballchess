@@ -624,18 +624,71 @@ export const pickBotMove = (
   player: PlayerId,
   difficulty: BotDifficulty = FOOTBALL_BOT_DEFAULT_DIFFICULTY,
 ): Move | null => {
+  // CRITICAL: Ensure state turn matches player before getting legal moves
+  // getLegalMoves doesn't validate turn, but we need it correct for move selection
+  if (state.turn !== player) {
+    console.error("[bot] ERROR in pickBotMove: State turn doesn't match player!", {
+      stateTurn: state.turn,
+      player: player,
+    });
+    // Fix the state turn
+    state = {
+      ...state,
+      turn: player,
+    };
+    console.log("[bot] Fixed state turn in pickBotMove to:", state.turn);
+  }
+  
   const legalMoves = RuleEngine.getLegalMoves(state, player);
   if (legalMoves.length === 0) {
     return null;
+  }
+  
+  // Verify all moves have the correct player
+  const incorrectMoves = legalMoves.filter(m => m.player !== player);
+  if (incorrectMoves.length > 0) {
+    console.error("[bot] ERROR in pickBotMove: Found moves with incorrect player!", {
+      incorrectMovesCount: incorrectMoves.length,
+      expectedPlayer: player,
+      sampleIncorrectMove: incorrectMoves[0],
+    });
   }
 
   // Use look-ahead for all difficulties now (easy is now like old hard)
   const useLookAhead = true;
   
-  const rated = legalMoves.map((move) => ({
-    move,
-    ...rateMove(state, move, difficulty, useLookAhead),
-  }));
+  console.log("[bot] In pickBotMove: About to rate moves. State turn:", state.turn, "Player:", player, "Legal moves count:", legalMoves.length);
+  
+  const rated = legalMoves.map((move, index) => {
+    // Log first move to debug
+    if (index === 0) {
+      console.log("[bot] Rating first move:", {
+        movePlayer: move.player,
+        stateTurn: state.turn,
+        match: move.player === state.turn,
+      });
+    }
+    
+    try {
+      const result = rateMove(state, move, difficulty, useLookAhead);
+      return {
+        move,
+        ...result,
+      };
+    } catch (error) {
+      console.error("[bot] ERROR rating move in pickBotMove:", error);
+      if (error instanceof Error) {
+        console.error("[bot] Error message:", error.message);
+        console.error("[bot] Error stack:", error.stack);
+      }
+      // Return a low score for this move so it won't be selected
+      return {
+        move,
+        score: -Infinity,
+        outcome: RuleEngine.applyMove({ ...state, turn: move.player }, move),
+      };
+    }
+  });
 
   // Filter out moves that would result in losing a forward (unless they score a goal)
   // This is a hard filter for all difficulties now
