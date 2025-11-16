@@ -1719,14 +1719,14 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3">
+              <div className="flex items-center gap-2 md:gap-3 flex-wrap">
                 <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
                   Partido #{initialGameId.slice(0, 8)}
                 </h1>
-                {/* Turn indicator badge - always visible, especially on mobile */}
+                {/* Turn indicator badge - visible only on mobile */}
                 {status === "in_progress" && (
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 text-xs sm:text-sm font-semibold shadow-lg ${
+                  <div className={`md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 text-xs sm:text-sm font-semibold shadow-lg ${
                     currentTurnIsPlayer
                       ? "bg-emerald-600/90 text-white border-emerald-400/80 ring-2 ring-emerald-400/60"
                       : "bg-sky-600/90 text-white border-sky-400/80"
@@ -1734,15 +1734,15 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     <span className={currentTurnIsPlayer ? "text-emerald-100" : "text-sky-100"}>
                       {currentTurnIsPlayer ? "✅" : "⏳"}
                     </span>
-                    <span className="font-bold">
+                    <span className="font-bold whitespace-nowrap">
                       {currentTurnLabel}
                     </span>
                   </div>
                 )}
                 {status === "finished" && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
+                  <div className="md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
                     <span>🏁</span>
-                    <span className="font-bold">
+                    <span className="font-bold whitespace-nowrap">
                       {computedWinnerLabel
                         ? `Ganó: ${computedWinnerLabel}`
                         : "Finalizado"}
@@ -1750,9 +1750,9 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   </div>
                 )}
                 {status === "waiting" && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
+                  <div className="md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
                     <span>⏳</span>
-                    <span className="font-bold">Esperando</span>
+                    <span className="font-bold whitespace-nowrap">Esperando</span>
                   </div>
                 )}
               </div>
