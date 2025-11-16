@@ -1,0 +1,53 @@
+#!/bin/bash
+# Script to filter and show only Gemini AI logs
+
+echo "🔍 Gemini AI Logs Filter"
+echo "========================="
+echo ""
+echo "This script helps you find Gemini AI decision logs."
+echo ""
+
+# Check if running locally or on Vercel
+if [ -f ".env.local" ]; then
+  echo "📋 Local Development:"
+  echo "   Run 'npm run dev' and look for lines with '[Gemini]' in the terminal"
+  echo ""
+fi
+
+echo "📋 In Vercel:"
+echo "   1. Go to: https://vercel.com/dashboard"
+echo "   2. Select your project: footballchess"
+echo "   3. Click on 'Deployments' tab"
+echo "   4. Click on the latest deployment"
+echo "   5. Click on 'Functions' or 'Logs'"
+echo "   6. Search for '[Gemini]' in the logs"
+echo ""
+echo "📋 Log Format Examples:"
+echo ""
+echo "✅ Success - AI Initialized:"
+echo "   [Gemini] ✅ Gemini AI initialized successfully"
+echo ""
+echo "🔍 Decision Analysis:"
+echo "   [Gemini] ========== AI DECISION ANALYSIS =========="
+echo "   [Gemini] Bot Player: away, Total legal moves: 58"
+echo "   [Gemini] Move Analysis Summary:"
+echo "   [Gemini]   - Immediate goals: 0"
+echo "   [Gemini]   - Blocking moves: 2"
+echo "   [Gemini]   - Opponent threats detected: 1"
+echo ""
+echo "✅ Selected Move:"
+echo "   [Gemini] ✅ SELECTED MOVE #3: D4→D3 (D)"
+echo "   [Gemini] 💡 REASON: 🛡️ BLOCK - Blocks delantero at D11"
+echo ""
+echo "⚠️ Warnings:"
+echo "   [Gemini] ⚠️ WARNING: Threats detected but selected move doesn't block them!"
+echo "   [Gemini] ⚠️ Move 5 (A8→A9) RISKY - Exposes delantero at A9 to capture"
+echo ""
+echo "🔍 Key things to look for:"
+echo "   - [Gemini] ✅ = Success"
+echo "   - [Gemini] ⚠️ = Warning"
+echo "   - [Gemini] ❌ = Error"
+echo "   - [Gemini] 💡 REASON = Why the move was selected"
+echo "   - [Gemini] 📊 Decision Context = Summary of options"
+echo ""
+
