@@ -2,8 +2,8 @@
   <defs>
     <!-- Gradient for ball shading -->
     <radialGradient id="ballGradient" cx="50%" cy="40%" r="60%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-      <stop offset="100%" stop-color="#e0e0e0" stop-opacity="1"/>
+      <stop offset="0%" stop-color="#fb923c" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#ea580c" stop-opacity="1"/>
     </radialGradient>
     <!-- Shadow gradient -->
     <radialGradient id="shadowGradient" cx="50%" cy="60%" r="50%">
@@ -15,58 +15,58 @@
   <!-- Background circle with shadow -->
   <circle cx="50" cy="52" r="48" fill="url(#shadowGradient)"/>
   
-  <!-- Main ball circle with gradient -->
-  <circle cx="50" cy="50" r="48" fill="url(#ballGradient)" stroke="#000000" stroke-width="1"/>
+  <!-- Main ball circle with orange gradient and black border -->
+  <circle cx="50" cy="50" r="48" fill="url(#ballGradient)" stroke="#000000" stroke-width="2.5"/>
   
   <!-- Classic soccer ball pattern: icosahedral truncated (12 pentagons, 20 hexagons) -->
-  <!-- Central visible pentagon (white) -->
-  <polygon points="50,25 58,38 72,38 66,50 56,50" fill="#000000" opacity="0.9"/>
+  <!-- Central visible pentagon (black) -->
+  <polygon points="50,25 58,38 72,38 66,50 56,50" fill="#000000" opacity="0.95"/>
   
   <!-- Top pentagon (black) -->
-  <polygon points="50,15 64,26 72,38 58,38 50,25" fill="#000000" opacity="0.85"/>
+  <polygon points="50,15 64,26 72,38 58,38 50,25" fill="#000000" opacity="0.9"/>
   
   <!-- Bottom pentagon (black) -->
-  <polygon points="50,85 58,75 72,75 66,63 56,63" fill="#000000" opacity="0.85"/>
+  <polygon points="50,85 58,75 72,75 66,63 56,63" fill="#000000" opacity="0.9"/>
   
   <!-- Left pentagon (black) -->
-  <polygon points="15,50 26,58 26,72 38,66 38,56" fill="#000000" opacity="0.85"/>
+  <polygon points="15,50 26,58 26,72 38,66 38,56" fill="#000000" opacity="0.9"/>
   
   <!-- Right pentagon (black) -->
-  <polygon points="85,50 75,58 75,72 63,66 63,56" fill="#000000" opacity="0.85"/>
+  <polygon points="85,50 75,58 75,72 63,66 63,56" fill="#000000" opacity="0.9"/>
   
-  <!-- Hexagons connecting pentagons (white spaces between black pentagons) -->
+  <!-- Hexagons connecting pentagons (orange spaces between black pentagons) -->
   <!-- Top hexagon -->
-  <polygon points="50,15 64,26 78,28 85,42 72,50 58,38" fill="#ffffff" opacity="0.95"/>
+  <polygon points="50,15 64,26 78,28 85,42 72,50 58,38" fill="#fb923c" opacity="0.4"/>
   
   <!-- Top-right hexagon -->
-  <polygon points="85,50 78,36 85,20 94,28 94,44 88,58" fill="#ffffff" opacity="0.9"/>
+  <polygon points="85,50 78,36 85,20 94,28 94,44 88,58" fill="#fb923c" opacity="0.4"/>
   
   <!-- Right hexagon -->
-  <polygon points="85,50 88,64 94,76 88,85 75,82 75,68" fill="#ffffff" opacity="0.9"/>
+  <polygon points="85,50 88,64 94,76 88,85 75,82 75,68" fill="#fb923c" opacity="0.4"/>
   
   <!-- Bottom-right hexagon -->
-  <polygon points="66,63 75,68 82,82 75,85 64,82 58,75" fill="#ffffff" opacity="0.9"/>
+  <polygon points="66,63 75,68 82,82 75,85 64,82 58,75" fill="#fb923c" opacity="0.4"/>
   
   <!-- Bottom hexagon -->
-  <polygon points="50,85 58,75 64,82 58,88 42,88 36,82" fill="#ffffff" opacity="0.9"/>
+  <polygon points="50,85 58,75 64,82 58,88 42,88 36,82" fill="#fb923c" opacity="0.4"/>
   
   <!-- Bottom-left hexagon -->
-  <polygon points="38,56 36,68 22,76 15,85 22,88 28,82" fill="#ffffff" opacity="0.9"/>
+  <polygon points="38,56 36,68 22,76 15,85 22,88 28,82" fill="#fb923c" opacity="0.4"/>
   
   <!-- Left hexagon -->
-  <polygon points="15,50 22,64 22,76 15,85 8,76 8,64" fill="#ffffff" opacity="0.9"/>
+  <polygon points="15,50 22,64 22,76 15,85 8,76 8,64" fill="#fb923c" opacity="0.4"/>
   
   <!-- Top-left hexagon -->
-  <polygon points="26,26 38,28 50,15 36,12 22,20 18,28" fill="#ffffff" opacity="0.9"/>
+  <polygon points="26,26 38,28 50,15 36,12 22,20 18,28" fill="#fb923c" opacity="0.4"/>
   
   <!-- Additional pentagons for better pattern -->
   <!-- Top-back pentagon -->
-  <polygon points="64,26 78,28 85,20 75,12 58,18" fill="#000000" opacity="0.8"/>
+  <polygon points="64,26 78,28 85,20 75,12 58,18" fill="#000000" opacity="0.85"/>
   
   <!-- Bottom-back pentagon -->
-  <polygon points="36,82 28,88 15,85 22,88 42,88" fill="#000000" opacity="0.8"/>
+  <polygon points="36,82 28,88 15,85 22,88 42,88" fill="#000000" opacity="0.85"/>
   
   <!-- Edge highlights for 3D effect -->
-  <circle cx="50" cy="50" r="48" fill="none" stroke="#ffffff" stroke-width="0.5" opacity="0.3"/>
-  <circle cx="50" cy="50" r="45" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.2"/>
+  <circle cx="50" cy="50" r="48" fill="none" stroke="#fff7ed" stroke-width="0.5" opacity="0.2"/>
+  <circle cx="50" cy="50" r="45" fill="none" stroke="#000000" stroke-width="0.5" opacity="0.3"/>
 </svg>

@@ -23,35 +23,145 @@ try {
   console.error("[Gemini] Error initializing Gemini AI:", error);
 }
 
-// Convert game state to text description for Gemini
+// Convert game state to visual board representation for Gemini
 const gameStateToText = (state: GameState, botPlayer: PlayerId): string => {
   const opponent = botPlayer === "home" ? "away" : "home";
   const botGoalRow = botPlayer === "home" ? 0 : 11;
   const opponentGoalRow = botPlayer === "home" ? 11 : 0;
   
-  let description = `Football Chess Game State:
-- Board: 12 rows x 8 columns
-- Current Turn: ${state.turn === botPlayer ? "Yours (Bot)" : "Opponent"}
-- Score: Bot ${state.score[botPlayer] || 0} - ${state.score[opponent] || 0} Opponent
-- Bot plays as: ${botPlayer} (goal at row ${botGoalRow})
-- Opponent plays as: ${opponent} (goal at row ${opponentGoalRow})
-
-Board Positions:
-`;
-
-  // Describe key pieces
+  // Create visual board representation
+  let boardVisual = "\nBOARD (Rows 1-12 top to bottom, Columns A-H left to right):\n";
+  boardVisual += "   A    B    C    D    E    F    G    H\n";
+  
   for (let row = 0; row < 12; row++) {
+    const rowNum = (row + 1).toString().padStart(2, ' ');
+    boardVisual += `${rowNum} `;
+    
     for (let col = 0; col < 8; col++) {
       const piece = state.board[row]?.[col];
       if (piece) {
-        const rowLabel = botPlayer === "home" ? 12 - row : row + 1;
-        const colLabel = String.fromCharCode(65 + col);
-        description += `- ${piece.type.toUpperCase()} (${piece.owner}) at ${colLabel}${rowLabel}\n`;
+        // Short notation: type first letter + owner (H/A)
+        const typeLetter = piece.type[0].toUpperCase();
+        const ownerLetter = piece.owner === "home" ? "H" : "A";
+        boardVisual += `${typeLetter}${ownerLetter}  `;
+      } else {
+        // Goal area markers
+        if (row === botGoalRow && [3, 4].includes(col)) {
+          boardVisual += "⚽B  "; // Bot goal
+        } else if (row === opponentGoalRow && [3, 4].includes(col)) {
+          boardVisual += "⚽O  "; // Opponent goal
+        } else {
+          boardVisual += ".   ";
+        }
+      }
+    }
+    boardVisual += "\n";
+  }
+  
+  // Piece type legend
+  const legend = `
+PIECE TYPES:
+- C = Carrilero (can move 1-2 squares horizontally/vertically, CAN SCORE)
+- D = Defensa (can move 1 square any direction, CANNOT SCORE)
+- M = Mediocampista (can move diagonally any distance, CAN SCORE)
+- F = Delantero/Forward (can move any direction any distance, CAN SCORE)
+
+OWNERS:
+- H = Home (Bot)
+- A = Away (Opponent)
+
+GOAL AREAS:
+- ⚽B = Your goal (row ${botGoalRow + 1}, columns D-E)
+- ⚽O = Opponent goal (row ${opponentGoalRow + 1}, columns D-E)
+`;
+
+  // Analyze last goal received to learn from it
+  let lastGoalAnalysis = "";
+  if (state.history && state.history.length > 0) {
+    // Find the last goal scored by opponent
+    for (let i = state.history.length - 1; i >= 0; i--) {
+      const move = state.history[i];
+      if (move.goal?.scoringPlayer === opponent) {
+        // Found opponent's goal - analyze it
+        const goalCol = move.to.col;
+        const goalColLabel = String.fromCharCode(65 + goalCol); // A-H
+        const fromRow = move.from.row + 1;
+        const fromCol = String.fromCharCode(65 + move.from.col);
+        const toRow = move.to.row + 1;
+        const toCol = String.fromCharCode(65 + move.to.col);
+        
+        // Try to determine piece type from move pattern
+        const rowDiff = Math.abs(move.to.row - move.from.row);
+        const colDiff = Math.abs(move.to.col - move.from.col);
+        const distance = Math.max(rowDiff, colDiff);
+        
+        let pieceTypeEstimate = "unknown";
+        if (rowDiff === colDiff && distance > 2) {
+          pieceTypeEstimate = "MEDIOCAMPISTA (diagonal long)";
+        } else if ((rowDiff === 0 || colDiff === 0) && distance > 2) {
+          pieceTypeEstimate = "DELANTERO (straight long)";
+        } else if (distance <= 2 && (rowDiff === 0 || colDiff === 0)) {
+          pieceTypeEstimate = "CARRILERO (straight short)";
+        } else if (distance <= 2) {
+          pieceTypeEstimate = "DELANTERO (any direction short)";
+        } else {
+          pieceTypeEstimate = "DELANTERO (any direction)";
+        }
+        
+        // Find previous moves that built up to this goal (last 3-5 opponent moves)
+        const attackBuildUp: string[] = [];
+        for (let j = Math.max(0, i - 5); j < i; j++) {
+          const prevMove = state.history[j];
+          if (prevMove.player === opponent) {
+            const prevFromRow = prevMove.from.row + 1;
+            const prevFromCol = String.fromCharCode(65 + prevMove.from.col);
+            const prevToRow = prevMove.to.row + 1;
+            const prevToCol = String.fromCharCode(65 + prevMove.to.col);
+            attackBuildUp.push(`${prevFromCol}${prevFromRow}→${prevToCol}${prevToRow}`);
+          }
+        }
+        
+        lastGoalAnalysis = `
+
+⚠️ LAST GOAL RECEIVED (LEARN FROM THIS!):
+- Opponent scored on column ${goalColLabel} (${goalColLabel}${toRow})
+- Attacking piece moved from ${fromCol}${fromRow} to ${toCol}${toRow}
+- Estimated piece type: ${pieceTypeEstimate}
+- Attack buildup: ${attackBuildUp.length > 0 ? attackBuildUp.join(" → ") : "Direct attack"}
+- You MUST block this pattern! Protect column ${goalColLabel} and position pieces to intercept similar attacks!
+
+STRATEGY: 
+- Block opponent pieces approaching your goal from similar positions
+- Position defenders near column ${goalColLabel} (your goal columns D-E)
+- Capture opponent pieces that are positioned for similar attacks
+`;
+        break; // Only analyze the most recent goal
       }
     }
   }
 
-  description += `\nRecent Moves: ${state.history?.length || 0} moves played\n`;
+  let description = `FOOTBALL CHESS GAME STATE
+======================
+
+${boardVisual}
+${legend}
+
+GAME INFO:
+- Current Turn: ${state.turn === botPlayer ? "YOUR TURN (Bot)" : "OPPONENT'S TURN"}
+- Score: You ${state.score[botPlayer] || 0} - ${state.score[opponent] || 0} Opponent
+- Your goal: Row ${botGoalRow + 1}, Columns D-E (⚽B)
+- Opponent goal: Row ${opponentGoalRow + 1}, Columns D-E (⚽O)
+- Moves played: ${state.history?.length || 0}
+${lastGoalAnalysis}
+
+RULES REMINDER:
+1. Goal = Move a CARRILERO, MEDIOCAMPISTA, or DELANTERO to opponent's goal area (⚽O)
+2. DEFENSAS CANNOT score goals - avoid moving them toward opponent goal unless blocking
+3. DELANTEROS (F) are your best offensive pieces - advance them toward opponent goal
+4. Block opponent's DELANTEROS if they're near your goal
+5. Capture opponent pieces, especially DELANTEROS (F)
+${lastGoalAnalysis ? "6. ⚠️ WARNING: Opponent just scored - prevent the same pattern!" : ""}
+`;
 
   return description;
 };
@@ -133,55 +243,152 @@ export const getGeminiRecommendation = async (
     const botGoalRow = botPlayer === "home" ? 0 : 11;
     const opponentGoalRow = botPlayer === "home" ? 11 : 0;
     
-    // Check for immediate threats and goals
+    // Analyze moves and categorize them
     const immediateGoals: number[] = [];
     const blockingMoves: number[] = [];
-    const captureMoves: number[] = [];
-    const forwardAdvanceMoves: number[] = [];
+    const forwardCaptures: number[] = [];
+    const midfielderCaptures: number[] = [];
+    const forwardAdvances: number[] = [];
+    const midfielderAdvances: number[] = [];
+    const defensiveMoves: number[] = []; // Moves that use defensas
+    const validDefensiveMoves: number[] = []; // Defensas that block or capture
+    
+    // First pass: Check if opponent can score on their next turn (before any move)
+    const opponentCanScoreNow = (() => {
+      const oppMoves = RuleEngine.getLegalMoves(state, opponent);
+      for (const oppMove of oppMoves) {
+        const oppSimState: GameState = { ...state, turn: opponent as PlayerId };
+        try {
+          const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+          if (oppOutcome.goal?.scoringPlayer === opponent) {
+            return true;
+          }
+        } catch (e) {
+          // Invalid move, skip
+        }
+      }
+      return false;
+    })();
     
     moves.forEach((move, idx) => {
+      const piece = state.board[move.from.row]?.[move.from.col];
+      if (!piece) return;
+      
+      const isDefensa = piece.type === "defensa";
       const simulationState = { ...state, turn: botPlayer };
       const outcome = RuleEngine.applyMove(simulationState, move);
       
-      // Check for immediate goal
+      // Check for immediate goal (highest priority)
       if (outcome.goal?.scoringPlayer === botPlayer) {
         immediateGoals.push(idx);
+        return;
       }
       
-      // Check for captures
-      if (outcome.capture) {
-        captureMoves.push(idx);
-        if (outcome.capture.type === "delantero") {
-          captureMoves.push(idx); // Double weight for forward captures
+      // Check if this move prevents opponent from scoring
+      let preventsOpponentGoal = false;
+      if (opponentCanScoreNow) {
+        // Check if after this move, opponent can still score
+        const nextOpponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponent);
+        let canStillScore = false;
+        for (const oppMove of nextOpponentMoves) {
+          const oppSimState: GameState = { ...outcome.nextState, turn: opponent as PlayerId };
+          try {
+            const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+            if (oppOutcome.goal?.scoringPlayer === opponent) {
+              canStillScore = true;
+              break;
+            }
+          } catch (e) {
+            // Invalid move, skip
+          }
+        }
+        // If opponent could score before but can't after this move, we blocked it
+        if (!canStillScore) {
+          preventsOpponentGoal = true;
+          blockingMoves.push(idx);
+          if (isDefensa) {
+            validDefensiveMoves.push(idx);
+          }
+          return;
+        }
+      } else {
+        // Check if this move blocks a potential future goal
+        const nextOpponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponent);
+        for (const oppMove of nextOpponentMoves) {
+          const oppSimState: GameState = { ...outcome.nextState, turn: opponent as PlayerId };
+          try {
+            const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+            if (oppOutcome.goal?.scoringPlayer === opponent) {
+              // Opponent can score, check if our move blocks them
+              // If move is to goal row/column or captures attacking piece, it blocks
+              const blocksGoal = (move.to.row === botGoalRow && [3, 4].includes(move.to.col)) ||
+                                 outcome.capture !== undefined;
+              if (blocksGoal) {
+                preventsOpponentGoal = true;
+                blockingMoves.push(idx);
+                if (isDefensa) {
+                  validDefensiveMoves.push(idx);
+                }
+                return;
+              }
+            }
+          } catch (e) {
+            // Invalid move, skip
+          }
         }
       }
       
-      // Check for forward advancement toward goal
-      const piece = state.board[move.from.row]?.[move.from.col];
-      if (piece?.type === "delantero") {
+      // For defensas: only allow if blocking or capturing
+      if (isDefensa) {
+        if (outcome.capture) {
+          // Defensa capturing is valid
+          validDefensiveMoves.push(idx);
+          defensiveMoves.push(idx);
+          return;
+        }
+        // Defensas without capture or block are not valid - skip them
+        defensiveMoves.push(idx);
+        return; // Skip defensas that don't block or capture
+      }
+      
+      // Categorize offensive moves by piece type and move type
+      if (outcome.capture) {
+        if (outcome.capture.type === "delantero") {
+          forwardCaptures.push(idx);
+        } else if (outcome.capture.type === "mediocampista") {
+          midfielderCaptures.push(idx);
+        } else if (outcome.capture.type === "carrilero") {
+          // Carrilero captures are also valuable
+          forwardCaptures.push(idx);
+        }
+      }
+      
+      if (piece.type === "delantero") {
         const progress = botPlayer === "home" 
           ? move.from.row - move.to.row 
           : move.to.row - move.from.row;
         if (progress > 0) {
-          forwardAdvanceMoves.push(idx);
+          forwardAdvances.push(idx);
         }
-      }
-      
-      // Check if move blocks opponent goal threat (simplified check)
-      const nextOpponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponent);
-      let blocksThreat = false;
-      for (const oppMove of nextOpponentMoves) {
-        if (oppMove.to.row === botGoalRow && [3, 4].includes(oppMove.to.col)) {
-          blocksThreat = true;
-          break;
+      } else if (piece.type === "mediocampista") {
+        const progress = botPlayer === "home" 
+          ? move.from.row - move.to.row 
+          : move.to.row - move.from.row;
+        if (progress > 0) {
+          midfielderAdvances.push(idx);
         }
-      }
-      if (blocksThreat) {
-        blockingMoves.push(idx);
+      } else if (piece.type === "carrilero") {
+        // Carrileros advancing toward goal
+        const progress = botPlayer === "home" 
+          ? move.from.row - move.to.row 
+          : move.to.row - move.from.row;
+        if (progress > 0) {
+          forwardAdvances.push(idx);
+        }
       }
     });
     
-    // Priority: immediate goals > blocking threats > capturing forwards > forward advancement
+    // Priority: immediate goals > blocking > forward captures > forward advances > other captures
     if (immediateGoals.length > 0) {
       console.log("[Gemini] Found immediate goal moves, selecting first");
       return moves[immediateGoals[0]];
@@ -192,36 +399,88 @@ export const getGeminiRecommendation = async (
       return moves[blockingMoves[0]];
     }
     
-    // For non-critical situations, use Gemini for strategic evaluation
-    const gameDescription = gameStateToText(state, botPlayer);
+    // Filter out defensive moves from consideration unless they block or capture
+    // Defensas should ONLY move to block opponent goals or capture pieces
+    const validMoves = moves.filter((move, idx) => {
+      const piece = state.board[move.from.row]?.[move.from.col];
+      if (!piece) return false;
+      
+      // For defensas: only include if they block goals or capture
+      if (piece.type === "defensa") {
+        return validDefensiveMoves.includes(idx);
+      }
+      // All other pieces are valid
+      return true;
+    });
     
-    // Limit moves to evaluate (save tokens)
-    const movesToEvaluate = moves.slice(0, 15);
+    // If we have valid offensive moves, prefer those over defensive
+    // Only use defensas if they're blocking/capturing or no other options
+    const movesToConsider = validMoves.length > 0 ? validMoves : moves;
+    const movesToEvaluate = movesToConsider.slice(0, 20); // More moves for better selection
+    
+    // Create move list with annotations
+    const gameDescription = gameStateToText(state, botPlayer);
     const movesList = movesToEvaluate
       .map((move, idx) => {
-        const label = `${idx + 1}. ${moveToText(move)}`;
+        const originalIdx = moves.indexOf(move);
+        const piece = state.board[move.from.row]?.[move.from.col];
+        const pieceType = piece?.type === "delantero" ? "F" : 
+                         piece?.type === "mediocampista" ? "M" :
+                         piece?.type === "carrilero" ? "C" : "D";
+        const label = `${idx + 1}. ${moveToText(move)} (${pieceType})`;
         let extra = "";
-        if (captureMoves.includes(idx)) extra += " [CAPTURE]";
-        if (forwardAdvanceMoves.includes(idx)) extra += " [FORWARD PROGRESS]";
+        if (immediateGoals.includes(originalIdx)) extra += " [GOAL!]";
+        else if (forwardCaptures.includes(originalIdx)) extra += " [CAPTURE F]";
+        else if (midfielderCaptures.includes(originalIdx)) extra += " [CAPTURE M]";
+        else if (forwardAdvances.includes(originalIdx)) extra += " [F ADVANCE]";
+        else if (midfielderAdvances.includes(originalIdx)) extra += " [M ADVANCE]";
         return label + extra;
       })
       .join("\n");
 
-    const prompt = `You are an expert Football Chess AI assistant. Analyze the game and recommend the best move.
+    const prompt = `You are an expert Football Chess AI. Your goal is to score goals while preventing opponent goals.
 
-CRITICAL PRIORITIES:
-1. Block opponent goals (especially if multiple forwards target same goal column)
-2. Score goals
-3. Capture opponent forwards
-4. Advance your forwards toward opponent goal
-5. Maintain board control
+GAME RULES:
+- Board: 12 rows x 8 columns (A-H columns, 1-12 rows)
+- Goal: Move CARRILERO (C), MEDIOCAMPISTA (M), or DELANTERO (F) to opponent's goal (⚽O)
+- DEFENSAS (D) CANNOT score - they only defend
+- Pieces: C=Carrilero, D=Defensa, M=Mediocampista, F=Delantero
+- Ownership: H=Home (You), A=Away (Opponent)
 
-Game State:
+STRATEGY PRIORITIES (in order):
+1. SCORE A GOAL NOW: If you can move C/M/F to opponent goal (⚽O), do it!
+2. BLOCK OPPONENT GOAL: If opponent can score next turn, block them with ANY piece (including defensas)
+3. CAPTURE OPPONENT DELANTERO (F): Remove their best attacking piece
+4. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal
+5. CAPTURE VALUABLE PIECES: Capture opponent C/M pieces
+6. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal
+7. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal
+
+CRITICAL RULES FOR DEFENSAS (D):
+- Defensas (D) CAN ONLY MOVE TO:
+  * Block an opponent goal threat (position in front of goal or capture attacking piece)
+  * Capture an opponent piece
+- Defensas should NEVER move randomly or toward opponent goal
+- Defensas cannot score goals, so only use them defensively!
+- If a defensa move is available, it MUST block a goal or capture a piece
+
+LEARNING FROM OPPONENT GOALS:
+- If opponent just scored, analyze HOW they scored
+- Block the SAME pattern they used - don't let them score the same way twice!
+- Position defenders to intercept similar attack paths
+- Capture pieces that are in attack positions similar to the last goal
+
+IMPORTANT: 
+- Focus on advancing and protecting your Delanteros (F), Mediocampistas (M), and Carrileros (C)
+- Only move defensas when absolutely necessary for defense
+- Learn from mistakes - if you just received a goal, prevent it from happening again!
+
 ${gameDescription}
 
-Available Moves (choose 1-${movesToEvaluate.length}):
+AVAILABLE MOVES (choose the BEST strategic move):
 ${movesList}
 
+Think carefully: Which move best follows the priorities above?
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
 
     const result = await model.generateContent({
@@ -247,8 +506,18 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
 
     console.warn("[Gemini] Could not parse move recommendation, using fallback strategy");
     // Fallback: prefer forward captures, then forward advancement
-    if (captureMoves.length > 0) return moves[captureMoves[0]];
-    if (forwardAdvanceMoves.length > 0) return moves[forwardAdvanceMoves[0]];
+    if (forwardCaptures.length > 0) return moves[forwardCaptures[0]];
+    if (forwardAdvances.length > 0) return moves[forwardAdvances[0]];
+    if (midfielderCaptures.length > 0) return moves[midfielderCaptures[0]];
+    if (midfielderAdvances.length > 0) return moves[midfielderAdvances[0]];
+    // Only use defensas if they're valid (blocking/capturing)
+    if (validDefensiveMoves.length > 0) return moves[validDefensiveMoves[0]];
+    // Avoid defensive moves unless no other options
+    const offensiveMoves = moves.filter((move, idx) => {
+      const piece = state.board[move.from.row]?.[move.from.col];
+      return piece && piece.type !== "defensa";
+    });
+    if (offensiveMoves.length > 0) return offensiveMoves[0];
     return moves[0]; // Last resort
   } catch (error) {
     console.error("[Gemini] Error getting recommendation from Gemini:", error);
