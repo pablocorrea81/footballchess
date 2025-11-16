@@ -745,52 +745,59 @@ export const getGeminiRecommendation = async (
       return blockMove;
     }
     
-    // Filter out defensive moves from consideration unless they block or capture
-    // Defensas should ONLY move to block opponent goals or capture pieces
-    const validMoves = moves.filter((move, idx) => {
+    // CRITICAL: Filter out risky moves that expose delanteros/mediocampistas to capture
+    // Unless the risky move is blocking a goal threat (defense takes priority)
+    // First, filter defensas that don't block or capture
+    const validMoves: Move[] = [];
+    const validMoveIndices: number[] = []; // Keep track of original indices
+    
+    for (let idx = 0; idx < moves.length; idx++) {
+      const move = moves[idx];
       const piece = state.board[move.from.row]?.[move.from.col];
-      if (!piece) return false;
+      if (!piece) continue;
       
       // For defensas: only include if they block goals or capture
       if (piece.type === "defensa") {
-        return validDefensiveMoves.includes(idx);
-      }
-      // All other pieces are valid
-      return true;
-    });
-    
-    // CRITICAL: Filter out risky moves that expose delanteros/mediocampistas to capture
-    // Unless the risky move is blocking a goal threat (defense takes priority)
-    const safeMoves = validMoves.filter((move, idx) => {
-      const originalIdx = moves.indexOf(move);
-      // If it's a risky move that doesn't block a threat, exclude it
-      if (riskyMoves.includes(originalIdx)) {
-        // Only allow risky moves if they're blocking an immediate threat
-        if (blockingMoves.includes(originalIdx)) {
-          console.log(`[Gemini] ⚠️ Move ${originalIdx + 1} (${moveToText(move)}) is risky but blocks a threat - keeping it`);
-          return true; // Allow risky moves that block threats
+        if (validDefensiveMoves.includes(idx)) {
+          validMoves.push(move);
+          validMoveIndices.push(idx);
         }
-        // Otherwise, exclude risky moves
-        const piece = state.board[move.from.row]?.[move.from.col];
-        const pieceType = piece?.type === "delantero" ? "F" : 
-                         piece?.type === "mediocampista" ? "M" : "C";
-        console.log(`[Gemini] 🚫 FILTERED OUT risky move ${originalIdx + 1} (${moveToText(move)}) - Would expose ${pieceType} to capture`);
-        return false;
+        continue; // Skip defensas that don't block/capture
       }
-      return true;
-    });
+      
+      // For all other pieces: include if not risky, or if risky but blocking a threat
+      if (riskyMoves.includes(idx)) {
+        // Only allow risky moves if they're blocking an immediate threat
+        if (blockingMoves.includes(idx)) {
+          console.log(`[Gemini] ⚠️ Move ${idx + 1} (${moveToText(move)}) is risky but blocks a threat - keeping it`);
+          validMoves.push(move);
+          validMoveIndices.push(idx);
+        } else {
+          // Filter out risky moves that expose pieces
+          const pieceType = piece.type === "delantero" ? "F" : 
+                           piece.type === "mediocampista" ? "M" : "C";
+          console.log(`[Gemini] 🚫 FILTERED OUT risky move ${idx + 1} (${moveToText(move)}) - Would expose ${pieceType} to capture`);
+        }
+      } else {
+        // Not risky, include it
+        validMoves.push(move);
+        validMoveIndices.push(idx);
+      }
+    }
     
-    // If we have safe moves (after filtering risky ones), use those
-    // Otherwise, fall back to valid moves (but log a warning)
-    const movesToConsider = safeMoves.length > 0 ? safeMoves : validMoves;
-    if (safeMoves.length < validMoves.length) {
-      const filteredCount = validMoves.length - safeMoves.length;
-      console.log(`[Gemini] ⚠️ Filtered out ${filteredCount} risky move(s) that would expose valuable pieces`);
+    // Log how many risky moves were filtered
+    const filteredCount = moves.length - validMoves.length;
+    if (filteredCount > 0) {
+      console.log(`[Gemini] ⚠️ Filtered out ${filteredCount} risky/invalid move(s) that would expose valuable pieces or are invalid defensas`);
     }
     
     // If we have no safe moves at all (shouldn't happen), use all moves as last resort
-    const finalMovesToConsider = movesToConsider.length > 0 ? movesToConsider : moves;
+    const finalMovesToConsider = validMoves.length > 0 ? validMoves : moves;
     const movesToEvaluate = finalMovesToConsider.slice(0, 20); // More moves for better selection
+    // Keep track of which original indices correspond to movesToEvaluate
+    const evaluateIndices = validMoves.length > 0 
+      ? validMoveIndices.slice(0, 20)
+      : moves.slice(0, 20).map((_, i) => i);
     
     // Detect current threats on board for annotation and prompt
     const currentThreatsList: string[] = [];
@@ -816,7 +823,8 @@ export const getGeminiRecommendation = async (
     const gameDescription = gameStateToText(state, botPlayer);
     const movesList = movesToEvaluate
       .map((move, idx) => {
-        const originalIdx = moves.indexOf(move);
+        // Use evaluateIndices to get the original index from moves array
+        const originalIdx = evaluateIndices[idx];
         const piece = state.board[move.from.row]?.[move.from.col];
         const pieceType = piece?.type === "delantero" ? "F" : 
                          piece?.type === "mediocampista" ? "M" :
@@ -838,6 +846,7 @@ export const getGeminiRecommendation = async (
         else if (midfielderAdvances.includes(originalIdx)) extra += " [M ADVANCE]";
         
         // CRITICAL: Mark risky moves explicitly (these should already be filtered, but mark them just in case)
+        // Note: This should never happen because risky moves are filtered, but we mark them for safety
         if (riskyMoves.includes(originalIdx) && !blockingMoves.includes(originalIdx)) {
           extra += " [⚠️ RISKY - Exposes valuable piece! DO NOT SELECT unless no other option]";
         }
@@ -948,7 +957,8 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
       if (moveIndex >= 0 && moveIndex < movesToEvaluate.length) {
         const selectedMove = movesToEvaluate[moveIndex];
         const moveText = moveToText(selectedMove);
-        const originalIdx = moves.indexOf(selectedMove);
+        // Use evaluateIndices to get the original index from moves array
+        const originalIdx = evaluateIndices[moveIndex];
         const piece = state.board[selectedMove.from.row]?.[selectedMove.from.col];
         const pieceType = piece?.type === "delantero" ? "F" : 
                          piece?.type === "mediocampista" ? "M" :
