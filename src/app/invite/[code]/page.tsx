@@ -126,6 +126,15 @@ export default async function InvitePage({ params }: InvitePageProps) {
       redirect(`/lobby?error=already_in_game`);
     }
 
+    // Fetch user's team (if exists)
+    const { data: teamData } = await supabaseAdmin
+      .from("teams")
+      .select("id")
+      .eq("owner_id", session.user.id)
+      .maybeSingle();
+
+    const team = teamData as { id: string } | null;
+
     // Join the game (use admin client to bypass RLS)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: joinError } = await (supabaseAdmin.from("games") as any)
@@ -133,6 +142,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
         player_2_id: session.user.id,
         status: "in_progress",
         turn_started_at: new Date().toISOString(), // Initialize turn_started_at when game starts
+        team_2_id: team?.id ?? null,
       })
       .eq("id", game.id)
       .is("player_2_id", null);

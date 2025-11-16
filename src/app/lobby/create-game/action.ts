@@ -41,6 +41,13 @@ export async function createGameAction(
   const initialState = RuleEngine.createInitialState(startingPlayer);
   const inviteCode = generateInviteCode();
 
+  // Try to get the user's team (if exists)
+  const { data: team } = await supabase
+    .from("teams")
+    .select("id")
+    .eq("owner_id", profileId)
+    .maybeSingle();
+
   // Ensure invite code is unique (retry if collision occurs, though very unlikely)
   let attempts = 0;
   let finalInviteCode = inviteCode;
@@ -68,6 +75,7 @@ export async function createGameAction(
     turn_started_at: null, // Will be set when game starts (status changes to in_progress)
     winning_score: winningScore,
     timeout_enabled: timeoutEnabled,
+    team_1_id: team?.id ?? null,
   });
 
   if (error) {
@@ -96,6 +104,13 @@ export async function createBotGameAction(
     throw new Error("No autorizado para crear partidas con este perfil.");
   }
 
+  // Try to get the user's team (if exists)
+  const { data: team } = await supabase
+    .from("teams")
+    .select("id")
+    .eq("owner_id", profileId)
+    .maybeSingle();
+
   const startingPlayer = Math.random() < 0.5 ? "home" : "away";
   const botPlayer: PlayerId = "away";
   const initialState = RuleEngine.createInitialState(startingPlayer);
@@ -115,6 +130,7 @@ export async function createBotGameAction(
       turn_started_at: null, // Timer will start when first move is made
       winning_score: 3, // Default for bot games
       timeout_enabled: true, // Default for bot games
+      team_1_id: team?.id ?? null,
     })
     .select("id, game_state")
     .single();

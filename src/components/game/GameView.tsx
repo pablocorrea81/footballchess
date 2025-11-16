@@ -36,6 +36,12 @@ type GameViewProps = {
   showMoveHints: boolean;
   winningScore: number;
   timeoutEnabled: boolean;
+  team1Name?: string | null;
+  team2Name?: string | null;
+  team1PrimaryColor?: string | null;
+  team1SecondaryColor?: string | null;
+  team2PrimaryColor?: string | null;
+  team2SecondaryColor?: string | null;
 };
 
 const BOARD_CHANNEL_PREFIX = "game";
@@ -104,6 +110,12 @@ export function GameView({
   showMoveHints,
   winningScore,
   timeoutEnabled,
+  team1Name,
+  team2Name,
+  team1PrimaryColor,
+  team1SecondaryColor,
+  team2PrimaryColor,
+  team2SecondaryColor,
 }: GameViewProps) {
   const { supabase } = useSupabase();
 
@@ -1750,6 +1762,40 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 )}
               </div>
             </div>
+            {/* Team names - visible on all screen sizes */}
+            {!isBotGame && (team1Name || team2Name) && (
+              <div className="flex items-center justify-center gap-2 md:gap-3 py-2 md:py-3 border-t border-white/20">
+                <div className="flex items-center gap-2">
+                  {team1PrimaryColor && (
+                    <div
+                      className="h-4 w-4 md:h-5 md:w-5 rounded-full border-2 border-white/40 shadow-sm"
+                      style={{
+                        background: `linear-gradient(135deg, ${team1PrimaryColor}, ${team1SecondaryColor || team1PrimaryColor})`,
+                      }}
+                    />
+                  )}
+                  <span className="text-sm md:text-base font-bold text-emerald-50">
+                    {team1Name || "Equipo 1"}
+                  </span>
+                </div>
+                <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-emerald-200/60">
+                  vs
+                </span>
+                <div className="flex items-center gap-2">
+                  {team2PrimaryColor && (
+                    <div
+                      className="h-4 w-4 md:h-5 md:w-5 rounded-full border-2 border-white/40 shadow-sm"
+                      style={{
+                        background: `linear-gradient(135deg, ${team2PrimaryColor}, ${team2SecondaryColor || team2PrimaryColor})`,
+                      }}
+                    />
+                  )}
+                  <span className="text-sm md:text-base font-bold text-emerald-50">
+                    {team2Name || "Equipo 2"}
+                  </span>
+                </div>
+              </div>
+            )}
             {/* Additional info - hidden on mobile, visible on desktop */}
             <div className="hidden md:block">
               <p className="text-sm md:text-base font-medium text-emerald-50">

@@ -54,6 +54,8 @@ export interface Database {
           winning_score: number | null;
           timeout_enabled: boolean | null;
           finished_at: string | null;
+          team_1_id: string | null;
+          team_2_id: string | null;
         };
         Insert: {
           id?: string;
@@ -73,6 +75,8 @@ export interface Database {
           winning_score?: number | null;
           timeout_enabled?: boolean | null;
           finished_at?: string | null;
+          team_1_id?: string | null;
+          team_2_id?: string | null;
         };
         Update: {
           id?: string;
@@ -92,6 +96,37 @@ export interface Database {
           winning_score?: number | null;
           timeout_enabled?: boolean | null;
           finished_at?: string | null;
+          team_1_id?: string | null;
+          team_2_id?: string | null;
+        };
+      };
+      teams: {
+        Row: {
+          id: string;
+          owner_id: string;
+          name: string;
+          primary_color: string;
+          secondary_color: string;
+          emblem_url: string | null;
+          created_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          name: string;
+          primary_color?: string;
+          secondary_color?: string;
+          emblem_url?: string | null;
+          created_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          name?: string;
+          primary_color?: string;
+          secondary_color?: string;
+          emblem_url?: string | null;
+          created_at?: string | null;
         };
       };
     };

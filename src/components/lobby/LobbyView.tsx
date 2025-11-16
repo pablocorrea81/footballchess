@@ -20,6 +20,12 @@ type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_2_username?: string | null;
   player_1_avatar_url?: string | null;
   player_2_avatar_url?: string | null;
+  team_1_name?: string | null;
+  team_2_name?: string | null;
+  team_1_primary_color?: string | null;
+  team_1_secondary_color?: string | null;
+  team_2_primary_color?: string | null;
+  team_2_secondary_color?: string | null;
 };
 
 type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
@@ -83,8 +89,12 @@ const GAME_SELECT = `
   winning_score,
   timeout_enabled,
   finished_at,
+  team_1_id,
+  team_2_id,
   player1:profiles!games_player_1_id_fkey(username, avatar_url),
-  player2:profiles!games_player_2_id_fkey(username, avatar_url)
+  player2:profiles!games_player_2_id_fkey(username, avatar_url),
+  team1:teams!games_team_1_id_fkey(name, primary_color, secondary_color),
+  team2:teams!games_team_2_id_fkey(name, primary_color, secondary_color)
 `;
 
 export function LobbyView({ profileId, initialGames, initialError }: LobbyViewProps) {
@@ -116,6 +126,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [selectedTimeoutEnabled, setSelectedTimeoutEnabled] = useState<boolean>(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedGameForInvite, setSelectedGameForInvite] = useState<{ id: string; inviteCode: string | null; creatorName: string } | null>(null);
+  const [userTeamId, setUserTeamId] = useState<string | null>(null);
 
   const refreshGames = useCallback(async () => {
     try {
@@ -134,6 +145,32 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
       console.error("[lobby] Error refreshing games:", refreshError);
     }
   }, [supabase]);
+
+  // Fetch user's team once (if exists) to use when joining games
+  useEffect(() => {
+    const fetchTeam = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("teams")
+          .select("id")
+          .eq("owner_id", profileId)
+          .maybeSingle();
+
+        if (error) {
+          console.error("[lobby] Error fetching user team:", error);
+          return;
+        }
+
+        if (data?.id) {
+          setUserTeamId(data.id);
+        }
+      } catch (err) {
+        console.error("[lobby] Unexpected error fetching user team:", err);
+      }
+    };
+
+    void fetchTeam();
+  }, [profileId, supabase]);
 
   useEffect(() => {
     const channel = supabase
@@ -216,6 +253,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
         .update({
           player_2_id: profileId,
           status: "in_progress",
+          team_2_id: userTeamId ?? null,
         })
         .eq("id", id)
         .is("player_2_id", null) // Fixed: use .is() for null check
@@ -430,12 +468,50 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                 ? "¿Te unes?"
                 : "Buscando...";
 
+          const team1Name =
+            game.team_1_name ||
+            (isOwner ? "Tu equipo" : game.player_1_username || "Equipo 1");
+          const team2Name =
+            game.team_2_name ||
+            (isBot
+              ? game.bot_display_name ?? "Equipo IA"
+              : game.player_2_username
+                ? `${game.player_2_username}`
+                : canJoin
+                  ? "Equipo rival"
+                  : "Equipo rival");
+
+          const team1Primary = game.team_1_primary_color || "#059669"; // emerald-500 fallback
+          const team1Secondary = game.team_1_secondary_color || "#10B981"; // emerald-400 fallback
+          const team2Primary = game.team_2_primary_color || "#0EA5E9"; // sky-500 fallback
+          const team2Secondary = game.team_2_secondary_color || "#38BDF8"; // sky-400 fallback
+
           return (
             <li
               key={game.id}
-              className="flex h-full flex-col justify-between rounded-3xl border border-white/10 bg-white/5 p-5 text-white shadow-lg backdrop-blur"
+              className="relative flex h-full flex-col justify-between rounded-3xl border border-white/10 bg-white/5 p-5 text-white shadow-lg backdrop-blur overflow-hidden"
             >
-              <div className="flex flex-col gap-3">
+              {/* Team color bands on top of card */}
+              {!isBot && (game.team_1_primary_color || game.team_2_primary_color) && (
+                <div className="absolute top-0 left-0 right-0 h-2.5 flex z-10 rounded-t-3xl overflow-hidden">
+                  <div
+                    className="flex-1"
+                    style={{
+                      backgroundColor: team1Primary,
+                      borderRight: game.team_2_primary_color ? "2px solid rgba(255, 255, 255, 0.4)" : "none",
+                    }}
+                  />
+                  {game.team_2_primary_color && (
+                    <div
+                      className="flex-1"
+                      style={{
+                        backgroundColor: team2Primary,
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+              <div className={`flex flex-col gap-3 ${!isBot && (game.team_1_primary_color || game.team_2_primary_color) ? "mt-3" : ""}`}>
                 <p className="text-xs uppercase tracking-widest text-emerald-200">
                   {isBot
                     ? "Modo IA"
@@ -483,14 +559,53 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                         ?
                       </div>
                     )}
-                    <p className="text-sm text-emerald-100/80">
-                      {opponentLabel}
-                    </p>
+                    <div className="flex flex-col">
+                      <p className="text-sm text-emerald-100/80">
+                        {opponentLabel}
+                      </p>
+                      {!isBot && (
+                        <p className="text-[11px] text-emerald-100/60">
+                          {team2Name}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <p className="text-xs uppercase tracking-widest text-emerald-200/80">
                   {startsLabel}
                 </p>
+                {!isBot && (
+                  <div className="mt-1 flex flex-col gap-1 text-xs text-emerald-100/70">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-flex h-4 w-4 rounded-full border border-white/40"
+                          style={{
+                            background: `linear-gradient(135deg, ${team1Primary}, ${team1Secondary})`,
+                          }}
+                        />
+                        <span className="font-semibold text-emerald-50">
+                          {team1Name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-wide text-emerald-100/60">
+                        vs
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-flex h-4 w-4 rounded-full border border-white/40"
+                          style={{
+                            background: `linear-gradient(135deg, ${team2Primary}, ${team2Secondary})`,
+                          }}
+                        />
+                        <span className="font-semibold text-emerald-50">
+                          {team2Name}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {isBot && game.bot_difficulty && (
                   <p className="text-xs text-emerald-100/60">
                     Dificultad:{" "}

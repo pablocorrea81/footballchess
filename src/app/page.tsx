@@ -88,6 +88,12 @@ export default async function Home({ searchParams }: HomeProps) {
                 >
                   🎮 Ir al Lobby
                 </Link>
+                <Link
+                  href="/learn"
+                  className="inline-flex items-center rounded-full border border-emerald-100/80 bg-emerald-500/10 px-5 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/20"
+                >
+                  📖 Aprender a jugar
+                </Link>
                 <SignOutButton variant="dark" />
               </>
             ) : (

@@ -8,6 +8,8 @@ import type { Database } from "@/lib/database.types";
 type RawGameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player1?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
   player2?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
+  team1?: { name: string; primary_color: string; secondary_color: string } | { name: string; primary_color: string; secondary_color: string }[];
+  team2?: { name: string; primary_color: string; secondary_color: string } | { name: string; primary_color: string; secondary_color: string }[];
 };
 
 type LobbyPageProps = {
@@ -24,6 +26,27 @@ const getUsername = (
     return profile[0]?.username ?? null;
   }
   return profile?.username ?? null;
+};
+
+const getTeamName = (team: RawGameRow["team1"]): string | null => {
+  if (Array.isArray(team)) {
+    return team[0]?.name ?? null;
+  }
+  return team?.name ?? null;
+};
+
+const getTeamPrimaryColor = (team: RawGameRow["team1"]): string | null => {
+  if (Array.isArray(team)) {
+    return team[0]?.primary_color ?? null;
+  }
+  return team?.primary_color ?? null;
+};
+
+const getTeamSecondaryColor = (team: RawGameRow["team1"]): string | null => {
+  if (Array.isArray(team)) {
+    return team[0]?.secondary_color ?? null;
+  }
+  return team?.secondary_color ?? null;
 };
 
 const mapErrorCode = (code?: string, gameId?: string | null): string | null => {
@@ -81,8 +104,12 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       winning_score,
       timeout_enabled,
       finished_at,
+      team_1_id,
+      team_2_id,
       player1:profiles!games_player_1_id_fkey(username, avatar_url),
-      player2:profiles!games_player_2_id_fkey(username, avatar_url)`,
+      player2:profiles!games_player_2_id_fkey(username, avatar_url),
+      team1:teams!games_team_1_id_fkey(name, primary_color, secondary_color),
+      team2:teams!games_team_2_id_fkey(name, primary_color, secondary_color)`,
     )
     .in("status", ["waiting", "in_progress"])
     .order("created_at", { ascending: true });
@@ -92,6 +119,12 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       ...game,
       player_1_username: getUsername(game.player1),
       player_2_username: getUsername(game.player2),
+      team_1_name: getTeamName(game.team1),
+      team_2_name: getTeamName(game.team2),
+      team_1_primary_color: getTeamPrimaryColor(game.team1),
+      team_1_secondary_color: getTeamSecondaryColor(game.team1),
+      team_2_primary_color: getTeamPrimaryColor(game.team2),
+      team_2_secondary_color: getTeamSecondaryColor(game.team2),
     })) ?? [];
 
   const initialError = mapErrorCode(searchParams?.error, searchParams?.game ?? null);
@@ -124,6 +157,12 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
                 </div>
               )}
               <span>{profile?.username ?? "Jugador"}</span>
+            </Link>
+            <Link
+              href="/team"
+              className="rounded-full border border-emerald-400/40 px-3 py-1 text-emerald-100 transition hover:border-emerald-200 hover:text-white"
+            >
+              🏟️ Mi equipo
             </Link>
             <Link
               href="/stats"

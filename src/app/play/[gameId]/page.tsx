@@ -21,6 +21,8 @@ type GameRow = Database["public"]["Tables"]["games"]["Row"];
 type RawGame = GameRow & {
   player_one?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
   player_two?: { username: string; avatar_url: string | null } | { username: string; avatar_url: string | null }[];
+  team1?: { name: string; primary_color: string; secondary_color: string } | { name: string; primary_color: string; secondary_color: string }[];
+  team2?: { name: string; primary_color: string; secondary_color: string } | { name: string; primary_color: string; secondary_color: string }[];
 };
 
 const extractUsername = (
@@ -30,6 +32,28 @@ const extractUsername = (
     return profile[0]?.username ?? null;
   }
   return profile?.username ?? null;
+};
+
+const extractTeam = (
+  team: RawGame["team1"] | RawGame["team2"],
+):
+  | { name: string | null; primary_color: string | null; secondary_color: string | null }
+  | null => {
+  if (!team) return null;
+  if (Array.isArray(team)) {
+    const t = team[0];
+    if (!t) return null;
+    return {
+      name: t.name ?? null,
+      primary_color: t.primary_color ?? null,
+      secondary_color: t.secondary_color ?? null,
+    };
+  }
+  return {
+    name: team.name ?? null,
+    primary_color: team.primary_color ?? null,
+    secondary_color: team.secondary_color ?? null,
+  };
 };
 
 const GAME_SELECT = `
@@ -48,8 +72,12 @@ const GAME_SELECT = `
         timeout_enabled,
         turn_started_at,
         finished_at,
+        team_1_id,
+        team_2_id,
         player_one:profiles!games_player_1_id_fkey(username, avatar_url),
-        player_two:profiles!games_player_2_id_fkey(username, avatar_url)
+        player_two:profiles!games_player_2_id_fkey(username, avatar_url),
+        team1:teams!games_team_1_id_fkey(name, primary_color, secondary_color),
+        team2:teams!games_team_2_id_fkey(name, primary_color, secondary_color)
       `;
 
 export default async function PlayPage({ params }: PlayPageProps) {
@@ -130,19 +158,30 @@ export default async function PlayPage({ params }: PlayPageProps) {
   ) {
     try {
       // Get the current game state to check who has the initial turn
-      const currentGameState = (rawGame.game_state as { turn?: string; startingPlayer?: string }) ?? {};
-      const initialTurn = currentGameState.turn ?? currentGameState.startingPlayer ?? "home";
-      
+      const currentGameState =
+        (rawGame.game_state as { turn?: string; startingPlayer?: string }) ?? {};
+      const initialTurn =
+        currentGameState.turn ?? currentGameState.startingPlayer ?? "home";
+
+      // Fetch user's team (if exists)
+      const { data: teamData } = await supabaseAdmin
+        .from("teams")
+        .select("id")
+        .eq("owner_id", session.user.id)
+        .maybeSingle();
+
+      const team = teamData as { id: string } | null;
+
       // Prepare update payload
       // When the second player joins, the game starts
       // Don't set turn_started_at yet - it will be set when the first move is made
-      // This ensures the timer only starts when both players are ready and the first move is made
       const updatePayload: Record<string, unknown> = {
         player_2_id: session.user.id,
         status: "in_progress",
         turn_started_at: null, // Timer will start when first move is made
+        team_2_id: team?.id ?? null,
       };
-      
+
       const { data: joinedGame, error: joinError } = (await (supabaseAdmin.from(
         "games",
       ) as unknown as {
@@ -196,6 +235,8 @@ export default async function PlayPage({ params }: PlayPageProps) {
     player_one_username: extractUsername(rawGame.player_one),
     player_two_username: extractUsername(rawGame.player_two),
     bot_display_name: rawGame.bot_display_name ?? FOOTBALL_BOT_DEFAULT_NAME,
+    team1: extractTeam(rawGame.team1),
+    team2: extractTeam(rawGame.team2),
   };
 
   const baseState = RuleEngine.createInitialState();
@@ -260,6 +301,12 @@ export default async function PlayPage({ params }: PlayPageProps) {
       showMoveHints={showMoveHints}
       winningScore={game.winning_score ?? 3}
       timeoutEnabled={game.timeout_enabled ?? true}
+      team1Name={game.team1?.name ?? null}
+      team2Name={game.team2?.name ?? null}
+      team1PrimaryColor={game.team1?.primary_color ?? null}
+      team1SecondaryColor={game.team1?.secondary_color ?? null}
+      team2PrimaryColor={game.team2?.primary_color ?? null}
+      team2SecondaryColor={game.team2?.secondary_color ?? null}
     />
   );
 }

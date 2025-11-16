@@ -147,6 +147,15 @@ export async function POST(request: Request) {
       }
     }
 
+    // Fetch user's team (if exists)
+    const { data: teamData } = await supabaseAdmin
+      .from("teams")
+      .select("id")
+      .eq("owner_id", userId)
+      .maybeSingle();
+
+    const team = teamData as { id: string } | null;
+
     // Join the game
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: joinError } = await (supabaseAdmin.from("games") as any)
@@ -154,6 +163,7 @@ export async function POST(request: Request) {
         player_2_id: userId,
         status: "in_progress",
         turn_started_at: null, // Timer will start when first move is made
+        team_2_id: team?.id ?? null,
       })
       .eq("id", game.id)
       .is("player_2_id", null); // Use .is() instead of .eq() for null check
