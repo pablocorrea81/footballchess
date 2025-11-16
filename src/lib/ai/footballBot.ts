@@ -1256,15 +1256,18 @@ export const executeBotTurnIfNeeded = async (
 
     console.log("[bot] Calling pickBotMove with state.turn:", currentState.turn, "botPlayer:", botPlayer);
     
-    // For hard difficulty, use Gemini AI for better evaluation
+    // For hard difficulty, ALWAYS use Gemini AI (no fallback to regular AI)
     let move: Move | null = null;
     if (difficulty === "hard") {
-      try {
-        const legalMoves = RuleEngine.getLegalMoves(currentState, botPlayer);
-        if (legalMoves.length > 0) {
-          console.log("[bot] Using Gemini AI to evaluate moves for hard difficulty");
-          
-          // Get Gemini recommendation
+      const legalMoves = RuleEngine.getLegalMoves(currentState, botPlayer);
+      if (legalMoves.length === 0) {
+        console.log("[bot] No legal moves available");
+        move = null;
+      } else {
+        console.log("[bot] Using Gemini AI exclusively for hard difficulty");
+        
+        try {
+          // Get Gemini recommendation - wait for it, no fallback
           const geminiRecommendedMove = await getGeminiRecommendation(
             currentState,
             legalMoves,
@@ -1275,17 +1278,29 @@ export const executeBotTurnIfNeeded = async (
             console.log("[bot] Gemini recommended move:", geminiRecommendedMove);
             move = geminiRecommendedMove;
           } else {
-            // Fallback to regular AI if Gemini fails
-            console.log("[bot] Gemini recommendation failed, falling back to regular AI");
-            const learnedPatterns = learnFromOpponentGoals(currentState, botPlayer);
-            move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
+            // If Gemini doesn't return a move, wait a bit and try again
+            console.warn("[bot] Gemini didn't return a move, retrying...");
+            // Small delay and retry once
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const retryMove = await getGeminiRecommendation(
+              currentState,
+              legalMoves,
+              botPlayer,
+            );
+            if (retryMove) {
+              console.log("[bot] Gemini recommended move on retry:", retryMove);
+              move = retryMove;
+            } else {
+              // Last resort: pick first move if Gemini fails completely
+              console.error("[bot] Gemini failed to provide recommendation, using first available move");
+              move = legalMoves[0];
+            }
           }
+        } catch (error) {
+          console.error("[bot] Error using Gemini, using first available move as last resort:", error);
+          // Last resort: use first move if Gemini completely fails
+          move = legalMoves[0];
         }
-      } catch (error) {
-        console.error("[bot] Error using Gemini, falling back to regular AI:", error);
-        // Fallback to regular AI on error
-        const learnedPatterns = learnFromOpponentGoals(currentState, botPlayer);
-        move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
       }
     } else {
       // For easy and medium, use regular AI (no Gemini, no learned patterns)

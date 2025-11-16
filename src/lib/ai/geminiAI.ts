@@ -12,10 +12,10 @@ let model: any = null;
 try {
   if (GEMINI_API_KEY && GEMINI_API_KEY !== "") {
     genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    // Use gemini-2.0-flash-exp for faster, cost-effective responses
-    // Can switch to gemini-2.0-flash-thinking-exp for deeper analysis
-    model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-    console.log("[Gemini] Gemini AI initialized successfully");
+    // Using gemini-2.5-flash-lite - high performance and low cost
+    // Ideal for high-volume tasks while maintaining good strategic reasoning
+    model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    console.log("[Gemini] Gemini AI initialized successfully with 2.5 Flash-Lite model (cost-optimized)");
   } else {
     console.warn("[Gemini] No Gemini API key provided, Gemini AI disabled");
   }

@@ -1876,10 +1876,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   </div>
                   <div
                     className={`relative flex items-center justify-center min-w-[60px] md:min-w-[80px] px-4 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl border-3 font-bold text-2xl md:text-4xl lg:text-5xl transition-all duration-300 ${
-                      gameState.startingPlayer === "home"
+                      gameState.turn === "home" && status === "in_progress"
                         ? "bg-emerald-600/95 text-white border-yellow-400 shadow-lg shadow-yellow-400/30"
-                        : gameState.turn === "home"
-                        ? "bg-emerald-600/90 text-white border-emerald-400 ring-4 ring-emerald-400/50 shadow-lg"
                         : "bg-emerald-700/80 text-emerald-50 border-emerald-500/60"
                     } ${
                       scoreChanged === "home"
@@ -1916,10 +1914,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   </div>
                   <div
                     className={`relative flex items-center justify-center min-w-[60px] md:min-w-[80px] px-4 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl border-3 font-bold text-2xl md:text-4xl lg:text-5xl transition-all duration-300 ${
-                      gameState.startingPlayer === "away"
+                      gameState.turn === "away" && status === "in_progress"
                         ? "bg-sky-600/95 text-white border-yellow-400 shadow-lg shadow-yellow-400/30"
-                        : gameState.turn === "away"
-                        ? "bg-sky-600/90 text-white border-sky-400 ring-4 ring-sky-400/50 shadow-lg"
                         : "bg-sky-700/80 text-sky-50 border-sky-500/60"
                     } ${
                       scoreChanged === "away"
