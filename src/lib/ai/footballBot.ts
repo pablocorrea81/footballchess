@@ -25,6 +25,128 @@ const opponent = (player: PlayerId): PlayerId => (player === "home" ? "away" : "
 const goalRowForPlayer = (player: PlayerId): number =>
   player === "home" ? 0 : BOARD_ROWS - 1;
 
+// Adaptive learning: Track attack patterns that lead to goals
+type AttackPattern = {
+  goalColumn: number; // Which goal column was attacked
+  piecesUsed: string[]; // What pieces were involved
+  attackPositions: Array<{ row: number; col: number }>; // Positions from which attacks came
+  frequency: number; // How many times this pattern led to a goal
+};
+
+// Analyze game history to learn from opponent's successful attacks
+const learnFromOpponentGoals = (
+  state: GameState,
+  botPlayer: PlayerId,
+): Map<number, AttackPattern> => {
+  const patterns = new Map<number, AttackPattern>();
+  const opponentPlayer = opponent(botPlayer);
+  const goalRow = goalRowForPlayer(botPlayer);
+  
+  if (!state.history || state.history.length === 0) {
+    return patterns;
+  }
+  
+  // Analyze history to find goals scored by opponent
+  // Look at the last 20-30 moves to find attack patterns
+  const recentMoves = state.history.slice(-30);
+  
+  for (let i = 0; i < recentMoves.length; i++) {
+    const move = recentMoves[i];
+    
+    // Check if this move resulted in a goal for the opponent
+    // MoveRecord includes a 'goal' property if the move resulted in a goal
+    const moveResultedInGoal = move.goal?.scoringPlayer === opponentPlayer;
+    
+    // Also check if move reaches goal row in goal columns (might be a goal)
+    const moveReachesGoal = move.player === opponentPlayer && 
+                           move.to.row === goalRow && 
+                           GOAL_COLS.includes(move.to.col);
+    
+    if (moveResultedInGoal || moveReachesGoal) {
+      const goalCol = move.to.col;
+      
+      // Find the attack pattern leading to this goal
+      // Look at the last 3-5 moves before this goal
+      const attackSequence = [];
+      const piecesUsed = new Set<string>();
+      
+      // Trace back to find the attack buildup
+      for (let j = Math.max(0, i - 5); j < i; j++) {
+        const prevMove = recentMoves[j];
+        if (prevMove.player === opponentPlayer) {
+          attackSequence.push({ row: prevMove.from.row, col: prevMove.from.col });
+          // Try to infer piece type from move pattern (approximate)
+          const distance = Math.abs(prevMove.to.row - prevMove.from.row) + Math.abs(prevMove.to.col - prevMove.from.col);
+          if (distance <= 2) {
+            piecesUsed.add("delantero"); // Likely a forward if short move
+          } else if (distance <= 4) {
+            piecesUsed.add("mediocampista"); // Likely midfielder if medium move
+          }
+        }
+      }
+      
+      // Record this pattern
+      const existingPattern = patterns.get(goalCol);
+      if (existingPattern) {
+        existingPattern.frequency += 1;
+        // Merge pieces used
+        piecesUsed.forEach((piece) => existingPattern.piecesUsed.push(piece));
+      } else {
+        patterns.set(goalCol, {
+          goalColumn: goalCol,
+          piecesUsed: Array.from(piecesUsed),
+          attackPositions: attackSequence,
+          frequency: 1,
+        });
+      }
+    }
+  }
+  
+  return patterns;
+};
+
+// Adjust defensive threat based on learned patterns
+const adjustDefensiveThreatForPatterns = (
+  state: GameState,
+  player: PlayerId,
+  patterns: Map<number, AttackPattern>,
+  baseThreatScore: number,
+): number => {
+  const goalRow = goalRowForPlayer(player);
+  let adjustedThreat = baseThreatScore;
+  
+  // For each learned pattern, check if opponent is using similar tactics
+  for (const [goalCol, pattern] of patterns.entries()) {
+    if (pattern.frequency < 1) continue; // Only consider patterns that led to at least one goal
+    
+    // Check if opponent has pieces in similar positions
+    const opponentPlayer = opponent(player);
+    let patternMatchScore = 0;
+    
+    // Check if opponent has pieces in attack positions similar to learned pattern
+    for (const attackPos of pattern.attackPositions) {
+      const piece = state.board[attackPos.row]?.[attackPos.col];
+      if (piece && piece.owner === opponentPlayer) {
+        // This position is being used by opponent - potential threat!
+        patternMatchScore += 1000 * pattern.frequency; // More frequent patterns = higher threat
+      }
+    }
+    
+    // Check if opponent has pieces near the goal column from the pattern
+    for (let row = Math.max(0, goalRow - 4); row <= Math.min(BOARD_ROWS - 1, goalRow + 4); row++) {
+      const piece = state.board[row]?.[goalCol];
+      if (piece && piece.owner === opponentPlayer) {
+        // Opponent has a piece in the same goal column that led to previous goals
+        patternMatchScore += 1500 * pattern.frequency;
+      }
+    }
+    
+    adjustedThreat += patternMatchScore;
+  }
+  
+  return adjustedThreat;
+};
+
 const forwardProgress = (from: Move["from"], to: Move["to"], player: PlayerId): number =>
   player === "home" ? from.row - to.row : to.row - from.row;
 
@@ -795,6 +917,7 @@ export const pickBotMove = (
   state: GameState,
   player: PlayerId,
   difficulty: BotDifficulty = FOOTBALL_BOT_DEFAULT_DIFFICULTY,
+  learnedPatterns?: Map<number, AttackPattern>, // Optional learned attack patterns (for hard difficulty)
 ): Move | null => {
   // CRITICAL: Ensure state turn matches player before getting legal moves
   // getLegalMoves doesn't validate turn, but we need it correct for move selection
@@ -843,9 +966,41 @@ export const pickBotMove = (
     
     try {
       const result = rateMove(state, move, difficulty, useLookAhead);
+      
+      // For hard difficulty, adjust score based on learned attack patterns
+      let adjustedScore = result.score;
+      if (difficulty === "hard" && learnedPatterns && learnedPatterns.size > 0) {
+        // Check if this move blocks a learned attack pattern
+        const opponentPlayer = opponent(player);
+        const goalRow = goalRowForPlayer(player);
+        
+        for (const [goalCol, pattern] of learnedPatterns.entries()) {
+          if (pattern.frequency < 1) continue;
+          
+          // Check if this move blocks the goal column from the pattern
+          if (move.to.col === goalCol && Math.abs(move.to.row - goalRow) <= 2) {
+            // This move positions a piece to block the goal column from a known attack pattern
+            adjustedScore += 2000 * pattern.frequency; // Bonus proportional to pattern frequency
+          }
+          
+          // Check if this move captures or blocks an opponent piece in an attack position from the pattern
+          for (const attackPos of pattern.attackPositions) {
+            if (move.to.row === attackPos.row && move.to.col === attackPos.col) {
+              // This move goes to a position used in a successful attack - block it!
+              adjustedScore += 1500 * pattern.frequency;
+              if (result.outcome.capture) {
+                // This move captures a piece in an attack position from the pattern
+                adjustedScore += 2500 * pattern.frequency;
+              }
+            }
+          }
+        }
+      }
+      
       return {
         move,
-        ...result,
+        score: adjustedScore,
+        outcome: result.outcome,
       };
     } catch (error) {
       console.error("[bot] ERROR rating move in pickBotMove:", error);
@@ -1099,7 +1254,21 @@ export const executeBotTurnIfNeeded = async (
       FOOTBALL_BOT_DEFAULT_DIFFICULTY;
 
     console.log("[bot] Calling pickBotMove with state.turn:", currentState.turn, "botPlayer:", botPlayer);
-    const move = pickBotMove(currentState, botPlayer, difficulty);
+    
+    // For hard difficulty, learn from opponent's successful attacks
+    let learnedPatterns: Map<number, AttackPattern> | undefined = undefined;
+    if (difficulty === "hard") {
+      learnedPatterns = learnFromOpponentGoals(currentState, botPlayer);
+      if (learnedPatterns.size > 0) {
+        console.log("[bot] Learned attack patterns from opponent goals:", 
+          Array.from(learnedPatterns.entries()).map(([col, pattern]) => 
+            `Column ${col}: ${pattern.frequency} time(s)`
+          )
+        );
+      }
+    }
+    
+    const move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
 
     if (!move) {
       console.log("[bot] No legal moves found, passing turn");

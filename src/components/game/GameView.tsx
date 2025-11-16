@@ -151,16 +151,6 @@ export function GameView({
   const [turnStartedAt, setTurnStartedAt] = useState<Date | null>(null);
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
   const boardRef = useRef<HTMLDivElement>(null);
-  
-  // Zoom control for board (desktop only)
-  const [boardZoom, setBoardZoom] = useState<number>(() => {
-    // Load from localStorage if available, default to 1.0
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("boardZoom");
-      return saved ? parseFloat(saved) : 1.0;
-    }
-    return 1.0;
-  });
   const { playSound } = useGameSounds();
   // Track if we're currently processing a local move to avoid overwriting with Realtime updates
   const isProcessingLocalMoveRef = useRef<boolean>(false);
@@ -1030,19 +1020,19 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         clearTimeout(victoryTimersRef.current.redirectTimer);
       }
       
-      // Hide alert after 3 seconds
+      // Hide alert after 5 seconds
       victoryTimersRef.current.hideTimer = setTimeout(() => {
-        console.log("[GameView] Hiding victory alert after 3 seconds");
+        console.log("[GameView] Hiding victory alert after 5 seconds");
         setShowVictoryAlert(false);
         victoryTimersRef.current.hideTimer = undefined;
-      }, 3000);
+      }, 5000);
       
-      // Redirect to lobby after 3 seconds
+      // Redirect to lobby after 5 seconds
       victoryTimersRef.current.redirectTimer = setTimeout(() => {
         console.log("[GameView] Redirecting to lobby after victory");
         router.push("/lobby");
         victoryTimersRef.current.redirectTimer = undefined;
-      }, 3000);
+      }, 5000);
       
       // Update refs after showing alert
       previousStatusRef.current = currentStatus;
@@ -1521,62 +1511,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
-      <div 
-        className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start transition-transform duration-200"
-        style={{
-          transform: `scale(${boardZoom})`,
-          transformOrigin: "top center",
-          minWidth: boardZoom !== 1 ? `${100 / boardZoom}%` : "100%",
-        }}
-      >
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start">
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
           className="w-full overflow-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start relative"
         >
-          {/* Zoom controls (desktop only) */}
-          <div className="hidden md:flex absolute top-2 right-2 z-20 gap-2">
-            <button
-              onClick={() => {
-                const newZoom = Math.max(0.5, boardZoom - 0.1);
-                setBoardZoom(newZoom);
-                localStorage.setItem("boardZoom", newZoom.toString());
-              }}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors backdrop-blur-sm"
-              title="Reducir zoom"
-              aria-label="Reducir zoom"
-            >
-              −
-            </button>
-            <button
-              onClick={() => {
-                const newZoom = 1.0;
-                setBoardZoom(newZoom);
-                localStorage.setItem("boardZoom", newZoom.toString());
-              }}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg border-2 border-emerald-400/70 transition-colors backdrop-blur-sm"
-              title="Restablecer zoom"
-              aria-label="Restablecer zoom"
-            >
-              ⌂
-            </button>
-            <button
-              onClick={() => {
-                const newZoom = Math.min(2.0, boardZoom + 0.1);
-                setBoardZoom(newZoom);
-                localStorage.setItem("boardZoom", newZoom.toString());
-              }}
-              className="w-9 h-9 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors backdrop-blur-sm"
-              title="Aumentar zoom"
-              aria-label="Aumentar zoom"
-            >
-              +
-            </button>
-          </div>
-          {/* Zoom indicator (desktop only) */}
-          <div className="hidden md:block absolute top-2 left-2 z-20 px-2 py-1 rounded-full bg-emerald-900/80 text-emerald-100 text-xs font-semibold shadow-lg border border-emerald-600/50 backdrop-blur-sm">
-            {Math.round(boardZoom * 100)}%
-          </div>
           <div 
             id="game-board-container"
             className="w-full border border-white/20 shadow-2xl"
@@ -2115,56 +2055,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
               validan localmente con la lógica oficial y se sincronizan en Supabase.
               {status === "finished" ? " Esta partida ya finalizó." : ""}
             </p>
-          </div>
-          
-          {/* Zoom controls (mobile only) */}
-          <div 
-            className="flex md:hidden items-center justify-center gap-3 pt-2 border-t border-white/20 mt-4"
-            style={{
-              transform: `scale(${1 / boardZoom})`,
-              transformOrigin: "center center",
-            }}
-          >
-            <span className="text-xs text-emerald-200 font-semibold">Zoom:</span>
-            <button
-              onClick={() => {
-                const newZoom = Math.max(0.5, boardZoom - 0.1);
-                setBoardZoom(newZoom);
-                localStorage.setItem("boardZoom", newZoom.toString());
-              }}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors"
-              title="Reducir zoom"
-              aria-label="Reducir zoom"
-            >
-              −
-            </button>
-            <span className="text-sm text-emerald-100 font-semibold min-w-[50px] text-center">
-              {Math.round(boardZoom * 100)}%
-            </span>
-            <button
-              onClick={() => {
-                const newZoom = 1.0;
-                setBoardZoom(newZoom);
-                localStorage.setItem("boardZoom", newZoom.toString());
-              }}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xs shadow-lg border-2 border-emerald-400/70 transition-colors"
-              title="Restablecer zoom"
-              aria-label="Restablecer zoom"
-            >
-              ⌂
-            </button>
-            <button
-              onClick={() => {
-                const newZoom = Math.min(2.0, boardZoom + 0.1);
-                setBoardZoom(newZoom);
-                localStorage.setItem("boardZoom", newZoom.toString());
-              }}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700/95 hover:bg-emerald-600 text-white font-bold text-xl shadow-lg border-2 border-emerald-400/70 transition-colors"
-              title="Aumentar zoom"
-              aria-label="Aumentar zoom"
-            >
-              +
-            </button>
           </div>
         </div>
       </div>
