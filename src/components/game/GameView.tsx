@@ -1756,19 +1756,21 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <Link
                   href="/lobby"
-                  className="rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl"
+                  className="inline-flex items-center gap-1.5 rounded-full border-2 border-emerald-400/60 bg-emerald-600/80 px-3 md:px-4 py-1.5 md:py-2 text-xs sm:text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-500 hover:border-emerald-300 hover:shadow-xl whitespace-nowrap"
                 >
-                  ← Volver al Lobby
+                  <span>←</span>
+                  <span>Volver al Lobby</span>
                 </Link>
                 {status !== "finished" && (
                   <Link
                     href="/"
-                    className="rounded-full border-2 border-white/30 bg-white/10 px-2.5 md:px-3 py-1 md:py-1.5 sm:px-4 sm:py-2 text-xs md:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50"
+                    className="inline-flex items-center gap-1.5 rounded-full border-2 border-white/30 bg-white/10 px-2.5 md:px-3 py-1.5 md:py-2 text-xs sm:text-sm font-semibold text-white shadow-lg transition hover:bg-white/20 hover:border-white/50 whitespace-nowrap"
                   >
-                    🏠 Home
+                    <span>🏠</span>
+                    <span>Home</span>
                   </Link>
                 )}
               </div>
