@@ -1374,7 +1374,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
   }, [canAct, status, gameState.turn, playerRole]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 md:h-screen md:max-h-screen md:max-w-none md:px-4 md:py-4 md:overflow-hidden lg:px-6 lg:py-6 md:flex md:flex-col">
+    <div className="mx-auto flex w-full max-w-[95vw] flex-col gap-6 px-2 py-6 sm:px-4 sm:py-8 lg:px-6 lg:py-10 xl:max-w-[95vw] 2xl:max-w-[1600px]">
       {showGoalCelebration && goalScorer && (
         <GoalCelebration
           key={`goal-${goalScorer}-${gameState.history?.length ?? 0}`}
@@ -1484,22 +1484,15 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       )}
 
       {/* Main content: Board on left, Header+Info on right (all screen sizes) */}
-      <div className="grid grid-cols-1 md:grid md:grid-cols-[1fr_420px] lg:grid-cols-[1fr_450px] xl:grid-cols-[1fr_480px] gap-4 md:gap-6 md:flex-1 md:min-h-0 md:overflow-hidden">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_0.9fr] lg:grid-cols-[1.4fr_1fr] gap-4 md:gap-6 items-start">
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
-          className="w-full overflow-x-auto order-1 md:order-1 md:h-full md:flex md:items-center md:justify-center md:min-h-0 md:min-w-0 md:overflow-hidden"
+          className="w-full overflow-x-auto order-1 md:order-1 lg:sticky lg:top-6 lg:self-start"
         >
           <div 
             id="game-board-container"
-            className="w-full border border-white/20 shadow-2xl md:mx-auto md:my-auto"
-            style={{
-              aspectRatio: `${(BOARD_COLS + 1)} / ${(BOARD_ROWS + 1)}`,
-              maxWidth: '100%',
-              maxHeight: '100%',
-              width: 'auto',
-              height: 'auto',
-            }}
+            className="w-full border border-white/20 shadow-2xl"
           >
             {/* Column labels (A-H) */}
             <div
@@ -1650,7 +1643,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 : ""
                             } ${
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
-                            } w-[32%] h-[32%] sm:w-[35%] sm:h-[35%] md:w-[38%] md:h-[38%] text-xs sm:text-sm md:text-base lg:text-lg`}
+                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
@@ -1695,7 +1688,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
 
         {/* Header and Info panel - Right side on all screen sizes */}
-        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2 md:h-full md:min-h-0 md:overflow-y-auto md:overflow-x-hidden md:pr-2">
+        <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2">
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
