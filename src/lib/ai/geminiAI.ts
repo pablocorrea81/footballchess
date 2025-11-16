@@ -6,6 +6,12 @@ import { RuleEngine, type GameState, type Move, type PlayerId } from "@/lib/rule
 // Never commit API keys to the repository
 // For server-side: Use GEMINI_API_KEY (not public)
 // For client-side: Use NEXT_PUBLIC_GEMINI_API_KEY (public - not recommended for API keys)
+// Lazy initialization - initialize model when needed, not at module load
+// This ensures environment variables are available (important for Vercel)
+let genAI: GoogleGenerativeAI | null = null;
+let model: any = null;
+let initializationAttempted = false;
+
 const getGeminiApiKey = (): string | null => {
   // Try server-side variable first (more secure)
   // In Vercel, environment variables are available via process.env
@@ -14,51 +20,59 @@ const getGeminiApiKey = (): string | null => {
     // Prioritize GEMINI_API_KEY (server-side only, more secure)
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || null;
     
-    // Debug logging (only in development)
-    if (process.env.NODE_ENV === 'development') {
-      if (apiKey) {
-        console.log(`[Gemini] API key loaded from ${process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : 'NEXT_PUBLIC_GEMINI_API_KEY'}`);
-      }
+    // Debug logging
+    if (apiKey) {
+      const source = process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : 'NEXT_PUBLIC_GEMINI_API_KEY';
+      console.log(`[Gemini] API key loaded from ${source} (${apiKey.substring(0, 10)}...)`);
+    } else {
+      console.warn(`[Gemini] No API key found in process.env - GEMINI_API_KEY: ${!!process.env.GEMINI_API_KEY}, NEXT_PUBLIC_GEMINI_API_KEY: ${!!process.env.NEXT_PUBLIC_GEMINI_API_KEY}`);
     }
     
     return apiKey;
   }
+  console.warn("[Gemini] process.env not available");
   return null;
 };
 
-const GEMINI_API_KEY = getGeminiApiKey();
+const initializeGemini = (): void => {
+  // Only initialize once
+  if (initializationAttempted) {
+    return;
+  }
+  initializationAttempted = true;
 
-let genAI: GoogleGenerativeAI | null = null;
-let model: any = null;
-
-try {
-  if (GEMINI_API_KEY && GEMINI_API_KEY !== "") {
-    // Validate API key format (should start with AIza)
-    if (GEMINI_API_KEY.startsWith("AIza")) {
-      genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      // Using gemini-2.5-flash-lite - high performance and low cost
-      // Ideal for high-volume tasks while maintaining good strategic reasoning
-      model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-      console.log("[Gemini] ✅ Gemini AI initialized successfully with 2.5 Flash-Lite model (cost-optimized)");
-      console.log(`[Gemini] API key found: ${GEMINI_API_KEY.substring(0, 10)}...${GEMINI_API_KEY.substring(GEMINI_API_KEY.length - 4)}`);
+  try {
+    const apiKey = getGeminiApiKey();
+    
+    if (apiKey && apiKey !== "") {
+      // Validate API key format (should start with AIza)
+      if (apiKey.startsWith("AIza")) {
+        genAI = new GoogleGenerativeAI(apiKey);
+        // Using gemini-2.5-flash-lite - high performance and low cost
+        // Ideal for high-volume tasks while maintaining good strategic reasoning
+        model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        console.log("[Gemini] ✅ Gemini AI initialized successfully with 2.5 Flash-Lite model (cost-optimized)");
+        console.log(`[Gemini] API key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`);
+      } else {
+        console.warn("[Gemini] ⚠️ Invalid Gemini API key format (should start with 'AIza')");
+        console.warn(`[Gemini] Key starts with: ${apiKey.substring(0, 5)}`);
+      }
     } else {
-      console.warn("[Gemini] ⚠️ Invalid Gemini API key format (should start with 'AIza')");
+      console.warn("[Gemini] ⚠️ No Gemini API key provided, Gemini AI disabled");
+      console.warn("[Gemini] To enable Gemini AI for 'Hard' difficulty:");
+      console.warn("[Gemini] 1. Set GEMINI_API_KEY in Vercel Environment Variables (Production/Preview/Development)");
+      console.warn("[Gemini] 2. Or add to .env.local for local development");
+      console.warn("[Gemini] 3. Get API key from: https://makersuite.google.com/app/apikey");
+      console.warn("[Gemini] 4. Redeploy after adding the variable");
     }
-  } else {
-    console.warn("[Gemini] ⚠️ No Gemini API key provided, Gemini AI disabled");
-    console.warn("[Gemini] To enable Gemini AI for 'Hard' difficulty:");
-    console.warn("[Gemini] 1. Create/update .env.local file in project root");
-    console.warn("[Gemini] 2. Add: GEMINI_API_KEY=your_api_key_here");
-    console.warn("[Gemini] 3. Get API key from: https://makersuite.google.com/app/apikey");
-    console.warn("[Gemini] 4. Restart the development server after adding the key");
+  } catch (error) {
+    console.error("[Gemini] ❌ Error initializing Gemini AI:", error);
+    if (error instanceof Error) {
+      console.error("[Gemini] Error message:", error.message);
+      console.error("[Gemini] Error stack:", error.stack);
+    }
   }
-} catch (error) {
-  console.error("[Gemini] ❌ Error initializing Gemini AI:", error);
-  if (error instanceof Error) {
-    console.error("[Gemini] Error message:", error.message);
-    console.error("[Gemini] Error stack:", error.stack);
-  }
-}
+};
 
 // Convert game state to visual board representation for Gemini
 const gameStateToText = (state: GameState, botPlayer: PlayerId): string => {
@@ -247,7 +261,11 @@ export const evaluateMoveWithGemini = async (
   botPlayer: PlayerId,
   allMoves: Move[],
 ): Promise<number | null> => {
-  if (!model || !GEMINI_API_KEY) {
+  // Initialize lazily if needed
+  initializeGemini();
+  
+  const apiKey = getGeminiApiKey();
+  if (!model || !apiKey) {
     console.log("[Gemini] Gemini not available, skipping AI evaluation");
     return null;
   }
@@ -311,19 +329,24 @@ export const getGeminiRecommendation = async (
   moves: Move[],
   botPlayer: PlayerId,
 ): Promise<Move | null> => {
+  // Initialize lazily when first needed (ensures env vars are loaded in Vercel)
+  initializeGemini();
+  
   console.log(`[Gemini] ========== getGeminiRecommendation called ==========`);
+  const apiKey = getGeminiApiKey();
   console.log(`[Gemini] Checking prerequisites:`);
   console.log(`  - Model available: ${!!model}`);
-  console.log(`  - API key available: ${!!GEMINI_API_KEY}`);
+  console.log(`  - API key available: ${!!apiKey}`);
   console.log(`  - Moves available: ${moves.length}`);
   console.log(`  - Bot player: ${botPlayer}`);
   
   if (!model) {
     console.error(`[Gemini] ❌ Model not initialized - returning null`);
+    console.error(`[Gemini] This usually means GEMINI_API_KEY is not set in Vercel environment variables`);
     return null;
   }
   
-  if (!GEMINI_API_KEY) {
+  if (!apiKey) {
     console.error(`[Gemini] ❌ API key not available - returning null`);
     return null;
   }
