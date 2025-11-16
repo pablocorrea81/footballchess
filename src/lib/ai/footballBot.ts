@@ -796,8 +796,8 @@ export const executeBotTurnIfNeeded = async (
     const botPlayer = (game.bot_player as PlayerId | null) ?? "away";
     console.log("[bot] Bot player:", botPlayer);
 
-    const currentState = parseGameState(game);
-    console.log("[bot] Parsed game state:", {
+    let currentState = parseGameState(game);
+    console.log("[bot] Parsed game state (initial):", {
       turn: currentState.turn,
       score: currentState.score,
       historyLength: currentState.history?.length ?? 0,
@@ -805,29 +805,58 @@ export const executeBotTurnIfNeeded = async (
     });
     console.log("[bot] Current turn:", currentState.turn, "Bot player:", botPlayer);
     console.log("[bot] Raw game_state from DB:", JSON.stringify(game.game_state)?.substring(0, 500));
+    
+    // Extract turn from raw game_state to verify it matches parsed state
+    const rawGameState = game.game_state as { turn?: string } | null | undefined;
+    const rawTurn = rawGameState?.turn;
+    console.log("[bot] Raw turn from game_state:", rawTurn, "Parsed turn:", currentState.turn);
+    
     console.log("[bot] Game state turn check:", {
-      currentTurn: currentState.turn,
+      rawTurn: rawTurn,
+      parsedTurn: currentState.turn,
       botPlayer: botPlayer,
       isBotTurn: currentState.turn === botPlayer,
       gameStatus: game.status,
       isBotGame: game.is_bot_game,
     });
 
+    // CRITICAL: Ensure state turn matches bot player BEFORE any checks
+    // This fixes potential desynchronization between DB and parsed state
     if (currentState.turn !== botPlayer) {
-      console.log("[bot] ❌ Not bot's turn. Current turn:", currentState.turn, "Expected:", botPlayer);
-      console.log("[bot] Bot will not execute. Waiting for turn to change.");
-      return;
+      // If it's not the bot's turn, we shouldn't proceed
+      // But first, check if the raw game_state has the correct turn
+      if (rawTurn === botPlayer) {
+        console.warn("[bot] WARNING: Parsed state has wrong turn, but raw game_state is correct. Fixing parsed state...", {
+          parsedTurn: currentState.turn,
+          rawTurn: rawTurn,
+          botPlayer: botPlayer,
+        });
+        // Create a new state object with the correct turn
+        currentState = {
+          ...currentState,
+          turn: botPlayer,
+        };
+      } else {
+        console.log("[bot] ❌ Not bot's turn. Current turn:", currentState.turn, "Raw turn:", rawTurn, "Expected:", botPlayer);
+        console.log("[bot] Bot will not execute. Waiting for turn to change.");
+        return;
+      }
     }
 
     console.log("[bot] ✅ Bot's turn confirmed! Proceeding with move selection...");
     
-    // Ensure state turn matches bot player before selecting move
+    // Final verification: ensure state turn matches bot player before selecting move
     if (currentState.turn !== botPlayer) {
-      console.warn("[bot] WARNING: State turn doesn't match bot player, fixing it...", {
+      console.error("[bot] CRITICAL ERROR: State turn doesn't match bot player after fixes!", {
         stateTurn: currentState.turn,
         botPlayer: botPlayer,
       });
-      currentState.turn = botPlayer;
+      // Force fix as last resort
+      currentState = {
+        ...currentState,
+        turn: botPlayer,
+      };
+      console.log("[bot] Force-fixed state turn to match bot player");
     }
     
     const difficulty =
@@ -877,20 +906,46 @@ export const executeBotTurnIfNeeded = async (
     console.log("[bot] Verifying state before applyMove:", {
       stateTurn: currentState.turn,
       movePlayer: move.player,
+      botPlayer: botPlayer,
       match: currentState.turn === move.player,
+      movePlayerMatchesBot: move.player === botPlayer,
     });
     
-    // Ensure state turn matches move player before applying
-    if (currentState.turn !== move.player) {
-      console.error("[bot] ERROR: State turn doesn't match move player!", {
+    // CRITICAL: Ensure state turn matches move player before applying
+    // Create a new state object to avoid mutation issues
+    if (currentState.turn !== move.player || move.player !== botPlayer) {
+      console.error("[bot] ERROR: State turn or move player mismatch!", {
         stateTurn: currentState.turn,
         movePlayer: move.player,
+        botPlayer: botPlayer,
       });
-      // Fix the state turn to match the move player
-      currentState.turn = move.player;
-      console.log("[bot] Fixed state turn to match move player");
+      
+      // Verify move.player matches botPlayer (it should, but let's be safe)
+      if (move.player !== botPlayer) {
+        console.error("[bot] CRITICAL: Move player doesn't match bot player! This should never happen.");
+        // Skip this move and continue to next iteration
+        return;
+      }
+      
+      // Create a new state object with the correct turn
+      currentState = {
+        ...currentState,
+        turn: move.player,
+      };
+      console.log("[bot] Created new state object with correct turn:", move.player);
     }
     
+    // Final verification before applying move
+    if (currentState.turn !== move.player || move.player !== botPlayer) {
+      console.error("[bot] CRITICAL ERROR: Cannot apply move - state/move mismatch persists!", {
+        stateTurn: currentState.turn,
+        movePlayer: move.player,
+        botPlayer: botPlayer,
+      });
+      return;
+    }
+    
+    console.log("[bot] All validations passed. Applying move...");
     const outcome = RuleEngine.applyMove(currentState, move);
     let nextStatus = game.status;
     let winnerId = game.winner_id;
