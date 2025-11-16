@@ -139,7 +139,6 @@ export function GameView({
   }, []);
   
   const [hasPlayedStartSound, setHasPlayedStartSound] = useState(false);
-  const [previousScore, setPreviousScore] = useState<GameState["score"]>(initialScore ?? initialState.score);
   const [showYourTurnAlert, setShowYourTurnAlert] = useState(false);
   const [showTimeoutAlert, setShowTimeoutAlert] = useState(false);
   const [showVictoryAlert, setShowVictoryAlert] = useState(false);
@@ -150,6 +149,9 @@ export function GameView({
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [turnStartedAt, setTurnStartedAt] = useState<Date | null>(null);
   const previousHistoryLengthRef = useRef<number>((initialState.history?.length ?? 0));
+  // Track score changes for animation
+  const previousScoreRef = useRef<GameState["score"]>(initialScore ?? initialState.score);
+  const [scoreChanged, setScoreChanged] = useState<PlayerId | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
   // Track if we're currently processing a local move to avoid overwriting with Realtime updates
@@ -338,6 +340,16 @@ export function GameView({
       
       const isGameStart = historyLength === 0 && status === "waiting" && gameData.status === "in_progress" && !hasPlayedStartSound;
 
+      // Detect score changes for animation
+      if (nextScore.home !== previousScoreRef.current.home || nextScore.away !== previousScoreRef.current.away) {
+        if (nextScore.home > previousScoreRef.current.home) {
+          setScoreChanged("home");
+        } else if (nextScore.away > previousScoreRef.current.away) {
+          setScoreChanged("away");
+        }
+        setTimeout(() => setScoreChanged(null), 1000);
+      }
+
       setGameState(nextState);
       setScore(nextScore);
       setStatus(gameData.status);
@@ -347,7 +359,7 @@ export function GameView({
       });
       const newWinnerId = gameData.winner_id ?? null;
       setWinnerId(newWinnerId);
-      setPreviousScore(nextScore);
+      previousScoreRef.current = nextScore;
       
       // Don't update refs here - let the useEffect handle it to properly detect transitions
       
@@ -528,6 +540,16 @@ export function GameView({
           // Check if game just started (first move)
           const isGameStart = historyLength === 0 && status === "waiting" && payload.new.status === "in_progress";
 
+          // Detect score changes for animation
+          if (nextScore.home !== previousScoreRef.current.home || nextScore.away !== previousScoreRef.current.away) {
+            if (nextScore.home > previousScoreRef.current.home) {
+              setScoreChanged("home");
+            } else if (nextScore.away > previousScoreRef.current.away) {
+              setScoreChanged("away");
+            }
+            setTimeout(() => setScoreChanged(null), 1000);
+          }
+          
           setGameState(nextState);
           setScore(nextScore);
           setStatus(payload.new.status);
@@ -537,7 +559,7 @@ export function GameView({
           });
           const newWinnerId = payload.new.winner_id ?? null;
           setWinnerId(newWinnerId);
-          setPreviousScore(nextScore);
+          previousScoreRef.current = nextScore;
           
           // Don't update refs here - let the useEffect handle it to properly detect transitions
           
@@ -731,6 +753,16 @@ export function GameView({
       previousHistoryLengthRef.current = newHistoryLength - 1; // Set to previous length so useEffect detects the change
       lastProcessedHistoryLengthRef.current = newHistoryLength;
       
+      // Detect score changes for animation
+      if (newScore.home !== previousScoreRef.current.home || newScore.away !== previousScoreRef.current.away) {
+        if (newScore.home > previousScoreRef.current.home) {
+          setScoreChanged("home");
+        } else if (newScore.away > previousScoreRef.current.away) {
+          setScoreChanged("away");
+        }
+        setTimeout(() => setScoreChanged(null), 1000);
+      }
+      
       setGameState(outcome.nextState);
       setScore(newScore);
       setSelection(null);
@@ -761,7 +793,7 @@ export function GameView({
       }
       setStatus(nextStatus);
       setWinnerId(nextWinnerId);
-      setPreviousScore(newScore);
+      previousScoreRef.current = newScore;
 
       const response = await fetch("/api/games/update", {
         method: "POST",
@@ -1834,31 +1866,86 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 </p>
               )}
             </div>
-            {/* Scores */}
-            <div className="flex items-center gap-3 md:gap-4 mt-2 md:mt-3 text-sm md:text-base">
-              <div
-                className={badgeClass(
-                  "home",
-                  gameState.startingPlayer === "home",
-                  gameState.turn === "home",
-                )}
-              >
-                {gameState.startingPlayer === "home" ? "★" : null}
-                <span className="font-semibold">
-                  {effectivePlayerLabels.home}: {score.home ?? 0}
-                </span>
-              </div>
-              <div
-                className={badgeClass(
-                  "away",
-                  gameState.startingPlayer === "away",
-                  gameState.turn === "away",
-                )}
-              >
-                {gameState.startingPlayer === "away" ? "★" : null}
-                <span className="font-semibold">
-                  {effectivePlayerLabels.away}: {score.away ?? 0}
-                </span>
+            {/* Scoreboard - Enhanced design */}
+            <div className="mt-3 md:mt-4">
+              <div className="flex items-center justify-between gap-2 md:gap-4 bg-gradient-to-r from-emerald-900/40 via-emerald-800/30 to-sky-900/40 rounded-xl md:rounded-2xl border-2 border-white/10 p-3 md:p-4 shadow-xl backdrop-blur-sm">
+                {/* Home Score */}
+                <div className="flex-1 flex flex-col items-center gap-1 md:gap-2">
+                  <div className="text-xs md:text-sm font-medium text-emerald-200/80 uppercase tracking-wide">
+                    {effectivePlayerLabels.home}
+                  </div>
+                  <div
+                    className={`relative flex items-center justify-center min-w-[60px] md:min-w-[80px] px-4 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl border-3 font-bold text-2xl md:text-4xl lg:text-5xl transition-all duration-300 ${
+                      gameState.startingPlayer === "home"
+                        ? "bg-emerald-600/95 text-white border-yellow-400 shadow-lg shadow-yellow-400/30"
+                        : gameState.turn === "home"
+                        ? "bg-emerald-600/90 text-white border-emerald-400 ring-4 ring-emerald-400/50 shadow-lg"
+                        : "bg-emerald-700/80 text-emerald-50 border-emerald-500/60"
+                    } ${
+                      scoreChanged === "home"
+                        ? "animate-pulse scale-110 shadow-2xl shadow-emerald-400/60"
+                        : ""
+                    }`}
+                  >
+                    {score.home ?? 0}
+                    {gameState.startingPlayer === "home" && (
+                      <span className="absolute -top-1 -right-1 text-yellow-300 text-base md:text-lg">★</span>
+                    )}
+                    {gameState.turn === "home" && status === "in_progress" && (
+                      <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-xs md:text-sm text-emerald-200 animate-pulse">
+                        Turno
+                      </span>
+                    )}
+                  </div>
+                  {winningScore > 0 && (
+                    <div className="text-xs text-emerald-300/60">
+                      Meta: {winningScore}
+                    </div>
+                  )}
+                </div>
+                
+                {/* VS Separator */}
+                <div className="flex flex-col items-center gap-1 md:gap-2 px-2 md:px-4">
+                  <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-emerald-200/60">
+                    VS
+                  </div>
+                  <div className="h-8 md:h-12 w-0.5 bg-gradient-to-b from-transparent via-emerald-400/40 to-transparent"></div>
+                </div>
+                
+                {/* Away Score */}
+                <div className="flex-1 flex flex-col items-center gap-1 md:gap-2">
+                  <div className="text-xs md:text-sm font-medium text-sky-200/80 uppercase tracking-wide">
+                    {effectivePlayerLabels.away}
+                  </div>
+                  <div
+                    className={`relative flex items-center justify-center min-w-[60px] md:min-w-[80px] px-4 md:px-6 py-2 md:py-3 rounded-xl md:rounded-2xl border-3 font-bold text-2xl md:text-4xl lg:text-5xl transition-all duration-300 ${
+                      gameState.startingPlayer === "away"
+                        ? "bg-sky-600/95 text-white border-yellow-400 shadow-lg shadow-yellow-400/30"
+                        : gameState.turn === "away"
+                        ? "bg-sky-600/90 text-white border-sky-400 ring-4 ring-sky-400/50 shadow-lg"
+                        : "bg-sky-700/80 text-sky-50 border-sky-500/60"
+                    } ${
+                      scoreChanged === "away"
+                        ? "animate-pulse scale-110 shadow-2xl shadow-sky-400/60"
+                        : ""
+                    }`}
+                  >
+                    {score.away ?? 0}
+                    {gameState.startingPlayer === "away" && (
+                      <span className="absolute -top-1 -right-1 text-yellow-300 text-base md:text-lg">★</span>
+                    )}
+                    {gameState.turn === "away" && status === "in_progress" && (
+                      <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-xs md:text-sm text-sky-200 animate-pulse">
+                        Turno
+                      </span>
+                    )}
+                  </div>
+                  {winningScore > 0 && (
+                    <div className="text-xs text-sky-300/60">
+                      Meta: {winningScore}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </section>
