@@ -1888,9 +1888,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     }`}
                   >
                     {score.home ?? 0}
-                    {gameState.startingPlayer === "home" && (
-                      <span className="absolute -top-1 -right-1 text-yellow-300 text-base md:text-lg">★</span>
-                    )}
                     {gameState.turn === "home" && status === "in_progress" && (
                       <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-xs md:text-sm text-emerald-200 animate-pulse">
                         Turno
@@ -1931,9 +1928,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     }`}
                   >
                     {score.away ?? 0}
-                    {gameState.startingPlayer === "away" && (
-                      <span className="absolute -top-1 -right-1 text-yellow-300 text-base md:text-lg">★</span>
-                    )}
                     {gameState.turn === "away" && status === "in_progress" && (
                       <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-xs md:text-sm text-sky-200 animate-pulse">
                         Turno

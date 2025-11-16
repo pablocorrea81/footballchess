@@ -10,6 +10,7 @@ import {
 } from "@/lib/ruleEngine";
 import type { Database } from "@/lib/database.types";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
+import { evaluateMoveWithGemini, getGeminiRecommendation } from "@/lib/ai/geminiAI";
 
 export type BotDifficulty = "easy" | "medium" | "hard";
 
@@ -1255,20 +1256,41 @@ export const executeBotTurnIfNeeded = async (
 
     console.log("[bot] Calling pickBotMove with state.turn:", currentState.turn, "botPlayer:", botPlayer);
     
-    // For hard difficulty, learn from opponent's successful attacks
-    let learnedPatterns: Map<number, AttackPattern> | undefined = undefined;
+    // For hard difficulty, use Gemini AI for better evaluation
+    let move: Move | null = null;
     if (difficulty === "hard") {
-      learnedPatterns = learnFromOpponentGoals(currentState, botPlayer);
-      if (learnedPatterns.size > 0) {
-        console.log("[bot] Learned attack patterns from opponent goals:", 
-          Array.from(learnedPatterns.entries()).map(([col, pattern]) => 
-            `Column ${col}: ${pattern.frequency} time(s)`
-          )
-        );
+      try {
+        const legalMoves = RuleEngine.getLegalMoves(currentState, botPlayer);
+        if (legalMoves.length > 0) {
+          console.log("[bot] Using Gemini AI to evaluate moves for hard difficulty");
+          
+          // Get Gemini recommendation
+          const geminiRecommendedMove = await getGeminiRecommendation(
+            currentState,
+            legalMoves,
+            botPlayer,
+          );
+          
+          if (geminiRecommendedMove) {
+            console.log("[bot] Gemini recommended move:", geminiRecommendedMove);
+            move = geminiRecommendedMove;
+          } else {
+            // Fallback to regular AI if Gemini fails
+            console.log("[bot] Gemini recommendation failed, falling back to regular AI");
+            const learnedPatterns = learnFromOpponentGoals(currentState, botPlayer);
+            move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
+          }
+        }
+      } catch (error) {
+        console.error("[bot] Error using Gemini, falling back to regular AI:", error);
+        // Fallback to regular AI on error
+        const learnedPatterns = learnFromOpponentGoals(currentState, botPlayer);
+        move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
       }
+    } else {
+      // For easy and medium, use regular AI (no Gemini, no learned patterns)
+      move = pickBotMove(currentState, botPlayer, difficulty, undefined);
     }
-    
-    const move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
 
     if (!move) {
       console.log("[bot] No legal moves found, passing turn");
