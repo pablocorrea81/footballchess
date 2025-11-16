@@ -23,7 +23,11 @@ Set the following values obtained from the Supabase dashboard:
 
 For AI features (optional, only needed for "Hard" difficulty bot):
 
-- `GEMINI_API_KEY` - Google Gemini API key for advanced AI evaluation (get from [Google AI Studio](https://makersuite.google.com/app/apikey))
+- `GEMINI_API_KEY` - Google Gemini API key for advanced AI evaluation
+  - Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+  - Add it to your `.env.local` file: `GEMINI_API_KEY=AIza...your_key_here`
+  - **Important:** Restart your development server after adding the key
+  - The API key should start with "AIza"
 
 ## Installing Dependencies
 

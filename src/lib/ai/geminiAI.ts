@@ -2,25 +2,62 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { RuleEngine, type GameState, type Move, type PlayerId } from "@/lib/ruleEngine";
 
 // Initialize Gemini AI
-// IMPORTANT: API key must be set via GEMINI_API_KEY environment variable
+// IMPORTANT: API key must be set via GEMINI_API_KEY environment variable in .env.local
 // Never commit API keys to the repository
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || null;
+// For server-side: Use GEMINI_API_KEY (not public)
+// For client-side: Use NEXT_PUBLIC_GEMINI_API_KEY (public - not recommended for API keys)
+const getGeminiApiKey = (): string | null => {
+  // Try server-side variable first (more secure)
+  // In Vercel, environment variables are available via process.env
+  // In local development, they're in .env.local
+  if (typeof process !== 'undefined' && process.env) {
+    // Prioritize GEMINI_API_KEY (server-side only, more secure)
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || null;
+    
+    // Debug logging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      if (apiKey) {
+        console.log(`[Gemini] API key loaded from ${process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : 'NEXT_PUBLIC_GEMINI_API_KEY'}`);
+      }
+    }
+    
+    return apiKey;
+  }
+  return null;
+};
+
+const GEMINI_API_KEY = getGeminiApiKey();
 
 let genAI: GoogleGenerativeAI | null = null;
 let model: any = null;
 
 try {
   if (GEMINI_API_KEY && GEMINI_API_KEY !== "") {
-    genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    // Using gemini-2.5-flash-lite - high performance and low cost
-    // Ideal for high-volume tasks while maintaining good strategic reasoning
-    model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-    console.log("[Gemini] Gemini AI initialized successfully with 2.5 Flash-Lite model (cost-optimized)");
+    // Validate API key format (should start with AIza)
+    if (GEMINI_API_KEY.startsWith("AIza")) {
+      genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+      // Using gemini-2.5-flash-lite - high performance and low cost
+      // Ideal for high-volume tasks while maintaining good strategic reasoning
+      model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+      console.log("[Gemini] ✅ Gemini AI initialized successfully with 2.5 Flash-Lite model (cost-optimized)");
+      console.log(`[Gemini] API key found: ${GEMINI_API_KEY.substring(0, 10)}...${GEMINI_API_KEY.substring(GEMINI_API_KEY.length - 4)}`);
+    } else {
+      console.warn("[Gemini] ⚠️ Invalid Gemini API key format (should start with 'AIza')");
+    }
   } else {
-    console.warn("[Gemini] No Gemini API key provided, Gemini AI disabled");
+    console.warn("[Gemini] ⚠️ No Gemini API key provided, Gemini AI disabled");
+    console.warn("[Gemini] To enable Gemini AI for 'Hard' difficulty:");
+    console.warn("[Gemini] 1. Create/update .env.local file in project root");
+    console.warn("[Gemini] 2. Add: GEMINI_API_KEY=your_api_key_here");
+    console.warn("[Gemini] 3. Get API key from: https://makersuite.google.com/app/apikey");
+    console.warn("[Gemini] 4. Restart the development server after adding the key");
   }
 } catch (error) {
-  console.error("[Gemini] Error initializing Gemini AI:", error);
+  console.error("[Gemini] ❌ Error initializing Gemini AI:", error);
+  if (error instanceof Error) {
+    console.error("[Gemini] Error message:", error.message);
+    console.error("[Gemini] Error stack:", error.stack);
+  }
 }
 
 // Convert game state to visual board representation for Gemini
