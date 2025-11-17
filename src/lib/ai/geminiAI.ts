@@ -1729,23 +1729,9 @@ Balance attack and defense based on the current game situation.
 ${isPro ? `\n🔥 PRO LEVEL - ADVANCED STRATEGY:\nYou are playing at the highest difficulty level. Apply these advanced concepts:\n- MULTI-TURN PLANNING: Consider 2-3 moves ahead - how does this move affect future positions?\n- COMBINATIONS: Look for sequences of moves that create multiple threats (double attacks)\n- PIECE COORDINATION: Position pieces to work together - support attacks with M/C while advancing F\n- PROPHYLACTIC MOVES: Anticipate opponent threats and prevent them BEFORE they become dangerous\n- TEMPO: Each move should improve your position - avoid moves that waste time or don't advance your plan\n- POSITIONAL ADVANTAGE: Control key squares, especially in columns D-E near opponent goal\n- ENDGAME AWARENESS: If score is tied or close, prioritize defense and safe play. If ahead, simplify. If behind, take calculated risks.\n- VARIANT EVALUATION: Consider multiple candidate moves and evaluate which leads to the best long-term position\nThink strategically about the entire game flow, not just the immediate move!\n` : ""}
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 
-CRITICAL INSTRUCTION - READ CAREFULLY:
-You must respond with ONLY a single number between 1 and ${movesToEvaluate.length}.
-This number represents which move to make from the list above.
-
-FORMAT REQUIREMENTS:
-- Only the number, nothing else
-- No text before or after
-- No punctuation
-- No explanation
-- No spaces
-
-EXAMPLES OF CORRECT RESPONSES:
-- If choosing move #1: 1
-- If choosing move #5: 5  
-- If choosing move #${movesToEvaluate.length}: ${movesToEvaluate.length}
-
-REMEMBER: Respond with ONLY the number. Nothing else!`;
+RESPOND WITH ONLY THE MOVE NUMBER:
+Choose a number from 1 to ${movesToEvaluate.length}.
+Format: Just the number. Example: 5`;
 
     // Pro level: Higher temperature for more creative/strategic play
     const temperature = isPro ? 0.4 : 0.1;
@@ -1759,7 +1745,7 @@ REMEMBER: Respond with ONLY the number. Nothing else!`;
     console.log(`[Gemini]   - Current threats: ${currentThreatsList.length > 0 ? currentThreatsList.join(", ") : "None"}`);
     console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
     console.log(`[Gemini]   - Temperature: ${temperature}`);
-    console.log(`[Gemini]   - Max output tokens: 50`);
+    console.log(`[Gemini]   - Max output tokens: 10000 (monitoring actual usage)`);
     console.log(`[Gemini]   - Model: gemini-2.5-flash`);
     
     // Check if prompt is too long (Gemini has limits)
@@ -1789,7 +1775,7 @@ REMEMBER: Respond with ONLY the number. Nothing else!`;
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
-            maxOutputTokens: 50, // Increased from 10 - sometimes Gemini needs more tokens even for simple responses
+            maxOutputTokens: 10000, // Very large limit to avoid truncation - we'll monitor actual usage
             topP: 0.95,
             topK: 40,
           },
@@ -1803,6 +1789,40 @@ REMEMBER: Respond with ONLY the number. Nothing else!`;
         console.log(`[Gemini] 📥 Response received from Gemini:`);
         console.log(`[Gemini]   - Response object exists: ${!!response}`);
         console.log(`[Gemini]   - Candidate count: ${response.candidates?.length || 0}`);
+        
+        // Log token usage if available
+        if (response.usageMetadata) {
+          const usage = response.usageMetadata;
+          const promptTokens = usage.promptTokenCount || 0;
+          const completionTokens = usage.completionTokenCount || 0;
+          const totalTokens = usage.totalTokenCount || 0;
+          const maxOutputTokens = 10000;
+          const completionPercent = completionTokens ? Math.round((completionTokens / maxOutputTokens) * 100) : 0;
+          
+          console.log(`[Gemini] 📊 Token Usage Statistics:`);
+          console.log(`[Gemini]   - Prompt tokens: ${promptTokens.toLocaleString()}`);
+          console.log(`[Gemini]   - Completion tokens: ${completionTokens.toLocaleString()} / ${maxOutputTokens.toLocaleString()} (${completionPercent}% of max)`);
+          console.log(`[Gemini]   - Total tokens (prompt + completion): ${totalTokens.toLocaleString()}`);
+          
+          // Cost estimation (approximate - Gemini Flash pricing as of 2024)
+          // Note: Actual pricing may vary, this is for monitoring purposes only
+          const promptCostPer1M = 0.075; // $0.075 per 1M input tokens
+          const outputCostPer1M = 0.30; // $0.30 per 1M output tokens
+          const estimatedPromptCost = (promptTokens / 1000000) * promptCostPer1M;
+          const estimatedOutputCost = (completionTokens / 1000000) * outputCostPer1M;
+          const estimatedTotalCost = estimatedPromptCost + estimatedOutputCost;
+          
+          if (estimatedTotalCost > 0) {
+            console.log(`[Gemini]   - Estimated cost: $${estimatedTotalCost.toFixed(6)} (prompt: $${estimatedPromptCost.toFixed(6)}, output: $${estimatedOutputCost.toFixed(6)})`);
+          }
+          
+          // Warn if using significant portion of max output tokens
+          if (completionPercent > 10) {
+            console.warn(`[Gemini] ⚠️ Using ${completionPercent}% of max output tokens - response may be verbose`);
+          }
+        } else {
+          console.warn(`[Gemini] ⚠️ No usage metadata available in response`);
+        }
         
         if (response.candidates && response.candidates.length > 0) {
           const candidate = response.candidates[0];
@@ -1828,27 +1848,49 @@ REMEMBER: Respond with ONLY the number. Nothing else!`;
           }
         }
         
+        // Try multiple methods to extract text
         try {
           text = response.text().trim();
         } catch (textError) {
-          console.error(`[Gemini] ❌ ERROR: Failed to extract text from response!`);
-          console.error(`[Gemini] Error:`, textError);
-          console.error(`[Gemini] Response object:`, response);
+          console.warn(`[Gemini] ⚠️ response.text() failed, trying alternative extraction methods...`);
           
-          // Try to extract text from candidates directly
+          // Method 1: Try to extract from candidates directly
           if (response.candidates && response.candidates.length > 0) {
             const candidate = response.candidates[0];
             if (candidate.content && candidate.content.parts) {
               const parts = candidate.content.parts.filter((p: any) => p.text);
               if (parts.length > 0) {
                 text = parts.map((p: any) => p.text).join(" ").trim();
-                console.log(`[Gemini] ✅ Recovered text from candidate parts: "${text}"`);
+                console.log(`[Gemini] ✅ Recovered text from candidate.parts: "${text}"`);
+              } else {
+                // Check if there's any content structure
+                console.warn(`[Gemini] ⚠️ candidate.content.parts exists but no text parts found`);
+                console.warn(`[Gemini] ⚠️ Parts structure:`, JSON.stringify(candidate.content.parts?.map((p: any) => ({ type: p.type, hasText: !!p.text }))));
               }
+            } else {
+              console.warn(`[Gemini] ⚠️ candidate.content or candidate.content.parts is missing`);
+            }
+          }
+          
+          // If still no text and MAX_TOKENS, try to see if there's any partial content
+          if (!text && response.candidates && response.candidates.length > 0) {
+            const candidate = response.candidates[0];
+            if (candidate.finishReason === "MAX_TOKENS") {
+              console.warn(`[Gemini] ⚠️ MAX_TOKENS with empty content - model may need more tokens or prompt is too complex`);
+              // Log full candidate structure for debugging
+              console.warn(`[Gemini] 🔍 Full candidate structure:`, JSON.stringify({
+                finishReason: candidate.finishReason,
+                hasContent: !!candidate.content,
+                contentKeys: candidate.content ? Object.keys(candidate.content) : [],
+                partsCount: candidate.content?.parts?.length || 0,
+              }, null, 2));
             }
           }
           
           if (!text) {
             text = "";
+            console.error(`[Gemini] ❌ ERROR: Failed to extract text from response!`);
+            console.error(`[Gemini] Error:`, textError);
           }
         }
         
@@ -1860,8 +1902,8 @@ REMEMBER: Respond with ONLY the number. Nothing else!`;
           const candidate = response.candidates[0];
           if (candidate.finishReason === "MAX_TOKENS") {
             console.warn(`[Gemini] ⚠️ WARNING: Response truncated due to MAX_TOKENS limit!`);
-            console.warn(`[Gemini] ⚠️ Current maxOutputTokens: 50`);
-            console.warn(`[Gemini] ⚠️ This might cause empty responses if content generation was cut off`);
+            console.warn(`[Gemini] ⚠️ Current maxOutputTokens: 10000`);
+            console.warn(`[Gemini] ⚠️ This should not happen with such a large limit - investigate prompt complexity`);
             
             // Try to extract partial content if available
             if (!text && candidate.content && candidate.content.parts) {
