@@ -712,12 +712,22 @@ export function GameView({
     const piece = gameState.board[position.row]?.[position.col];
     if (!piece || piece.owner !== playerRole) {
       setSelection(null);
+      setHoveredPiece(null);
+      setHintMoves([]);
+      setShowHint(false);
       return;
     }
 
     const legalMoves = RuleEngine.getLegalMovesForPiece(gameState, position);
     setSelection({ origin: position, moves: legalMoves });
     setFeedback(null);
+    
+    // In mobile: also set hint moves to show them on the board
+    if (showMoveHints) {
+      setHoveredPiece(position);
+      setHintMoves(legalMoves);
+      setShowHint(true);
+    }
   };
 
   const handleMove = async (destination: Position) => {
@@ -766,6 +776,10 @@ export function GameView({
       setGameState(outcome.nextState);
       setScore(newScore);
       setSelection(null);
+      // Clear hint moves when move is made
+      setHoveredPiece(null);
+      setHintMoves([]);
+      setShowHint(false);
       
       // Update feedback based on move result
       if (goalScored) {
@@ -843,6 +857,10 @@ export function GameView({
       selection.origin.col === position.col
     ) {
       setSelection(null);
+      // Clear hint moves when selection is cancelled
+      setHoveredPiece(null);
+      setHintMoves([]);
+      setShowHint(false);
       return;
     }
 
@@ -1633,6 +1651,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     hoveredPiece.col === actualCol;
                   
                   // Check if this cell is a hint move destination
+                  // Shows hints when hovering over a piece (desktop) or when a piece is selected (mobile)
                   const isHintMove = 
                     showMoveHints &&
                     showHint &&
@@ -1642,7 +1661,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
                   return (
                     <div
-                      key={`${actualRow}-${actualCol}`}
+                      key={`cell-${actualRow}-${actualCol}-${cell?.id || 'empty'}-${cell?.type || 'empty'}`}
                       className="relative"
                       onMouseEnter={() => {
                         if (cell && cell.owner === playerRole && canAct) {
@@ -1692,6 +1711,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         {/* Piece */}
                         {cell && (
                           <span
+                            key={`piece-${cell.id}-${actualRow}-${actualCol}`}
                             className={`relative z-10 flex items-center justify-center rounded-full border ${
                               cell.owner === playerRole 
                                 ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
@@ -1704,10 +1724,10 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
                             } ${
                               // Highlight player's pieces when it's their turn (mobile only)
-                              currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress"
+                              (currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress")
                                 ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
                                 : ""
-                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-lg sm:text-xl md:text-xl lg:text-2xl xl:text-3xl font-bold`}
+                            } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[50%] md:h-[50%] text-lg sm:text-xl md:text-xl lg:text-2xl xl:text-3xl font-bold p-1 sm:p-0.5 md:p-0`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
@@ -1751,35 +1771,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           </div>
         </div>
 
-        {/* Mobile: Fixed panel for move hints (shown below board, above navigation) */}
-        {showMoveHints && showHint && hintMoves.length > 0 && hoveredPiece && (
-          <div className="md:hidden fixed bottom-24 left-0 right-0 z-50 px-4 pb-2 pointer-events-none">
-            <div className="bg-purple-900/98 border-2 border-purple-400 rounded-xl p-3 shadow-2xl backdrop-blur-sm pointer-events-auto max-h-[120px] overflow-y-auto">
-              <div className="text-sm font-bold text-purple-100 mb-2 flex items-center gap-2">
-                <span>💡</span>
-                <span>Movimientos posibles:</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {hintMoves.map((move, idx) => {
-                  const displayRowLabelHint = getRowLabelForDisplay(move.row, playerRole);
-                  const displayColLabelHint = getColumnLabelForDisplay(move.col, playerRole);
-                  const moveLabel = `${displayColLabelHint}${displayRowLabelHint}`;
-                  return (
-                    <span
-                      key={`mobile-hint-${idx}-${move.row}-${move.col}`}
-                      className="inline-flex items-center justify-center px-3 py-1.5 bg-purple-700/80 text-purple-100 text-sm font-bold rounded-lg border-2 border-purple-400/50"
-                    >
-                      {moveLabel}
-                    </span>
-                  );
-                })}
-              </div>
-              <div className="text-xs text-purple-200 mt-2 italic text-center">
-                {hintMoves.length} movimiento{hintMoves.length !== 1 ? "s" : ""} disponible{hintMoves.length !== 1 ? "s" : ""}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Header and Info panel - Right side on all screen sizes */}
         <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2">
