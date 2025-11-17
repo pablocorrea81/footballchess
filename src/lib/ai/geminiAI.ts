@@ -606,8 +606,14 @@ export const getGeminiRecommendation = async (
       // CRITICAL: Detect if moving a piece exposes a delantero/mediocampista to capture
       // This includes the piece being moved itself, or any other valuable piece
       if (!outcome.capture && !preventsOpponentGoal) {
+        // Ensure the nextState has the correct turn for opponent
+        const oppStateForMoves: GameState = {
+          ...outcome.nextState,
+          turn: opponent as PlayerId,
+        };
+        
         // Check what opponent can do after our move
-        const nextOppMoves = RuleEngine.getLegalMoves(outcome.nextState, opponent);
+        const nextOppMoves = RuleEngine.getLegalMoves(oppStateForMoves, opponent);
         let exposesValuablePiece = false;
         let exposedPieceDetails: string | null = null;
         
@@ -807,11 +813,38 @@ export const getGeminiRecommendation = async (
       console.log(`[Gemini] ⚠️ WARNING: ${riskyMoves.length} risky move(s) detected but none were filtered! This might indicate they all block threats.`);
     }
     
-    // If we have no safe moves at all (shouldn't happen), use all moves as last resort
-    const finalMovesToConsider = validMoves.length > 0 ? validMoves : moves;
+    // If we have no safe moves at all, we have a problem
+    // But we should still prefer non-risky moves over risky ones
     if (validMoves.length === 0) {
-      console.log(`[Gemini] ⚠️ WARNING: No valid moves after filtering! Using all moves as fallback (this should not happen)`);
+      console.log(`[Gemini] ⚠️ WARNING: No valid moves after filtering!`);
+      console.log(`[Gemini] ⚠️ This means ALL moves are risky and none block threats.`);
+      console.log(`[Gemini] ⚠️ We'll use non-risky moves if available, otherwise we must choose the least risky option.`);
+      
+      // Try to find moves that are NOT risky (shouldn't happen if filtering worked, but just in case)
+      const nonRiskyMoves = moves.filter((move, idx) => !riskyMoves.includes(idx));
+      if (nonRiskyMoves.length > 0) {
+        console.log(`[Gemini] ⚠️ Found ${nonRiskyMoves.length} non-risky moves that weren't filtered - using those`);
+        validMoves.push(...nonRiskyMoves);
+        validMoveIndices.push(...moves.map((m, i) => i).filter(i => !riskyMoves.includes(i)));
+      } else {
+        console.log(`[Gemini] ⚠️ ALL moves are risky! This is a critical situation.`);
+        console.log(`[Gemini] ⚠️ We'll have to choose from risky moves, but we'll prioritize blocking moves.`);
+        // If all moves are risky, at least prioritize blocking moves
+        const riskyButBlocking = moves.filter((move, idx) => riskyMoves.includes(idx) && blockingMoves.includes(idx));
+        if (riskyButBlocking.length > 0) {
+          console.log(`[Gemini] ⚠️ Using ${riskyButBlocking.length} risky moves that at least block threats`);
+          validMoves.push(...riskyButBlocking);
+          validMoveIndices.push(...moves.map((m, i) => i).filter(i => riskyMoves.includes(i) && blockingMoves.includes(i)));
+        } else {
+          // Last resort: use all moves, but log a critical warning
+          console.log(`[Gemini] ⚠️ CRITICAL: All moves are risky and none block threats! Using all moves as absolute last resort.`);
+          validMoves.push(...moves);
+          validMoveIndices.push(...moves.map((_, i) => i));
+        }
+      }
     }
+    
+    const finalMovesToConsider = validMoves;
     const movesToEvaluate = finalMovesToConsider.slice(0, 20); // More moves for better selection
     // Keep track of which original indices correspond to movesToEvaluate
     const evaluateIndices = validMoves.length > 0 
