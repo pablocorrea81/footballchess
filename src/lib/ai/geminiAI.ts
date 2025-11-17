@@ -1771,130 +1771,164 @@ REMEMBER: Respond with ONLY the number. Nothing else!`;
     
     let text: string = "";
     
-    try {
-      const requestStartTime = Date.now();
-      console.log(`[Gemini] 🚀 Sending request to Gemini API at ${new Date().toISOString()}...`);
-      
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
-          maxOutputTokens: 50, // Increased from 10 - sometimes Gemini needs more tokens even for simple responses
-          topP: 0.95,
-          topK: 40,
-        },
-      });
-      
-      const requestDuration = Date.now() - requestStartTime;
-      console.log(`[Gemini] ⏱️ Request completed in ${requestDuration}ms`);
-      
-      // Log response details
-      const response = await result.response;
-      console.log(`[Gemini] 📥 Response received from Gemini:`);
-      console.log(`[Gemini]   - Response object exists: ${!!response}`);
-      console.log(`[Gemini]   - Candidate count: ${response.candidates?.length || 0}`);
-      
-      if (response.candidates && response.candidates.length > 0) {
-        const candidate = response.candidates[0];
-        console.log(`[Gemini]   - Finish reason: ${candidate.finishReason || "unknown"}`);
-        console.log(`[Gemini]   - Safety ratings:`, candidate.safetyRatings?.map((r: any) => `${r.category}=${r.probability}`).join(", ") || "none");
-        
-        if (candidate.finishReason && candidate.finishReason !== "STOP") {
-          console.warn(`[Gemini] ⚠️ WARNING: Finish reason is "${candidate.finishReason}" - not "STOP"!`);
-          console.warn(`[Gemini] ⚠️ This might indicate the response was blocked or truncated`);
-        }
-      } else {
-        console.warn(`[Gemini] ⚠️ WARNING: No candidates in response!`);
-      }
-      
-      // Check for blocked content
-      if (response.promptFeedback) {
-        console.log(`[Gemini] 📋 Prompt feedback:`, {
-          blockReason: response.promptFeedback.blockReason,
-          safetyRatings: response.promptFeedback.safetyRatings?.map((r: any) => `${r.category}=${r.probability}`),
-        });
-        if (response.promptFeedback.blockReason) {
-          console.error(`[Gemini] ❌ ERROR: Prompt was blocked! Reason: ${response.promptFeedback.blockReason}`);
-        }
-      }
-      
+    // Retry configuration for overloaded service (503 errors)
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
+    let lastError: any = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        text = response.text().trim();
-      } catch (textError) {
-        console.error(`[Gemini] ❌ ERROR: Failed to extract text from response!`);
-        console.error(`[Gemini] Error:`, textError);
-        console.error(`[Gemini] Response object:`, response);
+        const requestStartTime = Date.now();
+        if (attempt > 1) {
+          console.log(`[Gemini] 🔄 Retry attempt ${attempt}/${maxRetries}...`);
+        } else {
+          console.log(`[Gemini] 🚀 Sending request to Gemini API at ${new Date().toISOString()}...`);
+        }
         
-        // Try to extract text from candidates directly
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
+            maxOutputTokens: 50, // Increased from 10 - sometimes Gemini needs more tokens even for simple responses
+            topP: 0.95,
+            topK: 40,
+          },
+        });
+        
+        const requestDuration = Date.now() - requestStartTime;
+        console.log(`[Gemini] ⏱️ Request completed in ${requestDuration}ms`);
+        
+        // Log response details
+        const response = await result.response;
+        console.log(`[Gemini] 📥 Response received from Gemini:`);
+        console.log(`[Gemini]   - Response object exists: ${!!response}`);
+        console.log(`[Gemini]   - Candidate count: ${response.candidates?.length || 0}`);
+        
         if (response.candidates && response.candidates.length > 0) {
           const candidate = response.candidates[0];
-          if (candidate.content && candidate.content.parts) {
-            const parts = candidate.content.parts.filter((p: any) => p.text);
-            if (parts.length > 0) {
-              text = parts.map((p: any) => p.text).join(" ").trim();
-              console.log(`[Gemini] ✅ Recovered text from candidate parts: "${text}"`);
+          console.log(`[Gemini]   - Finish reason: ${candidate.finishReason || "unknown"}`);
+          console.log(`[Gemini]   - Safety ratings:`, candidate.safetyRatings?.map((r: any) => `${r.category}=${r.probability}`).join(", ") || "none");
+          
+          if (candidate.finishReason && candidate.finishReason !== "STOP") {
+            console.warn(`[Gemini] ⚠️ WARNING: Finish reason is "${candidate.finishReason}" - not "STOP"!`);
+            console.warn(`[Gemini] ⚠️ This might indicate the response was blocked or truncated`);
+          }
+        } else {
+          console.warn(`[Gemini] ⚠️ WARNING: No candidates in response!`);
+        }
+        
+        // Check for blocked content
+        if (response.promptFeedback) {
+          console.log(`[Gemini] 📋 Prompt feedback:`, {
+            blockReason: response.promptFeedback.blockReason,
+            safetyRatings: response.promptFeedback.safetyRatings?.map((r: any) => `${r.category}=${r.probability}`),
+          });
+          if (response.promptFeedback.blockReason) {
+            console.error(`[Gemini] ❌ ERROR: Prompt was blocked! Reason: ${response.promptFeedback.blockReason}`);
+          }
+        }
+        
+        try {
+          text = response.text().trim();
+        } catch (textError) {
+          console.error(`[Gemini] ❌ ERROR: Failed to extract text from response!`);
+          console.error(`[Gemini] Error:`, textError);
+          console.error(`[Gemini] Response object:`, response);
+          
+          // Try to extract text from candidates directly
+          if (response.candidates && response.candidates.length > 0) {
+            const candidate = response.candidates[0];
+            if (candidate.content && candidate.content.parts) {
+              const parts = candidate.content.parts.filter((p: any) => p.text);
+              if (parts.length > 0) {
+                text = parts.map((p: any) => p.text).join(" ").trim();
+                console.log(`[Gemini] ✅ Recovered text from candidate parts: "${text}"`);
+              }
+            }
+          }
+          
+          if (!text) {
+            text = "";
+          }
+        }
+        
+        console.log(`[Gemini] 📝 Raw response text: "${text}"`);
+        console.log(`[Gemini] 📏 Response text length: ${text.length} characters`);
+        
+        // Check for MAX_TOKENS finish reason (indicates truncation)
+        if (response.candidates && response.candidates.length > 0) {
+          const candidate = response.candidates[0];
+          if (candidate.finishReason === "MAX_TOKENS") {
+            console.warn(`[Gemini] ⚠️ WARNING: Response truncated due to MAX_TOKENS limit!`);
+            console.warn(`[Gemini] ⚠️ Current maxOutputTokens: 50`);
+            console.warn(`[Gemini] ⚠️ This might cause empty responses if content generation was cut off`);
+            
+            // Try to extract partial content if available
+            if (!text && candidate.content && candidate.content.parts) {
+              const parts = candidate.content.parts.filter((p: any) => p.text);
+              if (parts.length > 0) {
+                text = parts.map((p: any) => p.text).join(" ").trim();
+                console.log(`[Gemini] ✅ Extracted partial text from truncated response: "${text}"`);
+              }
             }
           }
         }
         
-        if (!text) {
+        if (!text || text === "" || text === '""') {
+          console.error(`[Gemini] ❌ ERROR: Empty response detected!`);
+          console.error(`[Gemini] 🔍 Debugging info:`);
+          console.error(`[Gemini]   - Response object:`, JSON.stringify({
+            candidates: response.candidates?.map((c: any) => ({
+              finishReason: c.finishReason,
+              safetyRatings: c.safetyRatings,
+              content: c.content?.parts?.map((p: any) => ({ 
+                text: p.text?.substring(0, 100),
+                type: p.type 
+              })) || [],
+            })),
+            promptFeedback: response.promptFeedback,
+          }, null, 2));
+        }
+        // If we get here, the request was successful - break out of retry loop
+        break;
+        
+      } catch (apiError: any) {
+        lastError = apiError;
+        console.error(`[Gemini] ❌ ERROR: Exception during Gemini API call (attempt ${attempt}/${maxRetries})!`);
+        console.error(`[Gemini] Error type: ${apiError instanceof Error ? apiError.constructor.name : typeof apiError}`);
+        console.error(`[Gemini] Error message: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
+        
+        // Check if it's a 503 error (service overloaded) - retry with backoff
+        const isServiceUnavailable = apiError?.status === 503 || 
+                                     (typeof apiError?.message === 'string' && apiError.message.includes('503')) ||
+                                     (typeof apiError?.message === 'string' && apiError.message.includes('overloaded'));
+        
+        if (isServiceUnavailable && attempt < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delay = baseDelay * Math.pow(2, attempt - 1);
+          console.warn(`[Gemini] ⚠️ Service overloaded (503). Retrying in ${delay}ms... (attempt ${attempt}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue; // Retry
+        }
+        
+        // If it's not a 503, or we've exhausted retries, log and break
+        if (apiError instanceof Error && apiError.stack) {
+          console.error(`[Gemini] Error stack:`, apiError.stack);
+        }
+        console.error(`[Gemini] Full error object:`, apiError);
+        
+        // Try to extract more details if it's a GoogleGenerativeAI error
+        if (apiError && typeof apiError === 'object') {
+          console.error(`[Gemini] Error details:`, JSON.stringify(apiError, Object.getOwnPropertyNames(apiError), 2));
+        }
+        
+        // If this was the last attempt, set text to empty so fallback logic runs
+        if (attempt === maxRetries) {
+          console.error(`[Gemini] ❌ All ${maxRetries} attempts failed. Using fallback strategy.`);
           text = "";
+          break;
         }
       }
-      
-      console.log(`[Gemini] 📝 Raw response text: "${text}"`);
-      console.log(`[Gemini] 📏 Response text length: ${text.length} characters`);
-      
-      // Check for MAX_TOKENS finish reason (indicates truncation)
-      if (response.candidates && response.candidates.length > 0) {
-        const candidate = response.candidates[0];
-        if (candidate.finishReason === "MAX_TOKENS") {
-          console.warn(`[Gemini] ⚠️ WARNING: Response truncated due to MAX_TOKENS limit!`);
-          console.warn(`[Gemini] ⚠️ Current maxOutputTokens: 50`);
-          console.warn(`[Gemini] ⚠️ This might cause empty responses if content generation was cut off`);
-          
-          // Try to extract partial content if available
-          if (!text && candidate.content && candidate.content.parts) {
-            const parts = candidate.content.parts.filter((p: any) => p.text);
-            if (parts.length > 0) {
-              text = parts.map((p: any) => p.text).join(" ").trim();
-              console.log(`[Gemini] ✅ Extracted partial text from truncated response: "${text}"`);
-            }
-          }
-        }
-      }
-      
-      if (!text || text === "" || text === '""') {
-        console.error(`[Gemini] ❌ ERROR: Empty response detected!`);
-        console.error(`[Gemini] 🔍 Debugging info:`);
-        console.error(`[Gemini]   - Response object:`, JSON.stringify({
-          candidates: response.candidates?.map((c: any) => ({
-            finishReason: c.finishReason,
-            safetyRatings: c.safetyRatings,
-            content: c.content?.parts?.map((p: any) => ({ 
-              text: p.text?.substring(0, 100),
-              type: p.type 
-            })) || [],
-          })),
-          promptFeedback: response.promptFeedback,
-        }, null, 2));
-      }
-    } catch (apiError) {
-      console.error(`[Gemini] ❌ ERROR: Exception during Gemini API call!`);
-      console.error(`[Gemini] Error type: ${apiError instanceof Error ? apiError.constructor.name : typeof apiError}`);
-      console.error(`[Gemini] Error message: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
-      if (apiError instanceof Error && apiError.stack) {
-        console.error(`[Gemini] Error stack:`, apiError.stack);
-      }
-      console.error(`[Gemini] Full error object:`, apiError);
-      
-      // Try to extract more details if it's a GoogleGenerativeAI error
-      if (apiError && typeof apiError === 'object') {
-        console.error(`[Gemini] Error details:`, JSON.stringify(apiError, Object.getOwnPropertyNames(apiError), 2));
-      }
-      
-      // Set text to empty so fallback logic runs
-      text = "";
     }
 
     // Check if response is empty or invalid
