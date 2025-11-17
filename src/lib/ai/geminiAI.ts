@@ -628,15 +628,96 @@ export const getGeminiMoveDirect = async (
     }
   });
   
-  // Prioritize moves: goals first, then captures, then advances
-  const prioritizedMoves = [...immediateGoals];
+  // Detect risky moves: moves that expose valuable pieces or allow opponent goals
+  const riskyMoves: Move[] = [];
+  const movesAllowingGoal: Move[] = [];
+  const movesExposingDelantero: Move[] = [];
+  
+  for (const move of legalMoves) {
+    try {
+      const outcome = RuleEngine.applyMove(state, move);
+      const nextState = outcome.nextState;
+      
+      // Check if opponent can score a goal after this move
+      const opponentMoves = RuleEngine.getLegalMoves(nextState, opponent);
+      for (const oppMove of opponentMoves) {
+        try {
+          const oppOutcome = RuleEngine.applyMove(nextState, oppMove);
+          if (oppOutcome.goal) {
+            movesAllowingGoal.push(move);
+            riskyMoves.push(move);
+            break;
+          }
+        } catch {
+          // Ignore invalid moves
+        }
+      }
+      
+      // Check if this move exposes a delantero to capture
+      const movedPiece = outcome.nextState.board[move.to.row]?.[move.to.col];
+      if (movedPiece && movedPiece.type === "delantero" && movedPiece.owner === botPlayer) {
+        // Check if opponent can capture this delantero
+        for (const oppMove of opponentMoves) {
+          if (oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
+            // Opponent can capture the delantero we just moved
+            movesExposingDelantero.push(move);
+            riskyMoves.push(move);
+            break;
+          }
+        }
+      }
+      
+      // Also check if moving this piece exposes OTHER delanteros
+      for (const oppMove of opponentMoves) {
+        const targetPiece = outcome.nextState.board[oppMove.to.row]?.[oppMove.to.col];
+        if (targetPiece && targetPiece.owner === botPlayer && targetPiece.type === "delantero") {
+          // Check if this is a capture move
+          try {
+            const oppOutcome = RuleEngine.applyMove(nextState, oppMove);
+            if (oppOutcome.capture && oppOutcome.capture.id === targetPiece.id) {
+              // Moving this piece exposed another delantero
+              if (!movesExposingDelantero.includes(move)) {
+                movesExposingDelantero.push(move);
+                riskyMoves.push(move);
+              }
+              break;
+            }
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    } catch {
+      // Ignore invalid moves
+    }
+  }
+  
+  console.log(`[Gemini] ⚠️ Risk Analysis:`);
+  console.log(`[Gemini]   - Moves allowing opponent goal: ${movesAllowingGoal.length}`);
+  console.log(`[Gemini]   - Moves exposing delantero: ${movesExposingDelantero.length}`);
+  console.log(`[Gemini]   - Total risky moves: ${riskyMoves.length}`);
+  
+  // Identify capture moves
   const captures = legalMoves.filter(move => {
     const piece = state.board[move.to.row]?.[move.to.col];
     return piece && piece.owner === opponent;
   });
-  prioritizedMoves.push(...captures.filter(m => !immediateGoals.includes(m)));
-  const otherMoves = legalMoves.filter(m => !prioritizedMoves.includes(m));
-  prioritizedMoves.push(...otherMoves);
+  
+  // Prioritize moves: goals first, then captures, then advances
+  // BUT filter out very risky moves (delanteros exposed, goals allowed) unless they're goals
+  const safeMoves = legalMoves.filter(m => 
+    immediateGoals.includes(m) || (!movesAllowingGoal.includes(m) && !movesExposingDelantero.includes(m))
+  );
+  const riskyButImportant = legalMoves.filter(m => 
+    !safeMoves.includes(m) && (movesAllowingGoal.includes(m) || movesExposingDelantero.includes(m))
+  );
+  
+  const prioritizedMoves = [
+    ...immediateGoals,
+    ...safeMoves.filter(m => !immediateGoals.includes(m) && captures.includes(m)),
+    ...safeMoves.filter(m => !immediateGoals.includes(m) && !captures.includes(m)),
+    ...riskyButImportant, // Show risky moves but mark them clearly
+  ];
   
   // Limit to first 40 moves to keep prompt manageable
   const movesToShow = prioritizedMoves.slice(0, 40);
@@ -651,13 +732,22 @@ export const getGeminiMoveDirect = async (
     const fromText = positionToText(move.from.row, move.from.col);
     const toText = positionToText(move.to.row, move.to.col);
     let annotation = "";
-    if (immediateGoals.includes(move)) annotation = " [GOAL!]";
-    else if (captures.includes(move)) {
+    if (immediateGoals.includes(move)) {
+      annotation = " [GOAL!] 🎯";
+    } else if (captures.includes(move)) {
       const capturedPiece = state.board[move.to.row]?.[move.to.col];
       const capturedType = capturedPiece?.type === "delantero" ? "F" :
                           capturedPiece?.type === "mediocampista" ? "M" : "C";
       annotation = ` [CAPTURE ${capturedType}]`;
     }
+    
+    // Add risk warnings
+    if (movesAllowingGoal.includes(move)) {
+      annotation += " [⚠️⚠️ CRITICAL RISK - Allows opponent to score next turn!]";
+    } else if (movesExposingDelantero.includes(move)) {
+      annotation += " [⚠️⚠️ CRITICAL RISK - Exposes delantero to capture!]";
+    }
+    
     return `${idx + 1}. ${fromText}→${toText} (${pieceType})${annotation}`;
   }).join("\n");
   
@@ -684,6 +774,9 @@ STRATEGIC PRIORITIES:
 4. 📈 ADVANCE your pieces toward opponent goal
 5. ⚠️ AVOID exposing your valuable pieces (forwards/delanteros) to capture
 
+${movesAllowingGoal.length > 0 ? `\n🚨🚨 CRITICAL WARNING: ${movesAllowingGoal.length} move(s) in the list allow the opponent to score a goal on their next turn!\nThese moves are marked with [⚠️⚠️ CRITICAL RISK - Allows opponent to score next turn!]\nNEVER choose these moves unless you have NO other option!\n` : ""}
+${movesExposingDelantero.length > 0 ? `\n🚨🚨 CRITICAL WARNING: ${movesExposingDelantero.length} move(s) in the list expose your delantero (F) to capture!\nThese moves are marked with [⚠️⚠️ CRITICAL RISK - Exposes delantero to capture!]\nNEVER choose these moves - losing a delantero is a huge disadvantage!\n` : ""}
+
 ${isPro ? `\n🔥 PRO LEVEL - Apply advanced strategy:\n- Multi-turn planning\n- Piece coordination\n- Prophylactic defense\n- Positional advantage\n` : ""}
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 
@@ -702,6 +795,8 @@ CRITICAL RULES:
 - Use column letters A-H and row numbers 1-12
 - Example: If the list shows "1. A1→A2 (F)", you can use {"from": "A1", "to": "A2", "reasoning": "..."}
 
+${movesAllowingGoal.length > 0 ? `\n🚨 ABSOLUTE PROHIBITION: Do NOT choose any move marked with [⚠️⚠️ CRITICAL RISK - Allows opponent to score next turn!]\nThese moves will lose you the game immediately!\n` : ""}
+${movesExposingDelantero.length > 0 ? `\n🚨 ABSOLUTE PROHIBITION: Do NOT choose any move marked with [⚠️⚠️ CRITICAL RISK - Exposes delantero to capture!]\nLosing a delantero is catastrophic - avoid these moves at all costs!\n` : ""}
 ${immediateGoals.length > 0 ? `\n⚠️ CRITICAL: You have moves that score immediately! Consider them first!\n` : ""}
 ${opponentThreats.length > 0 ? `\n⚠️ DEFENSE NEEDED: Block opponent threats before they become dangerous!\n` : ""}
 
@@ -855,14 +950,91 @@ Respond with ONLY the JSON object, no other text:`;
         return null;
       }
       
-      // Success! Log the decision
+      // CRITICAL SAFETY CHECK: Reject moves that expose delanteros or allow goals if safe alternatives exist
+      const isRiskyMove = movesAllowingGoal.includes(matchingMove) || movesExposingDelantero.includes(matchingMove);
+      if (isRiskyMove) {
+        const safeAlternatives = legalMoves.filter(m => 
+          !movesAllowingGoal.includes(m) && 
+          !movesExposingDelantero.includes(m) &&
+          !immediateGoals.includes(m) // Don't count goals as "alternatives" - they're priorities
+        );
+        
+        if (safeAlternatives.length > 0) {
+          console.error(`[Gemini] 🚨🚨🚨 REJECTING RISKY MOVE! 🚨🚨🚨`);
+          console.error(`[Gemini] Move ${parsedResponse.from}→${parsedResponse.to} is CRITICALLY RISKY:`);
+          if (movesAllowingGoal.includes(matchingMove)) {
+            console.error(`[Gemini]   - ⚠️⚠️ This move allows opponent to score a goal next turn!`);
+          }
+          if (movesExposingDelantero.includes(matchingMove)) {
+            console.error(`[Gemini]   - ⚠️⚠️ This move exposes a delantero to capture!`);
+          }
+          console.error(`[Gemini] Safe alternatives available: ${safeAlternatives.length}`);
+          console.error(`[Gemini] 🔄 Retrying to get a safer move...`);
+          
+          if (attempt < maxRetries) {
+            // Add a note to the reasoning for next attempt
+            continue; // Retry
+          } else {
+            // Last attempt - use first safe alternative
+            console.error(`[Gemini] ⚠️ Max retries reached, using safe alternative instead of risky move`);
+            const safeMove = safeAlternatives[0];
+            return {
+              move: { ...safeMove, player: botPlayer },
+              reasoning: `Rejected risky move ${parsedResponse.from}→${parsedResponse.to} - using safe alternative`,
+            };
+          }
+        } else {
+          console.warn(`[Gemini] ⚠️ WARNING: Risky move chosen but no safe alternatives available`);
+          console.warn(`[Gemini] Proceeding with risky move as last resort`);
+        }
+      }
+      
+      // Success! Analyze the move and log detailed information
       const reasoning = parsedResponse.reasoning || "No reasoning provided";
+      const piece = state.board[matchingMove.from.row]?.[matchingMove.from.col];
+      const pieceType = piece?.type === "delantero" ? "F" : 
+                       piece?.type === "mediocampista" ? "M" :
+                       piece?.type === "carrilero" ? "C" : "D";
+      const targetPiece = state.board[matchingMove.to.row]?.[matchingMove.to.col];
+      const isCapture = !!targetPiece && targetPiece.owner !== botPlayer;
+      const capturedType = targetPiece?.type === "delantero" ? "F" :
+                          targetPiece?.type === "mediocampista" ? "M" :
+                          targetPiece?.type === "carrilero" ? "C" : "D";
+      
+      // Check if this move scores a goal
+      let isGoal = false;
+      try {
+        const testOutcome = RuleEngine.applyMove(state, matchingMove);
+        isGoal = !!testOutcome.goal;
+      } catch (e) {
+        // Ignore errors in test
+      }
+      
+      // Check if this move blocks a threat
+      const opponent = botPlayer === "home" ? "away" : "home";
+      const botGoalRow = botPlayer === "home" ? 0 : 11;
+      const isBlockingMove = targetPiece && targetPiece.owner === opponent && 
+                            [3, 4].includes(matchingMove.to.col) &&
+                            Math.abs(matchingMove.to.row - botGoalRow) <= 3;
+      
       console.log(`[Gemini] ============================================================`);
       console.log(`[Gemini] ✅✅✅ GEMINI DIRECT MOVE SELECTION ✅✅✅`);
       console.log(`[Gemini] ============================================================`);
       console.log(`[Gemini] ✅ SELECTED MOVE: ${parsedResponse.from}→${parsedResponse.to}`);
       console.log(`[Gemini] 📍 From: ${parsedResponse.from} (row ${fromPos.row + 1}, col ${fromPos.col})`);
       console.log(`[Gemini] 📍 To: ${parsedResponse.to} (row ${toPos.row + 1}, col ${toPos.col})`);
+      console.log(`[Gemini] 🎯 Piece: ${pieceType} (${piece?.type || "unknown"})`);
+      if (isGoal) {
+        console.log(`[Gemini] 🎯🎯🎯 GOAL! This move scores! 🎯🎯🎯`);
+      }
+      if (isCapture) {
+        console.log(`[Gemini] ⚔️ CAPTURE: Capturing opponent ${capturedType} (${targetPiece?.type || "unknown"})`);
+        if (isBlockingMove) {
+          console.log(`[Gemini] 🛡️ BLOCKING: Removing threat in goal column!`);
+        }
+      } else if (isBlockingMove) {
+        console.log(`[Gemini] 🛡️ BLOCKING: Positioning to block opponent threat`);
+      }
       console.log(`[Gemini] 💭 REASONING: ${reasoning}`);
       console.log(`[Gemini] 🤖 DECISION SOURCE: Gemini AI (direct move selection)`);
       console.log(`[Gemini] ============================================================`);
