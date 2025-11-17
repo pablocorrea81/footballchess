@@ -1313,7 +1313,9 @@ export const executeBotTurnIfNeeded = async (
           
           if (geminiRecommendedMove) {
             const moveText = `${String.fromCharCode(65 + geminiRecommendedMove.from.col)}${geminiRecommendedMove.from.row + 1}→${String.fromCharCode(65 + geminiRecommendedMove.to.col)}${geminiRecommendedMove.to.row + 1}`;
+            console.log(`[bot] ✅✅✅ MOVE DECISION: GEMINI AI ✅✅✅`);
             console.log(`[bot] ✅ Gemini AI selected move: ${moveText}`);
+            console.log(`[bot] 🤖 Decision source: Gemini AI (from getGeminiRecommendation)`);
             move = geminiRecommendedMove;
           } else {
             // If Gemini doesn't return a move, wait a bit and try again
@@ -1335,22 +1337,33 @@ export const executeBotTurnIfNeeded = async (
               );
               if (retryMove) {
                 const moveText = `${String.fromCharCode(65 + retryMove.from.col)}${retryMove.from.row + 1}→${String.fromCharCode(65 + retryMove.to.col)}${retryMove.to.row + 1}`;
+                console.log(`[bot] ✅✅✅ MOVE DECISION: GEMINI AI (RETRY) ✅✅✅`);
                 console.log(`[bot] ✅ Gemini recommended move on retry: ${moveText}`);
+                console.log(`[bot] 🤖 Decision source: Gemini AI (from getGeminiRecommendation retry)`);
                 move = retryMove;
               } else {
                 // Last resort: pick first move if Gemini fails completely
+                console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Last Resort) 🔄🔄🔄`);
                 console.error(`[bot] ❌ Gemini failed to provide recommendation on retry, using first available move`);
-                console.error(`[bot] Using fallback move: ${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`);
+                const fallbackMoveText = `${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`;
+                console.error(`[bot] Using fallback move: ${fallbackMoveText}`);
+                console.error(`[bot] 🤖 Decision source: Fallback (first available move - Gemini failed)`);
                 move = legalMoves[0];
               }
             } catch (retryError) {
+              console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Exception on Retry) 🔄🔄🔄`);
               console.error(`[bot] ❌ Exception on retry:`, retryError);
-              console.error(`[bot] Using fallback move`);
+              const fallbackMoveText = `${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`;
+              console.error(`[bot] Using fallback move: ${fallbackMoveText}`);
+              console.error(`[bot] 🤖 Decision source: Fallback (first available move - exception on retry)`);
               move = legalMoves[0];
             }
           }
         } catch (error) {
+          console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Exception) 🔄🔄🔄`);
           console.error("[bot] Error using Gemini, using first available move as last resort:", error);
+          const fallbackMoveText = `${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`;
+          console.error(`[bot] 🤖 Decision source: Fallback (first available move - exception)`);
           // Last resort: use first move if Gemini completely fails
           move = legalMoves[0];
         }

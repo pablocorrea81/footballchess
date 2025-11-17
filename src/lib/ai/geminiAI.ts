@@ -2020,11 +2020,14 @@ Format: Just the number. Example: 5`;
                          piece?.type === "mediocampista" ? "M" :
                          piece?.type === "carrilero" ? "C" : "D";
         
-        console.log(`[Gemini] ========== GEMINI SELECTED MOVE ==========`);
+        console.log(`[Gemini] ============================================================`);
+        console.log(`[Gemini] ✅✅✅ GEMINI AI DECISION ✅✅✅`);
+        console.log(`[Gemini] ============================================================`);
         console.log(`[Gemini] ✅ SELECTED MOVE #${moveIndex + 1}: ${moveText} (${pieceType})`);
         console.log(`[Gemini] 📍 From: ${String.fromCharCode(65 + selectedMove.from.col)}${selectedMove.from.row + 1}`);
         console.log(`[Gemini] 📍 To: ${String.fromCharCode(65 + selectedMove.to.col)}${selectedMove.to.row + 1}`);
         console.log(`[Gemini] 🎯 Original move index in full list: ${originalIdx + 1}`);
+        console.log(`[Gemini] 🤖 DECISION SOURCE: Gemini AI (parsed from API response)`);
         
         // Check if this is a delantero move and log risks
         if (piece?.type === "delantero") {
@@ -2198,6 +2201,11 @@ Format: Just the number. Example: 5`;
           };
         }
         
+        // Final summary: This move was chosen by Gemini AI
+        console.log(`[Gemini] ============================================================`);
+        console.log(`[Gemini] 🤖 FINAL DECISION: GEMINI AI (Successfully parsed from API)`);
+        console.log(`[Gemini] ============================================================`);
+        
         return selectedMove;
       } else {
         console.warn(`[Gemini] ❌ Move number out of range: ${moveIndex} (Available: 0-${movesToEvaluate.length - 1})`);
@@ -2206,8 +2214,12 @@ Format: Just the number. Example: 5`;
 
     console.warn(`[Gemini] ⚠️ Could not parse move recommendation from response: "${text}", using fallback strategy`);
     // Fallback: prefer safe moves, avoid risky ones
+    console.log(`[Gemini] ============================================================`);
+    console.log(`[Gemini] 🔄🔄🔄 FALLBACK STRATEGY 🔄🔄🔄`);
+    console.log(`[Gemini] ============================================================`);
     console.log(`[Gemini] ⚠️ Falling back to priority-based selection (Gemini response unparseable)`);
     console.log(`[Gemini] 🔍 Fallback will prioritize SAFE moves over risky ones`);
+    console.log(`[Gemini] 🤖 DECISION SOURCE: Fallback algorithm (not Gemini AI)`);
     
     // Helper function to ensure move has correct player field
     const ensureCorrectPlayer = (move: Move): Move => {
@@ -2250,6 +2262,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(moves[safeForwardCaptures[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using SAFE forward capture - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2259,6 +2274,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(moves[safeForwardAdvances[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using SAFE forward advance - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2268,6 +2286,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(moves[safeMidfielderCaptures[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using SAFE midfielder capture - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2277,6 +2298,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(moves[safeMidfielderAdvances[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using SAFE midfielder advance - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2285,6 +2309,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(moves[validDefensiveMoves[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using valid defensive move - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ✅ This move is SAFE (defensa blocking/capturing)`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2293,6 +2320,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(validMoves[0]);
       console.log(`[Gemini] 🔄 FALLBACK: Using first valid safe move - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ✅ This move passed safety filters`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2304,6 +2334,9 @@ Format: Just the number. Example: 5`;
       const fallbackMove = ensureCorrectPlayer(safeMoves[0]);
       console.log(`[Gemini] ⚠️ FALLBACK: No optimal safe moves, using first non-goal-allowing move - ${moveToText(fallbackMove)}`);
       console.log(`[Gemini] ⚠️ WARNING: This move may be risky but doesn't allow opponent goal`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Priority-based selection)`);
+      console.log(`[Gemini] ============================================================`);
       return fallbackMove;
     }
     
@@ -2313,6 +2346,9 @@ Format: Just the number. Example: 5`;
     console.log(`[Gemini] ⚠️⚠️ This should rarely happen - check why all moves are risky!`);
     const fallbackMove = ensureCorrectPlayer(moves[0]);
     console.log(`[Gemini] 🔄 FALLBACK: Using first available move - ${moveToText(fallbackMove)}`);
+    console.log(`[Gemini] ============================================================`);
+    console.log(`[Gemini] 🤖 FINAL DECISION: FALLBACK (Last resort)`);
+    console.log(`[Gemini] ============================================================`);
     return fallbackMove;
   } catch (error) {
     console.error(`[Gemini] ❌ ERROR getting recommendation from Gemini:`);
