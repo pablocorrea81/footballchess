@@ -233,6 +233,81 @@ DO NOT let opponent use the same pattern again!
     }
   }
 
+  // Calculate position evaluation and strategic information
+  let positionEvaluation = "";
+  let pieceCount = { bot: { c: 0, d: 0, m: 0, f: 0 }, opp: { c: 0, d: 0, m: 0, f: 0 } };
+  let controlOfGoalColumns = { bot: 0, opp: 0 };
+  let piecesNearOpponentGoal = { bot: 0, opp: 0 };
+  let piecesNearOwnGoal = { bot: 0, opp: 0 };
+  
+  for (let row = 0; row < 12; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = state.board[row]?.[col];
+      if (piece) {
+        const isBotPiece = piece.owner === botPlayer;
+        const distanceToOppGoal = botPlayer === "home" ? (11 - row) : row;
+        const distanceToOwnGoal = botPlayer === "home" ? row : (11 - row);
+        
+        // Count pieces
+        const pieceType = piece.type === "carrilero" ? "c" :
+                         piece.type === "defensa" ? "d" :
+                         piece.type === "mediocampista" ? "m" : "f";
+        if (isBotPiece) {
+          pieceCount.bot[pieceType as keyof typeof pieceCount.bot]++;
+        } else {
+          pieceCount.opp[pieceType as keyof typeof pieceCount.opp]++;
+        }
+        
+        // Control of goal columns (D-E = columns 3-4)
+        if ([3, 4].includes(col)) {
+          if (distanceToOwnGoal <= 3) {
+            if (isBotPiece) controlOfGoalColumns.bot++;
+            else controlOfGoalColumns.opp++;
+          }
+        }
+        
+        // Pieces near opponent goal (within 4 rows)
+        if (distanceToOppGoal <= 4 && piece.type !== "defensa") {
+          if (isBotPiece) piecesNearOpponentGoal.bot++;
+          else piecesNearOpponentGoal.opp++;
+        }
+        
+        // Pieces near own goal (within 3 rows) - defensive presence
+        if (distanceToOwnGoal <= 3) {
+          if (isBotPiece) piecesNearOwnGoal.bot++;
+          else piecesNearOwnGoal.opp++;
+        }
+      }
+    }
+  }
+  
+  // Strategic assessment
+  const pieceAdvantage = (pieceCount.bot.f + pieceCount.bot.m + pieceCount.bot.c) - 
+                        (pieceCount.opp.f + pieceCount.opp.m + pieceCount.opp.c);
+  const offensiveAdvantage = piecesNearOpponentGoal.bot - piecesNearOpponentGoal.opp;
+  const defensiveAdvantage = piecesNearOwnGoal.bot - piecesNearOwnGoal.opp;
+  const goalColumnControl = controlOfGoalColumns.bot - controlOfGoalColumns.opp;
+  
+  positionEvaluation = `
+POSITION EVALUATION:
+====================
+Material:
+- Your pieces: ${pieceCount.bot.f}F + ${pieceCount.bot.m}M + ${pieceCount.bot.c}C + ${pieceCount.bot.d}D = ${pieceCount.bot.f + pieceCount.bot.m + pieceCount.bot.c + pieceCount.bot.d} total
+- Opponent pieces: ${pieceCount.opp.f}F + ${pieceCount.opp.m}M + ${pieceCount.opp.c}C + ${pieceCount.opp.d}D = ${pieceCount.opp.f + pieceCount.opp.m + pieceCount.opp.c + pieceCount.opp.d} total
+- Material advantage: ${pieceAdvantage > 0 ? `+${pieceAdvantage} for you` : pieceAdvantage < 0 ? `${pieceAdvantage} (opponent ahead)` : "equal"}
+
+Positional:
+- Pieces near opponent goal: You ${piecesNearOpponentGoal.bot} vs Opponent ${piecesNearOpponentGoal.opp} (${offensiveAdvantage > 0 ? "You have attack advantage" : offensiveAdvantage < 0 ? "Opponent has attack advantage" : "Balanced"})
+- Pieces near your goal: You ${piecesNearOwnGoal.bot} vs Opponent ${piecesNearOwnGoal.opp} (${defensiveAdvantage > 0 ? "Good defense" : defensiveAdvantage < 0 ? "Weak defense - reinforce!" : "Balanced"})
+- Control of goal columns (D-E near goal): You ${controlOfGoalColumns.bot} vs Opponent ${controlOfGoalColumns.opp} (${goalColumnControl > 0 ? "You control goal columns" : goalColumnControl < 0 ? "Opponent controls goal columns - CRITICAL!" : "Contested"})
+
+Strategic Status:
+${offensiveAdvantage > 0 ? "✅ You have attacking initiative - press the advantage!" : ""}
+${offensiveAdvantage < 0 ? "⚠️ Opponent has more pieces near your goal - focus on defense!" : ""}
+${goalColumnControl < 0 ? "🚨 OPPONENT CONTROLS GOAL COLUMNS - THIS IS DANGEROUS! Block/capture immediately!" : ""}
+${piecesNearOwnGoal.bot < 3 ? "⚠️ Your goal area is lightly defended - position defenders!" : ""}
+`;
+
   let description = `FOOTBALL CHESS GAME STATE
 ======================
 
@@ -245,6 +320,7 @@ GAME INFO:
 - Your goal: Row ${botGoalRow + 1}, Columns D-E (⚽B)
 - Opponent goal: Row ${opponentGoalRow + 1}, Columns D-E (⚽O)
 - Moves played: ${state.history?.length || 0}
+${positionEvaluation}
 ${lastGoalAnalysis}
 
 RULES REMINDER:
@@ -1019,10 +1095,12 @@ STRATEGY PRIORITIES (in order):
    - Move defenders to intercept the path between opponent pieces and your goal
 3. CAPTURE OPPONENT PIECES IN GOAL COLUMNS: If opponent has F/M/C in columns D or E, capture them immediately!
 4. CAPTURE OPPONENT DELANTERO (F): Remove their best attacking piece
-5. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal
-6. CAPTURE VALUABLE PIECES: Capture opponent C/M pieces elsewhere
-7. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal
-8. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal
+5. COORDINATE ATTACKS: When you have attacking advantage, coordinate multiple pieces (F+M, F+C) for stronger threats
+6. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal, but protect them!
+7. CAPTURE VALUABLE PIECES: Capture opponent C/M pieces elsewhere
+8. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal - they're versatile attackers
+9. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal - support your forwards
+10. CONTROL CENTER: Maintain control of columns C-F (central control helps both attack and defense)
 
 DEFENSE IS CRITICAL:
 - If opponent has pieces in columns D or E approaching your goal, you MUST block or capture
@@ -1076,7 +1154,23 @@ REMEMBER:
 - If opponent just scored, prevent the SAME pattern from happening again!
 - PROTECT YOUR DELANTEROS - Never expose them to capture!
 
+TACTICAL CONSIDERATIONS:
+- COORDINATION: Try to move pieces that work together (e.g., advance F and M together, or position C to support F)
+- PROGRESSIVE PLAY: Each move should either advance your attack OR improve your defense - avoid repetitive moves
+- PIECE ACTIVITY: Prefer moves that activate multiple pieces rather than moving the same piece repeatedly
+- CONTROL: Maintaining control of central columns (C-F) gives flexibility for both attack and defense
+- INITIATIVE: If you have more pieces near opponent goal, maintain pressure - don't retreat unnecessarily
+
+DECISION FRAMEWORK:
+1. Check if you can score immediately - if yes, do it!
+2. Check if opponent can score - if yes, block it!
+3. If attacking advantage: press forward, coordinate pieces, create multiple threats
+4. If defensive position: consolidate, block threats, prepare counter-attack
+5. If material ahead: trade pieces to simplify (but keep your F/M)
+6. If material behind: avoid trades, play tactically, create complications
+
 Think carefully: Which move best follows the priorities above?
+Consider not just this move, but how it sets up future moves and coordinates with your other pieces.
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
 
     const result = await model.generateContent({
