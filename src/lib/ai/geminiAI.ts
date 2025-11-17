@@ -1732,9 +1732,16 @@ Balance attack and defense based on the current game situation.
 ${isPro ? `\n🔥 PRO LEVEL - ADVANCED STRATEGY:\nYou are playing at the highest difficulty level. Apply these advanced concepts:\n- MULTI-TURN PLANNING: Consider 2-3 moves ahead - how does this move affect future positions?\n- COMBINATIONS: Look for sequences of moves that create multiple threats (double attacks)\n- PIECE COORDINATION: Position pieces to work together - support attacks with M/C while advancing F\n- PROPHYLACTIC MOVES: Anticipate opponent threats and prevent them BEFORE they become dangerous\n- TEMPO: Each move should improve your position - avoid moves that waste time or don't advance your plan\n- POSITIONAL ADVANTAGE: Control key squares, especially in columns D-E near opponent goal\n- ENDGAME AWARENESS: If score is tied or close, prioritize defense and safe play. If ahead, simplify. If behind, take calculated risks.\n- VARIANT EVALUATION: Consider multiple candidate moves and evaluate which leads to the best long-term position\nThink strategically about the entire game flow, not just the immediate move!\n` : ""}
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 
-RESPOND WITH ONLY THE MOVE NUMBER:
-Choose a number from 1 to ${movesToEvaluate.length}.
-Format: Just the number. Example: 5`;
+---
+FINAL INSTRUCTION - RESPOND NOW:
+Output ONLY a single integer number from 1 to ${movesToEvaluate.length}.
+Do not include any text, explanation, or punctuation. Just the number.
+Examples of correct responses:
+- If you choose move 3, respond: 3
+- If you choose move 12, respond: 12
+- If you choose move 1, respond: 1
+
+Now output your choice (just the number):`;
 
     // Pro level: Higher temperature for more creative/strategic play
     const temperature = isPro ? 0.4 : 0.1;
@@ -1868,7 +1875,12 @@ Format: Just the number. Example: 5`;
           });
           if (response.promptFeedback.blockReason) {
             console.error(`[Gemini] ❌ ERROR: Prompt was blocked! Reason: ${response.promptFeedback.blockReason}`);
+            console.error(`[Gemini] ❌ This explains why no content was generated - the prompt was filtered!`);
+            // Force text to empty to trigger fallback
+            text = "";
           }
+        } else {
+          console.log(`[Gemini] ✅ No prompt feedback issues detected`);
         }
         
         // Try multiple methods to extract text
@@ -1928,12 +1940,34 @@ Format: Just the number. Example: 5`;
             console.warn(`[Gemini] ⚠️ Current maxOutputTokens: ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()}`);
             console.warn(`[Gemini] ⚠️ This should not happen with such a large limit - investigate prompt complexity`);
             
+            // Log token usage to understand why MAX_TOKENS was hit
+            if (response.usageMetadata) {
+              const usage = response.usageMetadata;
+              const promptTokens = usage.promptTokenCount || 0;
+              const completionTokens = usage.completionTokenCount || 0;
+              const totalTokens = usage.totalTokenCount || 0;
+              console.warn(`[Gemini] ⚠️ Token usage at MAX_TOKENS: prompt=${promptTokens}, completion=${completionTokens}, total=${totalTokens}`);
+              
+              // Check if prompt is consuming too many tokens
+              const estimatedPromptTokens = Math.ceil(prompt.length / 4); // Rough estimate: ~4 chars per token
+              if (promptTokens > 30000) {
+                console.error(`[Gemini] ❌ ERROR: Prompt is consuming ${promptTokens} tokens - may be too complex!`);
+                console.error(`[Gemini] ❌ Consider reducing number of moves evaluated or simplifying prompt structure`);
+              }
+            }
+            
             // Try to extract partial content if available
             if (!text && candidate.content && candidate.content.parts) {
               const parts = candidate.content.parts.filter((p: any) => p.text);
               if (parts.length > 0) {
                 text = parts.map((p: any) => p.text).join(" ").trim();
                 console.log(`[Gemini] ✅ Extracted partial text from truncated response: "${text}"`);
+              } else {
+                // MAX_TOKENS with empty content - this is unusual and suggests the model couldn't generate anything
+                console.error(`[Gemini] ❌ ERROR: MAX_TOKENS with empty content - model may be blocked or confused by prompt`);
+                console.error(`[Gemini] ❌ This suggests the prompt structure or complexity is preventing generation`);
+                // Force text to empty to trigger fallback
+                text = "";
               }
             }
           }
