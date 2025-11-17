@@ -1728,7 +1728,10 @@ Think strategically: Choose the move that improves your position while minimizin
 Balance attack and defense based on the current game situation.
 ${isPro ? `\n🔥 PRO LEVEL - ADVANCED STRATEGY:\nYou are playing at the highest difficulty level. Apply these advanced concepts:\n- MULTI-TURN PLANNING: Consider 2-3 moves ahead - how does this move affect future positions?\n- COMBINATIONS: Look for sequences of moves that create multiple threats (double attacks)\n- PIECE COORDINATION: Position pieces to work together - support attacks with M/C while advancing F\n- PROPHYLACTIC MOVES: Anticipate opponent threats and prevent them BEFORE they become dangerous\n- TEMPO: Each move should improve your position - avoid moves that waste time or don't advance your plan\n- POSITIONAL ADVANTAGE: Control key squares, especially in columns D-E near opponent goal\n- ENDGAME AWARENESS: If score is tied or close, prioritize defense and safe play. If ahead, simplify. If behind, take calculated risks.\n- VARIANT EVALUATION: Consider multiple candidate moves and evaluate which leads to the best long-term position\nThink strategically about the entire game flow, not just the immediate move!\n` : ""}
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
-Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
+
+IMPORTANT: Respond with ONLY a single number between 1 and ${movesToEvaluate.length} representing the move number.
+Do not include any explanation, text, or punctuation. Just the number.
+Example: If you choose move 5, respond with: 5`;
 
     // Pro level: Higher temperature for more creative/strategic play
     const temperature = isPro ? 0.4 : 0.1;
@@ -1737,21 +1740,121 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
       console.log(`[Gemini] 🔥 PRO LEVEL ACTIVE - Enhanced strategic analysis with ${movesToEvaluate.length} moves evaluated`);
     }
     
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
-        maxOutputTokens: 10, // Only need a number
-      },
-    });
+    console.log(`[Gemini] 📤 Preparing to send request to Gemini API:`);
+    console.log(`[Gemini]   - Moves to evaluate: ${movesToEvaluate.length}`);
+    console.log(`[Gemini]   - Current threats: ${currentThreatsList.length > 0 ? currentThreatsList.join(", ") : "None"}`);
+    console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
+    console.log(`[Gemini]   - Temperature: ${temperature}`);
+    console.log(`[Gemini]   - Max output tokens: 10`);
+    console.log(`[Gemini]   - Model: gemini-2.5-flash`);
     
-    console.log(`[Gemini] Sending prompt to Gemini with ${movesToEvaluate.length} moves to evaluate`);
-    console.log(`[Gemini] Current threats: ${currentThreatsList.length > 0 ? currentThreatsList.join(", ") : "None"}`);
-    console.log(`[Gemini] Prompt length: ${prompt.length} characters`);
+    // Check if prompt is too long (Gemini has limits)
+    const maxPromptLength = 100000; // Approximate limit for Gemini Flash
+    if (prompt.length > maxPromptLength) {
+      console.warn(`[Gemini] ⚠️ WARNING: Prompt is very long (${prompt.length} chars), may cause issues!`);
+      console.warn(`[Gemini] ⚠️ Consider reducing number of moves evaluated or simplifying prompt`);
+    }
     
-    const response = await result.response;
-    const text = response.text().trim();
-    console.log(`[Gemini] 📝 Raw response from Gemini: "${text}"`);
+    let text: string = "";
+    
+    try {
+      const requestStartTime = Date.now();
+      console.log(`[Gemini] 🚀 Sending request to Gemini API at ${new Date().toISOString()}...`);
+      
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
+          maxOutputTokens: 10, // Only need a number
+          topP: 0.95,
+          topK: 40,
+        },
+      });
+      
+      const requestDuration = Date.now() - requestStartTime;
+      console.log(`[Gemini] ⏱️ Request completed in ${requestDuration}ms`);
+      
+      // Log response details
+      const response = await result.response;
+      console.log(`[Gemini] 📥 Response received from Gemini:`);
+      console.log(`[Gemini]   - Response object exists: ${!!response}`);
+      console.log(`[Gemini]   - Candidate count: ${response.candidates?.length || 0}`);
+      
+      if (response.candidates && response.candidates.length > 0) {
+        const candidate = response.candidates[0];
+        console.log(`[Gemini]   - Finish reason: ${candidate.finishReason || "unknown"}`);
+        console.log(`[Gemini]   - Safety ratings:`, candidate.safetyRatings?.map((r: any) => `${r.category}=${r.probability}`).join(", ") || "none");
+        
+        if (candidate.finishReason && candidate.finishReason !== "STOP") {
+          console.warn(`[Gemini] ⚠️ WARNING: Finish reason is "${candidate.finishReason}" - not "STOP"!`);
+          console.warn(`[Gemini] ⚠️ This might indicate the response was blocked or truncated`);
+        }
+      } else {
+        console.warn(`[Gemini] ⚠️ WARNING: No candidates in response!`);
+      }
+      
+      // Check for blocked content
+      if (response.promptFeedback) {
+        console.log(`[Gemini] 📋 Prompt feedback:`, {
+          blockReason: response.promptFeedback.blockReason,
+          safetyRatings: response.promptFeedback.safetyRatings?.map((r: any) => `${r.category}=${r.probability}`),
+        });
+        if (response.promptFeedback.blockReason) {
+          console.error(`[Gemini] ❌ ERROR: Prompt was blocked! Reason: ${response.promptFeedback.blockReason}`);
+        }
+      }
+      
+      try {
+        text = response.text().trim();
+      } catch (textError) {
+        console.error(`[Gemini] ❌ ERROR: Failed to extract text from response!`);
+        console.error(`[Gemini] Error:`, textError);
+        console.error(`[Gemini] Response object:`, response);
+        text = "";
+      }
+      
+      console.log(`[Gemini] 📝 Raw response text: "${text}"`);
+      console.log(`[Gemini] 📏 Response text length: ${text.length} characters`);
+      
+      if (!text || text === "" || text === '""') {
+        console.error(`[Gemini] ❌ ERROR: Empty response detected!`);
+        console.error(`[Gemini] 🔍 Debugging info:`);
+        console.error(`[Gemini]   - Response object:`, JSON.stringify({
+          candidates: response.candidates?.map((c: any) => ({
+            finishReason: c.finishReason,
+            safetyRatings: c.safetyRatings,
+            content: c.content?.parts?.map((p: any) => ({ text: p.text?.substring(0, 100) })) || [],
+          })),
+          promptFeedback: response.promptFeedback,
+        }, null, 2));
+      }
+    } catch (apiError) {
+      console.error(`[Gemini] ❌ ERROR: Exception during Gemini API call!`);
+      console.error(`[Gemini] Error type: ${apiError instanceof Error ? apiError.constructor.name : typeof apiError}`);
+      console.error(`[Gemini] Error message: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
+      if (apiError instanceof Error && apiError.stack) {
+        console.error(`[Gemini] Error stack:`, apiError.stack);
+      }
+      console.error(`[Gemini] Full error object:`, apiError);
+      
+      // Try to extract more details if it's a GoogleGenerativeAI error
+      if (apiError && typeof apiError === 'object') {
+        console.error(`[Gemini] Error details:`, JSON.stringify(apiError, Object.getOwnPropertyNames(apiError), 2));
+      }
+      
+      // Set text to empty so fallback logic runs
+      text = "";
+    }
+
+    // Check if response is empty or invalid
+    if (!text || text === "" || text === '""') {
+      console.log(`[Gemini] ⚠️ WARNING: Gemini returned empty response!`);
+      console.log(`[Gemini] 🔍 This could indicate:`);
+      console.log(`[Gemini]   1. API issue or rate limiting`);
+      console.log(`[Gemini]   2. Prompt too complex or malformed`);
+      console.log(`[Gemini]   3. Model error`);
+      console.log(`[Gemini] 💡 Falling back to safe move selection...`);
+    }
 
     // Extract move number
     const moveMatch = text.match(/\d+/);
@@ -1952,53 +2055,115 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
     }
 
     console.warn(`[Gemini] ⚠️ Could not parse move recommendation from response: "${text}", using fallback strategy`);
-    // Fallback: prefer forward captures, then forward advancement
+    // Fallback: prefer safe moves, avoid risky ones
     console.log(`[Gemini] ⚠️ Falling back to priority-based selection (Gemini response unparseable)`);
-    console.log(`[Gemini] Fallback priorities: ${forwardCaptures.length > 0 ? `Forward captures (${forwardCaptures.length})` : ""} ${forwardAdvances.length > 0 ? `Forward advances (${forwardAdvances.length})` : ""}`);
+    console.log(`[Gemini] 🔍 Fallback will prioritize SAFE moves over risky ones`);
     
     // Helper function to ensure move has correct player field
     const ensureCorrectPlayer = (move: Move): Move => {
       return move.player === botPlayer ? move : { ...move, player: botPlayer };
     };
     
-    if (forwardCaptures.length > 0) {
-      const fallbackMove = ensureCorrectPlayer(moves[forwardCaptures[0]]);
-      console.log(`[Gemini] 🔄 FALLBACK: Using forward capture - ${moveToText(fallbackMove)}`);
+    // Helper function to filter out risky moves from a list
+    const filterSafeMoves = (moveIndices: number[]): number[] => {
+      return moveIndices.filter(idx => {
+        // Exclude risky moves
+        if (riskyMoves.includes(idx)) {
+          return false;
+        }
+        // Exclude moves that allow opponent to score
+        if (movesAllowingGoal.includes(idx)) {
+          return false;
+        }
+        // Exclude moves from validMoves that were filtered out (delanteros that expose themselves)
+        // We can check if the move is in validMoves (it means it passed our safety filters)
+        const move = moves[idx];
+        const isValidMove = validMoves.some(vm => 
+          vm.from.row === move.from.row && 
+          vm.from.col === move.from.col &&
+          vm.to.row === move.to.row &&
+          vm.to.col === move.to.col
+        );
+        return isValidMove;
+      });
+    };
+    
+    // Try to find safe moves first
+    console.log(`[Gemini] 📊 Fallback analysis:`);
+    console.log(`  - Risky moves to avoid: ${riskyMoves.length}`);
+    console.log(`  - Moves allowing opponent goal: ${movesAllowingGoal.length}`);
+    console.log(`  - Valid safe moves available: ${validMoves.length}`);
+    
+    // Priority 1: Favorable captures (safe)
+    const safeForwardCaptures = filterSafeMoves(forwardCaptures);
+    if (safeForwardCaptures.length > 0) {
+      const fallbackMove = ensureCorrectPlayer(moves[safeForwardCaptures[0]]);
+      console.log(`[Gemini] 🔄 FALLBACK: Using SAFE forward capture - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
       return fallbackMove;
     }
-    if (forwardAdvances.length > 0) {
-      const fallbackMove = ensureCorrectPlayer(moves[forwardAdvances[0]]);
-      console.log(`[Gemini] 🔄 FALLBACK: Using forward advance - ${moveToText(fallbackMove)}`);
+    
+    // Priority 2: Safe forward advances (not risky)
+    const safeForwardAdvances = filterSafeMoves(forwardAdvances);
+    if (safeForwardAdvances.length > 0) {
+      const fallbackMove = ensureCorrectPlayer(moves[safeForwardAdvances[0]]);
+      console.log(`[Gemini] 🔄 FALLBACK: Using SAFE forward advance - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
       return fallbackMove;
     }
-    if (midfielderCaptures.length > 0) {
-      const fallbackMove = ensureCorrectPlayer(moves[midfielderCaptures[0]]);
-      console.log(`[Gemini] 🔄 FALLBACK: Using midfielder capture - ${moveToText(fallbackMove)}`);
+    
+    // Priority 3: Safe midfielder captures
+    const safeMidfielderCaptures = filterSafeMoves(midfielderCaptures);
+    if (safeMidfielderCaptures.length > 0) {
+      const fallbackMove = ensureCorrectPlayer(moves[safeMidfielderCaptures[0]]);
+      console.log(`[Gemini] 🔄 FALLBACK: Using SAFE midfielder capture - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
       return fallbackMove;
     }
-    if (midfielderAdvances.length > 0) {
-      const fallbackMove = ensureCorrectPlayer(moves[midfielderAdvances[0]]);
-      console.log(`[Gemini] 🔄 FALLBACK: Using midfielder advance - ${moveToText(fallbackMove)}`);
+    
+    // Priority 4: Safe midfielder advances
+    const safeMidfielderAdvances = filterSafeMoves(midfielderAdvances);
+    if (safeMidfielderAdvances.length > 0) {
+      const fallbackMove = ensureCorrectPlayer(moves[safeMidfielderAdvances[0]]);
+      console.log(`[Gemini] 🔄 FALLBACK: Using SAFE midfielder advance - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ✅ This move is SAFE (not risky, doesn't allow goal)`);
       return fallbackMove;
     }
-    // Only use defensas if they're valid (blocking/capturing)
+    
+    // Priority 5: Valid defensive moves (they're already filtered to be safe)
     if (validDefensiveMoves.length > 0) {
       const fallbackMove = ensureCorrectPlayer(moves[validDefensiveMoves[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using valid defensive move - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ✅ This move is SAFE (defensa blocking/capturing)`);
       return fallbackMove;
     }
-    // Avoid defensive moves unless no other options
-    const offensiveMoves = moves.filter((move, idx) => {
-      const piece = state.board[move.from.row]?.[move.from.col];
-      return piece && piece.type !== "defensa";
+    
+    // Priority 6: Use validMoves (already filtered for safety, especially delanteros)
+    if (validMoves.length > 0) {
+      const fallbackMove = ensureCorrectPlayer(validMoves[0]);
+      console.log(`[Gemini] 🔄 FALLBACK: Using first valid safe move - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ✅ This move passed safety filters`);
+      return fallbackMove;
+    }
+    
+    // Priority 7: If no safe moves, warn and use first move that's not allowing goal
+    const safeMoves = moves.filter((move, idx) => {
+      return !movesAllowingGoal.includes(idx) && !riskyMoves.includes(idx);
     });
-    if (offensiveMoves.length > 0) {
-      const fallbackMove = ensureCorrectPlayer(offensiveMoves[0]);
-      console.log(`[Gemini] 🔄 FALLBACK: Using first offensive move - ${moveToText(fallbackMove)}`);
+    if (safeMoves.length > 0) {
+      const fallbackMove = ensureCorrectPlayer(safeMoves[0]);
+      console.log(`[Gemini] ⚠️ FALLBACK: No optimal safe moves, using first non-goal-allowing move - ${moveToText(fallbackMove)}`);
+      console.log(`[Gemini] ⚠️ WARNING: This move may be risky but doesn't allow opponent goal`);
       return fallbackMove;
     }
-    console.log(`[Gemini] 🔄 FALLBACK: Last resort - using first available move - ${moveToText(moves[0])}`);
-    return ensureCorrectPlayer(moves[0]); // Last resort
+    
+    // Last resort: Use first available move (even if risky)
+    console.log(`[Gemini] ⚠️⚠️ FALLBACK: LAST RESORT - No safe moves available!`);
+    console.log(`[Gemini] ⚠️⚠️ WARNING: Using first available move even though it may be risky!`);
+    console.log(`[Gemini] ⚠️⚠️ This should rarely happen - check why all moves are risky!`);
+    const fallbackMove = ensureCorrectPlayer(moves[0]);
+    console.log(`[Gemini] 🔄 FALLBACK: Using first available move - ${moveToText(fallbackMove)}`);
+    return fallbackMove;
   } catch (error) {
     console.error(`[Gemini] ❌ ERROR getting recommendation from Gemini:`);
     console.error(`[Gemini] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
