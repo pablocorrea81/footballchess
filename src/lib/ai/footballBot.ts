@@ -10,7 +10,7 @@ import {
 } from "@/lib/ruleEngine";
 import type { Database } from "@/lib/database.types";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
-import { evaluateMoveWithGemini, getGeminiRecommendation } from "@/lib/ai/geminiAI";
+import { evaluateMoveWithGemini, getGeminiRecommendation, getGeminiMoveDirect } from "@/lib/ai/geminiAI";
 
 export type BotDifficulty = "easy" | "medium" | "hard" | "pro";
 
@@ -1288,35 +1288,41 @@ export const executeBotTurnIfNeeded = async (
         console.log("[bot] No legal moves available");
         move = null;
       } else {
-        console.log(`[bot] Using Gemini AI exclusively for ${difficulty} difficulty`);
+        console.log(`[bot] Using Gemini AI Direct Move Selection for ${difficulty} difficulty`);
         
         try {
-          // Get Gemini recommendation - wait for it, no fallback
-          console.log(`[bot] Calling getGeminiRecommendation with ${legalMoves.length} legal moves`);
+          // Get Gemini direct move selection - new approach where Gemini chooses move and explains reasoning
+          console.log(`[bot] Calling getGeminiMoveDirect with ${legalMoves.length} legal moves`);
           console.log(`[bot] Current state turn: ${currentState.turn}, botPlayer: ${botPlayer}`);
           
-          let geminiRecommendedMove: Move | null = null;
+          const playingStyle: AIPlayingStyle | null = (difficulty === "hard" || difficulty === "pro")
+            ? (game.bot_style as AIPlayingStyle | null)
+            : null;
+          
+          let geminiResult: { move: Move; reasoning: string } | null = null;
           try {
-            geminiRecommendedMove = await getGeminiRecommendation(
+            geminiResult = await getGeminiMoveDirect(
               currentState,
               legalMoves,
               botPlayer,
               difficulty === "pro", // Pass isPro flag for enhanced features
+              playingStyle,
             );
           } catch (error) {
-            console.error(`[bot] ❌ Exception calling getGeminiRecommendation:`, error);
+            console.error(`[bot] ❌ Exception calling getGeminiMoveDirect:`, error);
             if (error instanceof Error) {
               console.error(`[bot] Error message: ${error.message}`);
               console.error(`[bot] Error stack: ${error.stack}`);
             }
           }
           
-          if (geminiRecommendedMove) {
-            const moveText = `${String.fromCharCode(65 + geminiRecommendedMove.from.col)}${geminiRecommendedMove.from.row + 1}→${String.fromCharCode(65 + geminiRecommendedMove.to.col)}${geminiRecommendedMove.to.row + 1}`;
-            console.log(`[bot] ✅✅✅ MOVE DECISION: GEMINI AI ✅✅✅`);
+          if (geminiResult) {
+            const moveText = `${String.fromCharCode(65 + geminiResult.move.from.col)}${geminiResult.move.from.row + 1}→${String.fromCharCode(65 + geminiResult.move.to.col)}${geminiResult.move.to.row + 1}`;
+            console.log(`[bot] ✅✅✅ MOVE DECISION: GEMINI AI (DIRECT) ✅✅✅`);
             console.log(`[bot] ✅ Gemini AI selected move: ${moveText}`);
-            console.log(`[bot] 🤖 Decision source: Gemini AI (from getGeminiRecommendation)`);
-            move = geminiRecommendedMove;
+            console.log(`[bot] 💭 Reasoning: ${geminiResult.reasoning}`);
+            console.log(`[bot] 🤖 Decision source: Gemini AI (direct move selection)`);
+            move = geminiResult.move;
           } else {
             // If Gemini doesn't return a move, wait a bit and try again
             console.warn(`[bot] ⚠️ Gemini didn't return a move (null), retrying after 500ms...`);
@@ -1324,23 +1330,20 @@ export const executeBotTurnIfNeeded = async (
             // Small delay and retry once
             await new Promise(resolve => setTimeout(resolve, 500));
             try {
-              const playingStyle: AIPlayingStyle | null = (difficulty === "hard" || difficulty === "pro")
-                ? (game.bot_style as AIPlayingStyle | null)
-                : null;
-              
-              const retryMove = await getGeminiRecommendation(
+              const retryResult = await getGeminiMoveDirect(
                 currentState,
                 legalMoves,
                 botPlayer,
                 difficulty === "pro",
                 playingStyle,
               );
-              if (retryMove) {
-                const moveText = `${String.fromCharCode(65 + retryMove.from.col)}${retryMove.from.row + 1}→${String.fromCharCode(65 + retryMove.to.col)}${retryMove.to.row + 1}`;
-                console.log(`[bot] ✅✅✅ MOVE DECISION: GEMINI AI (RETRY) ✅✅✅`);
-                console.log(`[bot] ✅ Gemini recommended move on retry: ${moveText}`);
-                console.log(`[bot] 🤖 Decision source: Gemini AI (from getGeminiRecommendation retry)`);
-                move = retryMove;
+              if (retryResult) {
+                const moveText = `${String.fromCharCode(65 + retryResult.move.from.col)}${retryResult.move.from.row + 1}→${String.fromCharCode(65 + retryResult.move.to.col)}${retryResult.move.to.row + 1}`;
+                console.log(`[bot] ✅✅✅ MOVE DECISION: GEMINI AI (DIRECT RETRY) ✅✅✅`);
+                console.log(`[bot] ✅ Gemini selected move on retry: ${moveText}`);
+                console.log(`[bot] 💭 Reasoning: ${retryResult.reasoning}`);
+                console.log(`[bot] 🤖 Decision source: Gemini AI (direct move selection retry)`);
+                move = retryResult.move;
               } else {
                 // Last resort: pick first move if Gemini fails completely
                 console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Last Resort) 🔄🔄🔄`);

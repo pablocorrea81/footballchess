@@ -523,6 +523,270 @@ export type AIDecisionExplanation = {
   analysis: string;
 };
 
+// Helper functions for coordinate conversion
+const positionToText = (row: number, col: number): string => {
+  return `${String.fromCharCode(65 + col)}${row + 1}`;
+};
+
+const textToPosition = (text: string): { row: number; col: number } | null => {
+  const match = text.match(/^([A-H])(\d+)$/i);
+  if (!match) return null;
+  const col = match[1].toUpperCase().charCodeAt(0) - 65;
+  const row = parseInt(match[2], 10) - 1;
+  if (col < 0 || col >= 8 || row < 0 || row >= 12) return null;
+  return { row, col };
+};
+
+// NEW APPROACH: Direct move selection by Gemini
+// Gemini chooses which piece to move and where, with reasoning
+export const getGeminiMoveDirect = async (
+  state: GameState,
+  legalMoves: Move[],
+  botPlayer: PlayerId,
+  isPro: boolean = false,
+  playingStyle: AIPlayingStyle | null = null,
+): Promise<{ move: Move; reasoning: string } | null> => {
+  // Initialize lazily when first needed
+  initializeGemini();
+  
+  console.log(`[Gemini] ========== getGeminiMoveDirect called ==========`);
+  const apiKey = getGeminiApiKey();
+  
+  if (!apiKey || !model) {
+    console.warn(`[Gemini] ⚠️ Gemini AI not available, cannot get direct move`);
+    return null;
+  }
+  
+  if (!legalMoves || legalMoves.length === 0) {
+    console.warn(`[Gemini] ⚠️ No legal moves available`);
+    return null;
+  }
+  
+  console.log(`[Gemini] 🤖 Direct move selection mode`);
+  console.log(`[Gemini]   - Legal moves available: ${legalMoves.length}`);
+  console.log(`[Gemini]   - Bot player: ${botPlayer}`);
+  console.log(`[Gemini]   - Pro level: ${isPro}`);
+  console.log(`[Gemini]   - Playing style: ${playingStyle || "default"}`);
+  
+  // Build game state description
+  const gameDescription = gameStateToText(state, botPlayer);
+  
+  // Detect threats and opportunities
+  const opponent = botPlayer === "home" ? "away" : "home";
+  const opponentThreats = detectOpponentThreats(state, botPlayer);
+  const immediateGoals = legalMoves.filter((move, idx) => {
+    try {
+      const outcome = RuleEngine.applyMove(state, move);
+      return outcome.goal;
+    } catch {
+      return false;
+    }
+  });
+  
+  // Build prompt asking Gemini to choose a move directly
+  const prompt = `You are playing Football Chess as the ${botPlayer.toUpperCase()} player.
+
+${gameDescription}
+
+CURRENT SITUATION:
+- Your turn to move
+- Score: Home ${state.score.home} - ${state.score.away} Away
+- Legal moves available: ${legalMoves.length}
+${immediateGoals.length > 0 ? `- ⚠️ CRITICAL: You have ${immediateGoals.length} move(s) that score immediately!` : ""}
+${opponentThreats.length > 0 ? `- ⚠️ THREATS: Opponent has ${opponentThreats.length} piece(s) threatening your goal` : ""}
+
+STRATEGIC PRIORITIES:
+1. 🎯 SCORE A GOAL if possible (highest priority!)
+2. 🛡️ BLOCK opponent goal threats (defense is critical)
+3. ⚔️ CAPTURE opponent pieces (especially forwards/delanteros and midfielders/mediocampistas)
+4. 📈 ADVANCE your pieces toward opponent goal
+5. ⚠️ AVOID exposing your valuable pieces (forwards/delanteros) to capture
+
+${isPro ? `\n🔥 PRO LEVEL - Apply advanced strategy:\n- Multi-turn planning\n- Piece coordination\n- Prophylactic defense\n- Positional advantage\n` : ""}
+${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
+
+YOUR TASK:
+Choose ONE move to make. Respond ONLY with valid JSON in this exact format:
+{
+  "from": "A1",
+  "to": "A2",
+  "reasoning": "Brief explanation of why you chose this move (2-3 sentences)"
+}
+
+RULES:
+- "from" must be a square where you have a piece (format: A1-H12)
+- "to" must be a valid destination square (format: A1-H12)
+- The move must be legal according to Football Chess rules
+- Use column letters A-H and row numbers 1-12
+- Example: {"from": "D2", "to": "D3", "reasoning": "Advancing midfielder to support attack"}
+
+${immediateGoals.length > 0 ? `\n⚠️ CRITICAL: You have moves that score immediately! Consider them first!\n` : ""}
+${opponentThreats.length > 0 ? `\n⚠️ DEFENSE NEEDED: Block opponent threats before they become dangerous!\n` : ""}
+
+Respond with ONLY the JSON object, no other text:`;
+
+  try {
+    const temperature = isPro ? 0.4 : 0.1;
+    
+    console.log(`[Gemini] 📤 Sending direct move request to Gemini:`);
+    console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
+    console.log(`[Gemini]   - Temperature: ${temperature}`);
+    console.log(`[Gemini]   - Max output tokens: ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()}`);
+    
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature,
+        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+        topP: 0.95,
+        topK: 40,
+      },
+    });
+    
+    const response = await result.response;
+    let text = "";
+    
+    try {
+      text = response.text().trim();
+    } catch (textError) {
+      // Try alternative extraction
+      if (response.candidates && response.candidates.length > 0) {
+        const candidate = response.candidates[0];
+        if (candidate.content && candidate.content.parts) {
+          const parts = candidate.content.parts.filter((p: any) => p.text);
+          if (parts.length > 0) {
+            text = parts.map((p: any) => p.text).join(" ").trim();
+          }
+        }
+      }
+    }
+    
+    console.log(`[Gemini] 📥 Response from Gemini: "${text}"`);
+    
+    if (!text) {
+      console.error(`[Gemini] ❌ Empty response from Gemini`);
+      return null;
+    }
+    
+    // Try to extract JSON from response (might have extra text)
+    let jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      // Try to find JSON-like structure
+      jsonMatch = text.match(/\{.*\}/);
+    }
+    
+    if (!jsonMatch) {
+      console.error(`[Gemini] ❌ Could not find JSON in response: "${text}"`);
+      return null;
+    }
+    
+    let parsedResponse: { from?: string; to?: string; reasoning?: string };
+    try {
+      parsedResponse = JSON.parse(jsonMatch[0]);
+    } catch (parseError) {
+      console.error(`[Gemini] ❌ Failed to parse JSON: ${parseError}`);
+      console.error(`[Gemini] Raw text: "${text}"`);
+      return null;
+    }
+    
+    if (!parsedResponse.from || !parsedResponse.to) {
+      console.error(`[Gemini] ❌ Missing 'from' or 'to' in response:`, parsedResponse);
+      return null;
+    }
+    
+    // Convert text positions to coordinates
+    const fromPos = textToPosition(parsedResponse.from);
+    const toPos = textToPosition(parsedResponse.to);
+    
+    if (!fromPos || !toPos) {
+      console.error(`[Gemini] ❌ Invalid position format: from="${parsedResponse.from}", to="${parsedResponse.to}"`);
+      return null;
+    }
+    
+    // Find matching legal move
+    const matchingMove = legalMoves.find(move => 
+      move.from.row === fromPos.row &&
+      move.from.col === fromPos.col &&
+      move.to.row === toPos.row &&
+      move.to.col === toPos.col
+    );
+    
+    if (!matchingMove) {
+      console.error(`[Gemini] ❌ Move ${parsedResponse.from}→${parsedResponse.to} is not a legal move!`);
+      console.error(`[Gemini] Available legal moves (first 10):`, legalMoves.slice(0, 10).map(m => 
+        `${positionToText(m.from.row, m.from.col)}→${positionToText(m.to.row, m.to.col)}`
+      ));
+      
+      // Try to find a similar move (same piece, different destination)
+      const samePieceMoves = legalMoves.filter(m => 
+        m.from.row === fromPos.row && m.from.col === fromPos.col
+      );
+      
+      if (samePieceMoves.length > 0) {
+        console.log(`[Gemini] 💡 Found ${samePieceMoves.length} legal moves for piece at ${parsedResponse.from}`);
+        console.log(`[Gemini] 💡 Suggesting closest move: ${positionToText(samePieceMoves[0].to.row, samePieceMoves[0].to.col)}`);
+        // Use the first legal move for that piece as fallback
+        return {
+          move: { ...samePieceMoves[0], player: botPlayer },
+          reasoning: parsedResponse.reasoning || `Adjusted move from ${parsedResponse.to} to valid destination`,
+        };
+      }
+      
+      return null;
+    }
+    
+    // Success! Log the decision
+    const reasoning = parsedResponse.reasoning || "No reasoning provided";
+    console.log(`[Gemini] ============================================================`);
+    console.log(`[Gemini] ✅✅✅ GEMINI DIRECT MOVE SELECTION ✅✅✅`);
+    console.log(`[Gemini] ============================================================`);
+    console.log(`[Gemini] ✅ SELECTED MOVE: ${parsedResponse.from}→${parsedResponse.to}`);
+    console.log(`[Gemini] 📍 From: ${parsedResponse.from} (row ${fromPos.row + 1}, col ${fromPos.col})`);
+    console.log(`[Gemini] 📍 To: ${parsedResponse.to} (row ${toPos.row + 1}, col ${toPos.col})`);
+    console.log(`[Gemini] 💭 REASONING: ${reasoning}`);
+    console.log(`[Gemini] 🤖 DECISION SOURCE: Gemini AI (direct move selection)`);
+    console.log(`[Gemini] ============================================================`);
+    
+    // Ensure move has correct player field
+    const finalMove: Move = {
+      ...matchingMove,
+      player: botPlayer,
+    };
+    
+    return {
+      move: finalMove,
+      reasoning,
+    };
+    
+  } catch (error) {
+    console.error(`[Gemini] ❌ Error in getGeminiMoveDirect:`, error);
+    return null;
+  }
+};
+
+// Helper function to detect opponent threats (reused from getGeminiRecommendation logic)
+function detectOpponentThreats(state: GameState, botPlayer: PlayerId): Array<{ row: number; col: number; type: string; distanceToGoal: number }> {
+  const opponent = botPlayer === "home" ? "away" : "home";
+  const threats: Array<{ row: number; col: number; type: string; distanceToGoal: number }> = [];
+  
+  for (let row = 0; row < 12; row++) {
+    for (let col = 0; col < 8; col++) {
+      const piece = state.board[row]?.[col];
+      if (piece && piece.owner === opponent && piece.type !== "defensa") {
+        const botGoalRow = botPlayer === "home" ? 11 : 0;
+        const distanceToGoal = Math.abs(row - botGoalRow);
+        
+        // Check if in goal columns or can reach them
+        if ([3, 4].includes(col) && distanceToGoal <= 6) {
+          threats.push({ row, col, type: piece.type, distanceToGoal });
+        }
+      }
+    }
+  }
+  
+  return threats;
+}
+
 // Get best move recommendation from Gemini
 export const getGeminiRecommendation = async (
   state: GameState,
