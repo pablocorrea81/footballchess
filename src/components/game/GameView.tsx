@@ -1702,16 +1702,21 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 : ""
                             } ${
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
-                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
+                            } ${
+                              // Highlight player's pieces when it's their turn (mobile only)
+                              currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress"
+                                ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
+                                : ""
+                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-lg sm:text-xl md:text-xl lg:text-2xl xl:text-3xl font-bold`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
                         )}
                       </button>
                       
-                      {/* Hint tooltip */}
+                      {/* Hint tooltip - Desktop: absolute positioning, Mobile: hidden (shown in fixed panel below) */}
                       {isHoveredForHint && hintMoves.length > 0 && (
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-purple-900/95 border-2 border-purple-400 rounded-xl p-3 shadow-2xl min-w-[200px] max-w-[300px]">
+                        <div className="hidden md:block absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-purple-900/95 border-2 border-purple-400 rounded-xl p-3 shadow-2xl min-w-[200px] max-w-[300px]">
                           <div className="text-xs font-semibold text-purple-100 mb-2">
                             💡 Movimientos posibles:
                           </div>
@@ -1746,28 +1751,58 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           </div>
         </div>
 
+        {/* Mobile: Fixed panel for move hints (shown below board, above navigation) */}
+        {showMoveHints && showHint && hintMoves.length > 0 && hoveredPiece && (
+          <div className="md:hidden fixed bottom-24 left-0 right-0 z-50 px-4 pb-2 pointer-events-none">
+            <div className="bg-purple-900/98 border-2 border-purple-400 rounded-xl p-3 shadow-2xl backdrop-blur-sm pointer-events-auto max-h-[120px] overflow-y-auto">
+              <div className="text-sm font-bold text-purple-100 mb-2 flex items-center gap-2">
+                <span>💡</span>
+                <span>Movimientos posibles:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {hintMoves.map((move, idx) => {
+                  const displayRowLabelHint = getRowLabelForDisplay(move.row, playerRole);
+                  const displayColLabelHint = getColumnLabelForDisplay(move.col, playerRole);
+                  const moveLabel = `${displayColLabelHint}${displayRowLabelHint}`;
+                  return (
+                    <span
+                      key={`mobile-hint-${idx}-${move.row}-${move.col}`}
+                      className="inline-flex items-center justify-center px-3 py-1.5 bg-purple-700/80 text-purple-100 text-sm font-bold rounded-lg border-2 border-purple-400/50"
+                    >
+                      {moveLabel}
+                    </span>
+                  );
+                })}
+              </div>
+              <div className="text-xs text-purple-200 mt-2 italic text-center">
+                {hintMoves.length} movimiento{hintMoves.length !== 1 ? "s" : ""} disponible{hintMoves.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header and Info panel - Right side on all screen sizes */}
         <div className="flex flex-col gap-4 md:gap-6 order-2 md:order-2">
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3">
-              <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
                 <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
                   Partido #{initialGameId.slice(0, 8)}
                 </h1>
-                {/* Turn indicator badge - visible only on mobile */}
+                {/* Turn indicator badge - visible only on mobile, more prominent */}
                 {status === "in_progress" && (
-                  <div className={`md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 text-xs sm:text-sm font-semibold shadow-lg ${
+                  <div className={`md:hidden inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-bold shadow-xl ${
                     currentTurnIsPlayer
-                      ? "bg-emerald-600/90 text-white border-emerald-400/80 ring-2 ring-emerald-400/60"
-                      : "bg-sky-600/90 text-white border-sky-400/80"
+                      ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white border-emerald-300 ring-4 ring-emerald-400/70 animate-pulse"
+                      : "bg-gradient-to-r from-sky-500 to-sky-600 text-white border-sky-300"
                   }`}>
-                    <span className={currentTurnIsPlayer ? "text-emerald-100" : "text-sky-100"}>
-                      {currentTurnIsPlayer ? "✅" : "⏳"}
+                    <span className={`text-lg ${currentTurnIsPlayer ? "animate-bounce" : ""}`}>
+                      {currentTurnIsPlayer ? "✨" : "⏳"}
                     </span>
-                    <span className="font-bold whitespace-nowrap">
-                      {currentTurnLabel}
+                    <span className="whitespace-nowrap">
+                      {currentTurnIsPlayer ? "TU TURNO" : `Turno: ${currentTurnLabel}`}
                     </span>
                   </div>
                 )}
