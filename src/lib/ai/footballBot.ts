@@ -540,8 +540,66 @@ const rateMove = (
   // Capturing a forward is extremely valuable (they can score)
   if (capture && outcome.capture) {
     const capturedValue = pieceValue(outcome.capture.type);
-    const captureBonus = outcome.capture.type === "delantero" ? 300 : 0; // Huge bonus for capturing forwards
-    score += 150 + capturedValue * 3 + captureBonus; // Increased multiplier and added forward bonus
+    const captureBonus = outcome.capture.type === "delantero" ? 500 : outcome.capture.type === "mediocampista" ? 200 : 0; // Huge bonus for capturing forwards/midfielders
+    score += 150 + capturedValue * 4 + captureBonus; // Increased multiplier and added forward bonus
+    
+    // For hard difficulty: Check if this is a favorable capture (no loss or good trade)
+    if (difficulty === "hard" && lookAhead) {
+      const opponentPlayer = opponent(move.player);
+      const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
+      
+      // Check if opponent can capture our piece after we capture theirs
+      let weLosePiece = false;
+      let lostPieceValue = 0;
+      
+      for (const oppMove of opponentMoves) {
+        const oppOutcome = RuleEngine.applyMove(outcome.nextState, oppMove);
+        if (oppOutcome.capture) {
+          // Check if they captured the piece we just moved
+          const movedPieceAfter = outcome.nextState.board[move.to.row]?.[move.to.col];
+          if (movedPieceAfter && oppOutcome.capture.id === movedPieceAfter.id) {
+            weLosePiece = true;
+            lostPieceValue = pieceValue(movedPieceAfter.type);
+            break;
+          }
+          // Check if they captured any other valuable piece
+          const capturedPiece = outcome.nextState.board[oppMove.to.row]?.[oppMove.to.col];
+          if (capturedPiece && capturedPiece.owner === move.player) {
+            const lostVal = pieceValue(capturedPiece.type);
+            if (lostVal > lostPieceValue) {
+              weLosePiece = true;
+              lostPieceValue = lostVal;
+            }
+          }
+        }
+      }
+      
+      if (!weLosePiece) {
+        // FAVORABLE CAPTURE: We capture without losing anything - HUGE bonus!
+        score += difficulty === "hard" ? 5000 : 3000;
+        console.log(`[bot] ✅ FAVORABLE CAPTURE: Capturing ${outcome.capture.type} without losing anything!`);
+      } else if (capturedValue > lostPieceValue) {
+        // GOOD TRADE: We capture more valuable piece - bonus proportional to difference
+        const tradeValue = capturedValue - lostPieceValue;
+        score += difficulty === "hard" ? tradeValue * 100 : tradeValue * 50;
+        console.log(`[bot] ✅ GOOD TRADE: Capturing ${outcome.capture.type} (${capturedValue}) for ${lostPieceValue} - net gain: ${tradeValue}`);
+      } else if (capturedValue < lostPieceValue) {
+        // BAD TRADE: We lose more valuable piece - heavy penalty
+        const tradeLoss = lostPieceValue - capturedValue;
+        score -= difficulty === "hard" ? tradeLoss * 200 : tradeLoss * 100;
+        console.log(`[bot] ❌ BAD TRADE: Capturing ${outcome.capture.type} (${capturedValue}) but losing ${lostPieceValue} - net loss: ${tradeLoss}`);
+      }
+      
+      // CRITICAL: If capture allows opponent to score, it's VERY bad
+      for (const oppMove of opponentMoves) {
+        const oppOutcome = RuleEngine.applyMove(outcome.nextState, oppMove);
+        if (oppOutcome.goal?.scoringPlayer === opponentPlayer) {
+          score -= difficulty === "hard" ? 40000 : 20000; // Massive penalty
+          console.log(`[bot] 🚨 CRITICAL: Capture allows opponent to score!`);
+          break;
+        }
+      }
+    }
   }
 
   // Progress towards goal (MUCH more important for forwards)
@@ -575,16 +633,42 @@ const rateMove = (
     
     if (canOpponentScoreBefore && !canOpponentScoreAfter) {
       // This move blocks an immediate goal threat - EXTREMELY valuable!
-      score += difficulty === "hard" ? 50000 : difficulty === "medium" ? 30000 : 20000;
+      score += difficulty === "hard" ? 60000 : difficulty === "medium" ? 30000 : 20000;
+      console.log(`[bot] 🛡️ BLOCKING IMMEDIATE GOAL THREAT! Massive bonus!`);
     } else if (canOpponentScoreBefore && canOpponentScoreAfter) {
       // This move doesn't block the threat - VERY bad unless we also score
       if (!goal) {
-        score -= difficulty === "hard" ? 50000 : difficulty === "medium" ? 30000 : 20000;
+        score -= difficulty === "hard" ? 60000 : difficulty === "medium" ? 30000 : 20000;
+        console.log(`[bot] 🚨 FAILED TO BLOCK GOAL THREAT! Massive penalty!`);
       }
     } else if (!canOpponentScoreBefore && canOpponentScoreAfter) {
       // This move creates a goal threat for opponent - VERY bad
       if (!goal) {
-        score -= difficulty === "hard" ? 30000 : difficulty === "medium" ? 20000 : 10000;
+        score -= difficulty === "hard" ? 50000 : difficulty === "medium" ? 20000 : 10000;
+        console.log(`[bot] 🚨 CREATED GOAL THREAT FOR OPPONENT! Massive penalty!`);
+      }
+    }
+    
+    // For hard difficulty: Also check if this move allows opponent to score in 2 moves
+    // This helps prevent moves that create dangerous situations
+    if (difficulty === "hard" && lookAhead && !goal && !canOpponentScoreAfter) {
+      const opponentPlayer = opponent(move.player);
+      const opponentMoves = RuleEngine.getLegalMoves(outcome.nextState, opponentPlayer);
+      
+      // Check if any opponent move creates a situation where they can score next
+      for (const oppMove of opponentMoves) {
+        try {
+          const oppOutcome = RuleEngine.applyMove(outcome.nextState, oppMove);
+          const canScoreAfterOppMove = canOpponentScoreNextMove(oppOutcome.nextState, move.player);
+          if (canScoreAfterOppMove) {
+            // This move allows opponent to set up a goal threat - penalize it
+            score -= 10000;
+            console.log(`[bot] ⚠️ Move allows opponent to set up goal threat in 2 moves`);
+            break;
+          }
+        } catch {
+          // Ignore invalid moves
+        }
       }
     }
     
@@ -644,14 +728,71 @@ const rateMove = (
     
     // Check if any forward can be captured by opponent
     for (const forward of ourForwards) {
-      const canBeCaptured = opponentMoves.some((oppMove) => 
-        oppMove.to.row === forward.row && oppMove.to.col === forward.col
-      );
+      // Check if opponent has a legal move that captures this forward
+      const canBeCaptured = opponentMoves.some((oppMove) => {
+        // Check if this move would capture the forward
+        try {
+          const oppOutcome = RuleEngine.applyMove(outcome.nextState, oppMove);
+          if (oppOutcome.capture) {
+            const forwardPiece = outcome.nextState.board[forward.row]?.[forward.col];
+            if (forwardPiece && oppOutcome.capture.id === forwardPiece.id) {
+              return true;
+            }
+          }
+        } catch {
+          // Ignore invalid moves
+        }
+        return false;
+      });
+      
       if (canBeCaptured && !goal) {
         // CRITICAL: Exposing a forward to capture is extremely bad
         // This penalty should be so high that it's almost never worth it
-        score -= difficulty === "hard" ? 10000 : difficulty === "medium" ? 7500 : 5000; // Massive penalty - should prevent this move
+        // For hard difficulty, this should be almost impossible to overcome
+        score -= difficulty === "hard" ? 50000 : difficulty === "medium" ? 7500 : 5000; // Massive penalty - should prevent this move
+        console.log(`[bot] 🚨 CRITICAL: Move exposes delantero at ${String.fromCharCode(65 + forward.col)}${forward.row + 1} to capture!`);
         // Note: This will be further checked in look-ahead, but this provides immediate feedback
+      }
+    }
+    
+    // For hard difficulty: Also check if moving this piece exposes OTHER pieces (not just forwards)
+    if (difficulty === "hard" && lookAhead && !goal) {
+      // Check if moving this piece leaves other valuable pieces exposed
+      const ourValuablePieces: Array<{ row: number; col: number; type: string; value: number }> = [];
+      for (let row = 0; row < BOARD_ROWS; row += 1) {
+        for (let col = 0; col < BOARD_COLS; col += 1) {
+          const cell = outcome.nextState.board[row]?.[col];
+          if (cell && cell.owner === move.player) {
+            const val = pieceValue(cell.type);
+            if (val >= 30) { // Mediocampista or more valuable
+              ourValuablePieces.push({ row, col, type: cell.type, value: val });
+            }
+          }
+        }
+      }
+      
+      // Check if any valuable piece can be captured
+      for (const piece of ourValuablePieces) {
+        const canBeCaptured = opponentMoves.some((oppMove) => {
+          try {
+            const oppOutcome = RuleEngine.applyMove(outcome.nextState, oppMove);
+            if (oppOutcome.capture) {
+              const pieceCell = outcome.nextState.board[piece.row]?.[piece.col];
+              if (pieceCell && oppOutcome.capture.id === pieceCell.id) {
+                return true;
+              }
+            }
+          } catch {
+            // Ignore invalid moves
+          }
+          return false;
+        });
+        
+        if (canBeCaptured) {
+          // Penalty proportional to piece value
+          score -= piece.value * 50;
+          console.log(`[bot] ⚠️ Move exposes ${piece.type} (value ${piece.value}) to capture`);
+        }
       }
     }
   }
@@ -1280,24 +1421,24 @@ export const executeBotTurnIfNeeded = async (
 
     console.log("[bot] Calling pickBotMove with state.turn:", currentState.turn, "botPlayer:", botPlayer);
     
-    // For hard and pro difficulty, ALWAYS use Gemini AI (no fallback to regular AI)
+    // Only PRO difficulty uses Gemini AI
+    // HARD difficulty uses enhanced traditional AI (no Gemini)
     let move: Move | null = null;
-    if (difficulty === "hard" || difficulty === "pro") {
+    if (difficulty === "pro") {
+      // PRO: Use Gemini AI exclusively
       const legalMoves = RuleEngine.getLegalMoves(currentState, botPlayer);
       if (legalMoves.length === 0) {
         console.log("[bot] No legal moves available");
         move = null;
       } else {
-        console.log(`[bot] Using Gemini AI Direct Move Selection for ${difficulty} difficulty`);
+        console.log(`[bot] Using Gemini AI Direct Move Selection for PRO difficulty`);
         
         try {
           // Get Gemini direct move selection - new approach where Gemini chooses move and explains reasoning
           console.log(`[bot] Calling getGeminiMoveDirect with ${legalMoves.length} legal moves`);
           console.log(`[bot] Current state turn: ${currentState.turn}, botPlayer: ${botPlayer}`);
           
-          const playingStyle: AIPlayingStyle | null = (difficulty === "hard" || difficulty === "pro")
-            ? (game.bot_style as AIPlayingStyle | null)
-            : null;
+          const playingStyle: AIPlayingStyle | null = game.bot_style as AIPlayingStyle | null;
           
           let geminiResult: { move: Move; reasoning: string } | null = null;
           try {
@@ -1305,7 +1446,7 @@ export const executeBotTurnIfNeeded = async (
               currentState,
               legalMoves,
               botPlayer,
-              difficulty === "pro", // Pass isPro flag for enhanced features
+              true, // isPro = true for PRO difficulty
               playingStyle,
             );
           } catch (error) {
@@ -1334,7 +1475,7 @@ export const executeBotTurnIfNeeded = async (
                 currentState,
                 legalMoves,
                 botPlayer,
-                difficulty === "pro",
+                true, // isPro = true
                 playingStyle,
               );
               if (retryResult) {
@@ -1345,35 +1486,39 @@ export const executeBotTurnIfNeeded = async (
                 console.log(`[bot] 🤖 Decision source: Gemini AI (direct move selection retry)`);
                 move = retryResult.move;
               } else {
-                // Last resort: pick first move if Gemini fails completely
-                console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Last Resort) 🔄🔄🔄`);
-                console.error(`[bot] ❌ Gemini failed to provide recommendation on retry, using first available move`);
-                const fallbackMoveText = `${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`;
-                console.error(`[bot] Using fallback move: ${fallbackMoveText}`);
-                console.error(`[bot] 🤖 Decision source: Fallback (first available move - Gemini failed)`);
-                move = legalMoves[0];
+                // Last resort: use enhanced traditional AI as fallback
+                console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK TO ENHANCED AI 🔄🔄🔄`);
+                console.error(`[bot] ❌ Gemini failed to provide recommendation on retry, using enhanced traditional AI`);
+                move = pickBotMove(currentState, botPlayer, "hard", undefined);
               }
             } catch (retryError) {
-              console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Exception on Retry) 🔄🔄🔄`);
+              console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK TO ENHANCED AI 🔄🔄🔄`);
               console.error(`[bot] ❌ Exception on retry:`, retryError);
-              const fallbackMoveText = `${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`;
-              console.error(`[bot] Using fallback move: ${fallbackMoveText}`);
-              console.error(`[bot] 🤖 Decision source: Fallback (first available move - exception on retry)`);
-              move = legalMoves[0];
+              move = pickBotMove(currentState, botPlayer, "hard", undefined);
             }
           }
         } catch (error) {
-          console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK (Exception) 🔄🔄🔄`);
-          console.error("[bot] Error using Gemini, using first available move as last resort:", error);
-          const fallbackMoveText = `${String.fromCharCode(65 + legalMoves[0].from.col)}${legalMoves[0].from.row + 1}→${String.fromCharCode(65 + legalMoves[0].to.col)}${legalMoves[0].to.row + 1}`;
-          console.error(`[bot] 🤖 Decision source: Fallback (first available move - exception)`);
-          // Last resort: use first move if Gemini completely fails
-          move = legalMoves[0];
+          console.error(`[bot] 🔄🔄🔄 MOVE DECISION: FALLBACK TO ENHANCED AI 🔄🔄🔄`);
+          console.error("[bot] Error using Gemini, falling back to enhanced traditional AI:", error);
+          move = pickBotMove(currentState, botPlayer, "hard", undefined);
         }
       }
     } else {
-      // For easy and medium, use regular AI (no Gemini, no learned patterns)
-      move = pickBotMove(currentState, botPlayer, difficulty, undefined);
+      // For easy, medium, and HARD: use enhanced traditional AI (no Gemini)
+      // HARD now uses the most advanced traditional AI algorithm
+      console.log(`[bot] Using Enhanced Traditional AI for ${difficulty} difficulty`);
+      
+      // For hard difficulty, try to load learned patterns if available
+      let learnedPatterns: Map<number, AttackPattern> | undefined = undefined;
+      if (difficulty === "hard") {
+        // Try to learn from opponent's goals (if any)
+        // This is a simplified version - in a full implementation, you'd load from DB
+        learnedPatterns = new Map();
+        // For now, we'll use the enhanced algorithm without learned patterns
+        // The enhanced algorithm is already very strong
+      }
+      
+      move = pickBotMove(currentState, botPlayer, difficulty, learnedPatterns);
     }
 
     if (!move) {
