@@ -119,7 +119,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError || null);
   const [isPending, startTransition] = useTransition();
-  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard">("hard");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard" | "pro">("hard");
   const [showDifficultySelector, setShowDifficultySelector] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
   const [selectedWinningScore, setSelectedWinningScore] = useState<1 | 2 | 3>(3);
@@ -324,7 +324,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  {(["easy", "medium", "hard"] as const).map((diff) => (
+                  {(["easy", "medium", "hard", "pro"] as const).map((diff) => (
                     <button
                       key={diff}
                       onClick={() => {
@@ -337,7 +337,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                           : "bg-sky-700/50 text-sky-200 hover:bg-sky-600/70"
                       }`}
                     >
-                      {diff === "easy" ? "🟢 Fácil" : diff === "medium" ? "🟡 Medio" : "🔴 Difícil"}
+                      {diff === "easy" ? "🟢 Fácil" : diff === "medium" ? "🟡 Medio" : diff === "hard" ? "🔴 Difícil" : "⭐ Pro"}
                     </button>
                   ))}
                 </div>
@@ -346,7 +346,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   disabled={botLoading || isPending || loading}
                   className="mt-2 rounded-full border-2 border-sky-300/50 bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-700/50 disabled:opacity-60"
                 >
-                  {botLoading ? "Invocando IA..." : `Crear partida vs IA (${selectedDifficulty === "easy" ? "Fácil" : selectedDifficulty === "medium" ? "Medio" : "Difícil"})`}
+                  {botLoading ? "Invocando IA..." : `Crear partida vs IA (${selectedDifficulty === "easy" ? "Fácil" : selectedDifficulty === "medium" ? "Medio" : selectedDifficulty === "hard" ? "Difícil" : "Pro"})`}
                 </button>
               </div>
             ) : (
@@ -614,7 +614,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                         ? "🟢 Fácil"
                         : game.bot_difficulty === "medium"
                           ? "🟡 Medio"
-                          : "🔴 Difícil"}
+                          : game.bot_difficulty === "hard"
+                            ? "🔴 Difícil"
+                            : "⭐ Pro"}
                     </span>
                   </p>
                 )}

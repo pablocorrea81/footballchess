@@ -6,6 +6,7 @@ import { createServerActionSupabaseClient } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { RuleEngine, type PlayerId } from "@/lib/ruleEngine";
 import {
+  type BotDifficulty,
   FOOTBALL_BOT_DEFAULT_DIFFICULTY,
   FOOTBALL_BOT_DEFAULT_NAME,
   executeBotTurnIfNeeded,
@@ -87,7 +88,7 @@ export async function createGameAction(
 
 export async function createBotGameAction(
   profileId: string,
-  difficulty: "easy" | "medium" | "hard" = FOOTBALL_BOT_DEFAULT_DIFFICULTY,
+  difficulty: BotDifficulty = FOOTBALL_BOT_DEFAULT_DIFFICULTY,
 ) {
   const supabase = createServerActionSupabaseClient();
 

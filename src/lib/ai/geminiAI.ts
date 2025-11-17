@@ -418,6 +418,7 @@ export const getGeminiRecommendation = async (
   state: GameState,
   moves: Move[],
   botPlayer: PlayerId,
+  isPro: boolean = false, // Pro level gets enhanced features
 ): Promise<Move | null> => {
   // Initialize lazily when first needed (ensures env vars are loaded in Vercel)
   initializeGemini();
@@ -941,14 +942,60 @@ export const getGeminiRecommendation = async (
       return goalMove;
     }
     
+    // CRITICAL: Check if we have captures in goal columns BEFORE blocking
+    // Captures remove threats permanently, while blocking only delays them
+    const capturesInGoalColumns = forwardCaptures
+      .concat(midfielderCaptures)
+      .filter(idx => {
+        const move = moves[idx];
+        return [3, 4].includes(move.to.col); // Goal columns D-E
+      });
+    
+    if (capturesInGoalColumns.length > 0 && !opponentCanScoreNow) {
+      // If opponent can't score immediately, capturing is better than blocking
+      const captureMove = moves[capturesInGoalColumns[0]];
+      const moveText = moveToText(captureMove);
+      const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
+      const pieceType = targetPiece?.type === "delantero" ? "F" :
+                       targetPiece?.type === "mediocampista" ? "M" : "C";
+      console.log(`[Gemini] ⚔️ DECISION: Found capture in goal column - ${moveText}`);
+      console.log(`[Gemini] Reason: Capturing ${pieceType} in goal column removes threat permanently (better than blocking)!`);
+      const safeCaptureMove = captureMove.player === botPlayer ? captureMove : { ...captureMove, player: botPlayer };
+      return safeCaptureMove;
+    }
+    
+    // If opponent can score immediately, blocking takes priority
+    if (blockingMoves.length > 0 && opponentCanScoreNow) {
+      const blockMove = moves[blockingMoves[0]];
+      const moveText = moveToText(blockMove);
+      console.log(`[Gemini] 🛡️ DECISION: Found blocking move - ${moveText}`);
+      console.log(`[Gemini] Reason: MUST block opponent threat - opponent can score next turn! ${opponentThreats.length} threat(s) detected`);
+      console.log(`[Gemini] ⚠️ CRITICAL: Opponent can score next turn if not blocked!`);
+      // Ensure the move has the correct player field
+      const safeBlockMove = blockMove.player === botPlayer ? blockMove : { ...blockMove, player: botPlayer };
+      return safeBlockMove;
+    }
+    
+    // If we have captures (even not in goal columns) and no immediate goal threat, prioritize them
+    if ((forwardCaptures.length > 0 || midfielderCaptures.length > 0) && !opponentCanScoreNow) {
+      const captureIdx = forwardCaptures.length > 0 ? forwardCaptures[0] : midfielderCaptures[0];
+      const captureMove = moves[captureIdx];
+      const moveText = moveToText(captureMove);
+      const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
+      const pieceType = targetPiece?.type === "delantero" ? "F" :
+                       targetPiece?.type === "mediocampista" ? "M" : "C";
+      console.log(`[Gemini] ⚔️ DECISION: Found capture move - ${moveText}`);
+      console.log(`[Gemini] Reason: Capturing ${pieceType} removes opponent's attacking piece - valuable!`);
+      const safeCaptureMove = captureMove.player === botPlayer ? captureMove : { ...captureMove, player: botPlayer };
+      return safeCaptureMove;
+    }
+    
+    // If blocking is the only option (no captures available)
     if (blockingMoves.length > 0) {
       const blockMove = moves[blockingMoves[0]];
       const moveText = moveToText(blockMove);
       console.log(`[Gemini] 🛡️ DECISION: Found blocking move - ${moveText}`);
-      console.log(`[Gemini] Reason: Must block opponent threat! ${opponentThreats.length} threat(s) detected`);
-      if (opponentCanScoreNow) {
-        console.log(`[Gemini] ⚠️ CRITICAL: Opponent can score next turn if not blocked!`);
-      }
+      console.log(`[Gemini] Reason: Must block opponent threat! ${opponentThreats.length} threat(s) detected (no captures available)`);
       // Ensure the move has the correct player field
       const safeBlockMove = blockMove.player === botPlayer ? blockMove : { ...blockMove, player: botPlayer };
       return safeBlockMove;
@@ -1030,17 +1077,26 @@ export const getGeminiRecommendation = async (
                          piece?.type === "carrilero" ? "C" : "D";
         const label = `${idx + 1}. ${moveToText(move)} (${pieceType})`;
         let extra = "";
-        if (immediateGoals.includes(originalIdx)) extra += " [GOAL!]";
-        else if (blockingMoves.includes(originalIdx)) extra += " [BLOCKS THREAT]";
+        if (immediateGoals.includes(originalIdx)) extra += " [GOAL!] 🎯";
         else if (forwardCaptures.includes(originalIdx)) {
-          // Check if capture is in goal column
+          // Check if capture is in goal column - prioritize these VERY highly
           const isGoalColCapture = [3, 4].includes(move.to.col);
-          extra += isGoalColCapture ? " [CAPTURE F in GOAL COL] ⚠️" : " [CAPTURE F]";
+          const targetPiece = state.board[move.to.row]?.[move.to.col];
+          const pieceType = targetPiece?.type === "delantero" ? "F" :
+                           targetPiece?.type === "mediocampista" ? "M" : "C";
+          extra += isGoalColCapture 
+            ? ` [⚔️⚔️ CRITICAL: CAPTURE ${pieceType} in GOAL COL! REMOVES THREAT!]` 
+            : ` [⚔️ CAPTURE ${pieceType} - REMOVES OPPONENT ATTACKING PIECE!]`;
         }
         else if (midfielderCaptures.includes(originalIdx)) {
           const isGoalColCapture = [3, 4].includes(move.to.col);
-          extra += isGoalColCapture ? " [CAPTURE M in GOAL COL] ⚠️" : " [CAPTURE M]";
+          const targetPiece = state.board[move.to.row]?.[move.to.col];
+          const pieceType = targetPiece?.type === "mediocampista" ? "M" : "C";
+          extra += isGoalColCapture 
+            ? ` [⚔️⚔️ CRITICAL: CAPTURE ${pieceType} in GOAL COL! REMOVES THREAT!]` 
+            : ` [⚔️ CAPTURE ${pieceType} - REMOVES OPPONENT PIECE]`;
         }
+        else if (blockingMoves.includes(originalIdx)) extra += " [BLOCKS THREAT]";
         else if (forwardAdvances.includes(originalIdx)) extra += " [F ADVANCE]";
         else if (midfielderAdvances.includes(originalIdx)) extra += " [M ADVANCE]";
         
@@ -1089,15 +1145,17 @@ GAME RULES:
 
 STRATEGY PRIORITIES (in order):
 1. SCORE A GOAL NOW: If you can move C/M/F to opponent goal (⚽O), do it!
-2. BLOCK OPPONENT GOAL (CRITICAL): If opponent can score next turn OR has pieces advancing in goal columns (D-E), BLOCK THEM!
-   - Position pieces in the SAME column as attacking opponent pieces
-   - Capture opponent pieces that are in goal columns (D-E) near your goal
-   - Move defenders to intercept the path between opponent pieces and your goal
-3. CAPTURE OPPONENT PIECES IN GOAL COLUMNS: If opponent has F/M/C in columns D or E, capture them immediately!
-4. CAPTURE OPPONENT DELANTERO (F): Remove their best attacking piece
-5. COORDINATE ATTACKS: When you have attacking advantage, coordinate multiple pieces (F+M, F+C) for stronger threats
-6. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal, but protect them!
-7. CAPTURE VALUABLE PIECES: Capture opponent C/M pieces elsewhere
+2. CAPTURE OPPONENT PIECES IN GOAL COLUMNS (CRITICAL!): If opponent has ANY piece (F/M/C) in columns D or E near your goal, CAPTURE IT IMMEDIATELY! This is often MORE IMPORTANT than blocking!
+   - Capturing a piece removes the threat permanently
+   - Blocking only delays the threat - the piece can still attack later
+   - If you can capture AND block, capture is usually better!
+3. BLOCK OPPONENT GOAL (CRITICAL): If opponent can score NEXT TURN (immediate threat), BLOCK THEM!
+   - Only if capture is not available
+   - Position pieces to prevent immediate goal
+4. CAPTURE OPPONENT DELANTERO (F) ANYWHERE: Remove their best attacking piece - always valuable!
+5. CAPTURE OPPONENT PIECES: Capture opponent C/M pieces - removes their attacking options
+6. COORDINATE ATTACKS: When you have attacking advantage, coordinate multiple pieces (F+M, F+C) for stronger threats
+7. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal, but protect them!
 8. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal - they're versatile attackers
 9. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal - support your forwards
 10. CONTROL CENTER: Maintain control of columns C-F (central control helps both attack and defense)
@@ -1148,8 +1206,11 @@ RISK EVALUATION - IMPORTANT:
 - When evaluating risky moves, consider: "Is this the ONLY way to prevent a goal or gain critical advantage?"
 
 REMEMBER:
-- Moves marked [BLOCKS THREAT] or [BLOCKS D/E] are HIGH PRIORITY
-- Moves marked [CAPTURE F/M in GOAL COL] are CRITICAL - capture pieces in goal columns!
+- Moves marked [⚔️⚔️ CRITICAL: CAPTURE in GOAL COL] are HIGHEST PRIORITY - capture removes threat permanently!
+- Moves marked [⚔️ CAPTURE] are VERY HIGH PRIORITY - removing opponent pieces is often better than blocking!
+- Moves marked [BLOCKS THREAT] are important, but capturing the threatening piece is usually better!
+- CRITICAL INSIGHT: Capturing removes the piece forever - blocking only delays it!
+- If opponent has a piece in goal columns D-E, CAPTURE IT if possible before blocking!
 - Don't let opponent pieces advance unchecked in columns D or E toward your goal
 - If opponent just scored, prevent the SAME pattern from happening again!
 - PROTECT YOUR DELANTEROS - Never expose them to capture!
@@ -1173,10 +1234,13 @@ Think carefully: Which move best follows the priorities above?
 Consider not just this move, but how it sets up future moves and coordinates with your other pieces.
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
 
+    // Pro level: Higher temperature for more creative/strategic play
+    const temperature = isPro ? 0.4 : 0.1;
+    
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: 0.1, // Low temperature for more deterministic responses
+        temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
         maxOutputTokens: 10, // Only need a number
       },
     });

@@ -12,7 +12,7 @@ import type { Database } from "@/lib/database.types";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 import { evaluateMoveWithGemini, getGeminiRecommendation } from "@/lib/ai/geminiAI";
 
-export type BotDifficulty = "easy" | "medium" | "hard";
+export type BotDifficulty = "easy" | "medium" | "hard" | "pro";
 
 export const FOOTBALL_BOT_DEFAULT_NAME = "FootballBot";
 export const FOOTBALL_BOT_DEFAULT_DIFFICULTY: BotDifficulty = "easy";
@@ -1256,15 +1256,15 @@ export const executeBotTurnIfNeeded = async (
 
     console.log("[bot] Calling pickBotMove with state.turn:", currentState.turn, "botPlayer:", botPlayer);
     
-    // For hard difficulty, ALWAYS use Gemini AI (no fallback to regular AI)
+    // For hard and pro difficulty, ALWAYS use Gemini AI (no fallback to regular AI)
     let move: Move | null = null;
-    if (difficulty === "hard") {
+    if (difficulty === "hard" || difficulty === "pro") {
       const legalMoves = RuleEngine.getLegalMoves(currentState, botPlayer);
       if (legalMoves.length === 0) {
         console.log("[bot] No legal moves available");
         move = null;
       } else {
-        console.log("[bot] Using Gemini AI exclusively for hard difficulty");
+        console.log(`[bot] Using Gemini AI exclusively for ${difficulty} difficulty`);
         
         try {
           // Get Gemini recommendation - wait for it, no fallback
@@ -1277,6 +1277,7 @@ export const executeBotTurnIfNeeded = async (
               currentState,
               legalMoves,
               botPlayer,
+              difficulty === "pro", // Pass isPro flag for enhanced features
             );
           } catch (error) {
             console.error(`[bot] ❌ Exception calling getGeminiRecommendation:`, error);
