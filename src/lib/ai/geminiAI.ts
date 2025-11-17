@@ -61,10 +61,11 @@ const initializeGemini = (): void => {
       // Validate API key format (should start with AIza)
       if (apiKey.startsWith("AIza")) {
         genAI = new GoogleGenerativeAI(apiKey);
-        // Using gemini-2.5-flash-lite - high performance and low cost
-        // Ideal for high-volume tasks while maintaining good strategic reasoning
-        model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
-        console.log("[Gemini] ✅ Gemini AI initialized successfully with 2.5 Flash-Lite model (cost-optimized)");
+        // Using gemini-2.5-flash - better strategic reasoning than Flash-Lite
+        // Optimized for complex decision-making in games like Football Chess
+        // Slightly higher cost than Flash-Lite but significantly better decision quality
+        model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        console.log("[Gemini] ✅ Gemini AI initialized successfully with 2.5 Flash model (enhanced reasoning)");
         console.log(`[Gemini] API key: ${apiKey.substring(0, 10)}...${apiKey.substring(apiKey.length - 4)}`);
       } else {
         console.warn("[Gemini] ⚠️ Invalid Gemini API key format (should start with 'AIza')");
@@ -388,6 +389,7 @@ export const getGeminiRecommendation = async (
     const defensiveMoves: number[] = []; // Moves that use defensas
     const validDefensiveMoves: number[] = []; // Defensas that block or capture
     const riskyMoves: number[] = []; // Moves that expose our valuable pieces to capture
+    const movesAllowingGoal: number[] = []; // Moves that allow opponent to score a goal (CRITICAL RISK!)
     
     // First pass: Check if opponent can score on their next turn (before any move)
     const opponentCanScoreNow = (() => {
@@ -504,13 +506,44 @@ export const getGeminiRecommendation = async (
             return;
           }
           
+          // CRITICAL: For threats in goal columns (D/E) or very close (distance <= 2), 
+          // ANY defensive positioning in goal rows/columns should be considered blocking
+          const threatRow = threat.row;
+          const threatCol = threat.col;
+          const botGoalRow = botPlayer === "home" ? 11 : 0; // Home goal is row 11, Away goal is row 0
+          const ourRow = move.to.row;
+          const ourCol = move.to.col;
+          const ourDistance = botPlayer === "home" ? (11 - ourRow) : ourRow;
+          
+          // Determine if threat is very close to our goal area
+          // For "home" bot: threats near row 0-1 are close (opponent advancing from their side)
+          // For "away" bot: threats near row 10-11 are close (opponent advancing from their side)
+          const isThreatInGoalCol = [3, 4].includes(threatCol);
+          const isThreatVeryClose = (botPlayer === "home" && (threatRow <= 1 || threatRow >= 10)) ||
+                                    (botPlayer === "away" && (threatRow >= 10 || threatRow <= 1));
+          
+          // Defensive rows: rows near our goal where we want to position defenders
+          const defensiveRows = botPlayer === "home" ? [9, 10, 11] : [0, 1, 2];
+          
+          // Block if we move to goal columns (D/E) when threat is close
+          if ((isThreatInGoalCol || threat.canMoveToGoalColumn) && isThreatVeryClose) {
+            if ([3, 4].includes(ourCol) && (defensiveRows.includes(ourRow) || ourDistance <= 3)) {
+              preventsOpponentGoal = true;
+              blockingMoves.push(idx);
+              if (isDefensa) {
+                validDefensiveMoves.push(idx);
+              }
+              return;
+            }
+          }
+          
           // Check if we position ourselves to block (same column, between threat and goal)
           if (move.to.col === threat.col) {
-            const ourDistance = botPlayer === "home" ? move.to.row : (11 - move.to.row);
             const threatDistance = threat.distanceToGoal;
             
-            // We're positioned between the threat and the goal
-            if (ourDistance < threatDistance && ourDistance <= 3) {
+            // We're positioned between the threat and the goal OR very close to goal to intercept
+            if ((ourDistance < threatDistance && ourDistance <= 3) || 
+                (ourDistance <= 2 && threatDistance <= 2)) {
               preventsOpponentGoal = true;
               blockingMoves.push(idx);
               if (isDefensa) {
@@ -522,9 +555,8 @@ export const getGeminiRecommendation = async (
           
           // Check if we move to goal columns to block threat that can reach them
           if (threat.canMoveToGoalColumn && [3, 4].includes(move.to.col)) {
-            const ourDistance = botPlayer === "home" ? move.to.row : (11 - move.to.row);
-            // Position in goal column to intercept
-            if (ourDistance <= threat.distanceToGoal + 1 && ourDistance <= 4) {
+            // Position in goal column to intercept - more lenient for close threats
+            if (ourDistance <= Math.max(threat.distanceToGoal + 1, 3) && ourDistance <= 4) {
               preventsOpponentGoal = true;
               blockingMoves.push(idx);
               if (isDefensa) {
@@ -536,9 +568,47 @@ export const getGeminiRecommendation = async (
           
           // Check if we move adjacent to threat (can intercept from any column)
           if (Math.abs(move.to.col - threat.col) === 1) {
-            const ourDistance = botPlayer === "home" ? move.to.row : (11 - move.to.row);
-            // If threat is close and we're positioned to intercept
-            if (ourDistance <= threat.distanceToGoal + 1 && threat.distanceToGoal <= 4) {
+            // If threat is close (within 2 rows of goal), be more aggressive in blocking
+            if (threat.distanceToGoal <= 2 && ourDistance <= 3) {
+              preventsOpponentGoal = true;
+              blockingMoves.push(idx);
+              if (isDefensa) {
+                validDefensiveMoves.push(idx);
+              }
+              return;
+            } else if (ourDistance <= threat.distanceToGoal + 1 && threat.distanceToGoal <= 4) {
+              preventsOpponentGoal = true;
+              blockingMoves.push(idx);
+              if (isDefensa) {
+                validDefensiveMoves.push(idx);
+              }
+              return;
+            }
+          }
+          
+          // NEW: For threats in rows 10-11 (very close to opponent's goal area), 
+          // any move to defensive rows in same or adjacent columns should block
+          // Bot "away" has goal at row 0, so threats at row 10-11 are close
+          // Bot "home" has goal at row 11, so threats at row 0-1 are close
+          // (defensiveRows already defined above)
+          
+          if (isThreatVeryClose && defensiveRows.includes(ourRow)) {
+            const colDiff = Math.abs(ourCol - threatCol);
+            // Allow blocking in same column or adjacent columns
+            if (colDiff <= 1 && ourDistance <= 3) {
+              preventsOpponentGoal = true;
+              blockingMoves.push(idx);
+              if (isDefensa) {
+                validDefensiveMoves.push(idx);
+              }
+              return;
+            }
+          }
+          
+          // ADDITIONAL: For threats in goal columns D/E at rows 10-11, prioritize blocking even more
+          // If threat is in goal column and very close, ANY move to goal columns in defensive area should block
+          if (isThreatInGoalCol && isThreatVeryClose) {
+            if ([3, 4].includes(ourCol) && defensiveRows.includes(ourRow)) {
               preventsOpponentGoal = true;
               blockingMoves.push(idx);
               if (isDefensa) {
@@ -602,8 +672,9 @@ export const getGeminiRecommendation = async (
         }
       }
       
-      // Check if this move exposes our valuable pieces to capture
+      // Check if this move exposes our valuable pieces to capture OR allows opponent to score
       // CRITICAL: Detect if moving a piece exposes a delantero/mediocampista to capture
+      // ALSO CRITICAL: Detect if moving a piece allows opponent to score a goal
       // This includes the piece being moved itself, or any other valuable piece
       if (!outcome.capture && !preventsOpponentGoal) {
         // Ensure the nextState has the correct turn for opponent
@@ -612,8 +683,23 @@ export const getGeminiRecommendation = async (
           turn: opponent as PlayerId,
         };
         
-        // Check what opponent can do after our move
+        // FIRST: Check if opponent can score a goal after our move (CRITICAL RISK!)
+        let allowsOpponentGoal = false;
         const nextOppMoves = RuleEngine.getLegalMoves(oppStateForMoves, opponent);
+        for (const oppMove of nextOppMoves) {
+          const oppSimState: GameState = { ...oppStateForMoves, turn: opponent as PlayerId };
+          try {
+            const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+            if (oppOutcome.goal?.scoringPlayer === opponent) {
+              allowsOpponentGoal = true;
+              break;
+            }
+          } catch (e) {
+            // Invalid move, skip
+          }
+        }
+        
+        // Check what opponent can do after our move
         let exposesValuablePiece = false;
         let exposedPieceDetails: string | null = null;
         
@@ -649,9 +735,17 @@ export const getGeminiRecommendation = async (
           }
         }
         
-        if (exposesValuablePiece) {
-          riskyMoves.push(idx);
-          console.log(`[Gemini] ⚠️ Move ${idx + 1} (${moveToText(move)}) RISKY - Exposes ${exposedPieceDetails || "valuable piece"} to capture`);
+        // Mark as risky if it exposes a valuable piece OR allows opponent to score
+        if (exposesValuablePiece || allowsOpponentGoal) {
+          if (!riskyMoves.includes(idx)) {
+            riskyMoves.push(idx);
+          }
+          if (allowsOpponentGoal) {
+            movesAllowingGoal.push(idx);
+            console.log(`[Gemini] ⚠️⚠️ Move ${idx + 1} (${moveToText(move)}) CRITICAL RISK - Allows opponent to score a goal!`);
+          } else if (exposesValuablePiece) {
+            console.log(`[Gemini] ⚠️ Move ${idx + 1} (${moveToText(move)}) RISKY - Exposes ${exposedPieceDetails || "valuable piece"} to capture`);
+          }
         }
       }
       
@@ -757,9 +851,9 @@ export const getGeminiRecommendation = async (
       return safeBlockMove;
     }
     
-    // CRITICAL: Filter out risky moves that expose delanteros/mediocampistas to capture
-    // Unless the risky move is blocking a goal threat (defense takes priority)
-    // First, filter defensas that don't block or capture
+    // NEW APPROACH: Let Gemini analyze ALL moves, including risky ones
+    // Mark risky moves clearly in the prompt so Gemini can evaluate risk vs. reward
+    // Only filter out defensas that don't block or capture (they have special rules)
     const validMoves: Move[] = [];
     const validMoveIndices: number[] = []; // Keep track of original indices
     
@@ -768,80 +862,30 @@ export const getGeminiRecommendation = async (
       const piece = state.board[move.from.row]?.[move.from.col];
       if (!piece) continue;
       
-      // For defensas: only include if they block goals or capture
+      // For defensas: only include if they block goals or capture (special rule for defensas)
       if (piece.type === "defensa") {
         if (validDefensiveMoves.includes(idx)) {
           validMoves.push(move);
           validMoveIndices.push(idx);
         }
-        continue; // Skip defensas that don't block/capture
+        continue; // Skip defensas that don't block/capture (they have limited movement rules)
       }
       
-      // For all other pieces: include if not risky, or if risky but blocking a threat
-      if (riskyMoves.includes(idx)) {
-        // Only allow risky moves if they're blocking an immediate threat
-        if (blockingMoves.includes(idx)) {
-          console.log(`[Gemini] ⚠️ Move ${idx + 1} (${moveToText(move)}) is risky but blocks a threat - keeping it`);
-          validMoves.push(move);
-          validMoveIndices.push(idx);
-        } else {
-          // Filter out risky moves that expose pieces
-          const pieceType = piece.type === "delantero" ? "F" : 
-                           piece.type === "mediocampista" ? "M" : "C";
-          console.log(`[Gemini] 🚫 FILTERED OUT risky move ${idx + 1} (${moveToText(move)}) - Would expose ${pieceType} to capture`);
-          // Explicitly skip this move - don't add it to validMoves
-        }
-      } else {
-        // Not risky, include it
-        validMoves.push(move);
-        validMoveIndices.push(idx);
-      }
+      // For all other pieces: include ALL moves (risky or not) so Gemini can evaluate
+      validMoves.push(move);
+      validMoveIndices.push(idx);
     }
     
-    // Log how many risky moves were filtered
-    const filteredCount = moves.length - validMoves.length;
-    console.log(`[Gemini] 📊 Filtering Summary:`);
+    // Log risky moves detected (but we're not filtering them - Gemini will decide)
+    console.log(`[Gemini] 📊 Move Analysis Summary:`);
     console.log(`  - Total moves: ${moves.length}`);
-    console.log(`  - Risky moves detected: ${riskyMoves.length}`);
+    console.log(`  - Moves available for Gemini: ${validMoves.length}`);
+    console.log(`  - Risky moves detected: ${riskyMoves.length} (marked in prompt for Gemini's evaluation)`);
     console.log(`  - Blocking moves: ${blockingMoves.length}`);
-    console.log(`  - Moves after filtering: ${validMoves.length}`);
-    console.log(`  - Moves filtered out: ${filteredCount}`);
     
-    if (filteredCount > 0) {
-      console.log(`[Gemini] ✅ Successfully filtered out ${filteredCount} risky/invalid move(s) that would expose valuable pieces or are invalid defensas`);
-    } else if (riskyMoves.length > 0) {
-      console.log(`[Gemini] ⚠️ WARNING: ${riskyMoves.length} risky move(s) detected but none were filtered! This might indicate they all block threats.`);
-    }
-    
-    // If we have no safe moves at all, we have a problem
-    // But we should still prefer non-risky moves over risky ones
-    if (validMoves.length === 0) {
-      console.log(`[Gemini] ⚠️ WARNING: No valid moves after filtering!`);
-      console.log(`[Gemini] ⚠️ This means ALL moves are risky and none block threats.`);
-      console.log(`[Gemini] ⚠️ We'll use non-risky moves if available, otherwise we must choose the least risky option.`);
-      
-      // Try to find moves that are NOT risky (shouldn't happen if filtering worked, but just in case)
-      const nonRiskyMoves = moves.filter((move, idx) => !riskyMoves.includes(idx));
-      if (nonRiskyMoves.length > 0) {
-        console.log(`[Gemini] ⚠️ Found ${nonRiskyMoves.length} non-risky moves that weren't filtered - using those`);
-        validMoves.push(...nonRiskyMoves);
-        validMoveIndices.push(...moves.map((m, i) => i).filter(i => !riskyMoves.includes(i)));
-      } else {
-        console.log(`[Gemini] ⚠️ ALL moves are risky! This is a critical situation.`);
-        console.log(`[Gemini] ⚠️ We'll have to choose from risky moves, but we'll prioritize blocking moves.`);
-        // If all moves are risky, at least prioritize blocking moves
-        const riskyButBlocking = moves.filter((move, idx) => riskyMoves.includes(idx) && blockingMoves.includes(idx));
-        if (riskyButBlocking.length > 0) {
-          console.log(`[Gemini] ⚠️ Using ${riskyButBlocking.length} risky moves that at least block threats`);
-          validMoves.push(...riskyButBlocking);
-          validMoveIndices.push(...moves.map((m, i) => i).filter(i => riskyMoves.includes(i) && blockingMoves.includes(i)));
-        } else {
-          // Last resort: use all moves, but log a critical warning
-          console.log(`[Gemini] ⚠️ CRITICAL: All moves are risky and none block threats! Using all moves as absolute last resort.`);
-          validMoves.push(...moves);
-          validMoveIndices.push(...moves.map((_, i) => i));
-        }
-      }
+    if (riskyMoves.length > 0) {
+      console.log(`[Gemini] ℹ️ Note: ${riskyMoves.length} risky move(s) will be presented to Gemini with explicit warnings.`);
+      console.log(`[Gemini] ℹ️ Gemini will evaluate if the strategic benefit outweighs the risk.`);
     }
     
     const finalMovesToConsider = validMoves;
@@ -897,10 +941,25 @@ export const getGeminiRecommendation = async (
         else if (forwardAdvances.includes(originalIdx)) extra += " [F ADVANCE]";
         else if (midfielderAdvances.includes(originalIdx)) extra += " [M ADVANCE]";
         
-        // CRITICAL: Mark risky moves explicitly (these should already be filtered, but mark them just in case)
-        // Note: This should never happen because risky moves are filtered, but we mark them for safety
-        if (riskyMoves.includes(originalIdx) && !blockingMoves.includes(originalIdx)) {
-          extra += " [⚠️ RISKY - Exposes valuable piece! DO NOT SELECT unless no other option]";
+        // CRITICAL: Mark risky moves explicitly so Gemini can evaluate risk vs. reward
+        // Gemini will see these warnings and decide if the strategic benefit is worth the risk
+        if (riskyMoves.includes(originalIdx)) {
+          // Check if this risky move also blocks a threat (risk might be worth it)
+          if (blockingMoves.includes(originalIdx)) {
+            // Even if blocking, warn if it allows a goal
+            if (movesAllowingGoal.includes(originalIdx)) {
+              extra += " [⚠️⚠️ CRITICAL RISK - Allows opponent goal but blocks another threat! VERY DANGEROUS!]";
+            } else {
+              extra += " [⚠️ RISKY but BLOCKS THREAT - Evaluate: Does defensive benefit outweigh risk?]";
+            }
+          } else {
+            // Check if this move allows opponent to score (most critical risk!)
+            if (movesAllowingGoal.includes(originalIdx)) {
+              extra += " [⚠️⚠️ CRITICAL RISK - Allows opponent to score next turn! NEVER select unless no other option!]";
+            } else {
+              extra += " [⚠️ RISKY - Exposes valuable piece (F/M) to capture next turn! Only select if strategic benefit is critical]";
+            }
+          }
         }
         
         // Check if move blocks a threat
@@ -971,10 +1030,17 @@ ${currentThreatsList.length > 0 ? `\n⚠️ CURRENT THREATS ON BOARD:\nOpponent 
 AVAILABLE MOVES (choose the BEST strategic move):
 ${movesList}
 
-CRITICAL WARNINGS:
-- Moves marked [⚠️ RISKY] expose your valuable pieces (F/M) to capture - AVOID THESE unless absolutely necessary!
-- NEVER select a move that exposes your delantero (F) or mediocampista (M) to capture unless it blocks an immediate goal
-- If a move is marked [⚠️ RISKY], only select it if it also blocks a threat or scores a goal
+RISK EVALUATION - IMPORTANT:
+- Moves marked [⚠️ RISKY] expose your valuable pieces (F/M) to capture on opponent's next turn
+- Moves marked [⚠️⚠️ CRITICAL RISK] allow opponent to SCORE A GOAL on their next turn - AVOID THESE AT ALL COSTS!
+- You must ANALYZE each risky move carefully:
+  * CRITICAL: If a move allows opponent to score, it is EXTREMELY DANGEROUS - only select if absolutely no other option exists
+  * Does this risky move block an immediate goal threat? If yes, the risk may be worth it (but still dangerous).
+  * Does this risky move provide a critical strategic advantage (e.g., great position, blocks future threat)?
+  * Could you achieve the same goal with a non-risky move?
+- GENERAL RULE: Avoid risky moves UNLESS they block an immediate threat or provide exceptional strategic value
+- CRITICAL RULE: NEVER select a move that allows opponent to score unless it's the only available move!
+- When evaluating risky moves, consider: "Is this the ONLY way to prevent a goal or gain critical advantage?"
 
 REMEMBER:
 - Moves marked [BLOCKS THREAT] or [BLOCKS D/E] are HIGH PRIORITY
