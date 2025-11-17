@@ -783,6 +783,7 @@ export const getGeminiRecommendation = async (
           const pieceType = piece.type === "delantero" ? "F" : 
                            piece.type === "mediocampista" ? "M" : "C";
           console.log(`[Gemini] 🚫 FILTERED OUT risky move ${idx + 1} (${moveToText(move)}) - Would expose ${pieceType} to capture`);
+          // Explicitly skip this move - don't add it to validMoves
         }
       } else {
         // Not risky, include it
@@ -793,12 +794,24 @@ export const getGeminiRecommendation = async (
     
     // Log how many risky moves were filtered
     const filteredCount = moves.length - validMoves.length;
+    console.log(`[Gemini] 📊 Filtering Summary:`);
+    console.log(`  - Total moves: ${moves.length}`);
+    console.log(`  - Risky moves detected: ${riskyMoves.length}`);
+    console.log(`  - Blocking moves: ${blockingMoves.length}`);
+    console.log(`  - Moves after filtering: ${validMoves.length}`);
+    console.log(`  - Moves filtered out: ${filteredCount}`);
+    
     if (filteredCount > 0) {
-      console.log(`[Gemini] ⚠️ Filtered out ${filteredCount} risky/invalid move(s) that would expose valuable pieces or are invalid defensas`);
+      console.log(`[Gemini] ✅ Successfully filtered out ${filteredCount} risky/invalid move(s) that would expose valuable pieces or are invalid defensas`);
+    } else if (riskyMoves.length > 0) {
+      console.log(`[Gemini] ⚠️ WARNING: ${riskyMoves.length} risky move(s) detected but none were filtered! This might indicate they all block threats.`);
     }
     
     // If we have no safe moves at all (shouldn't happen), use all moves as last resort
     const finalMovesToConsider = validMoves.length > 0 ? validMoves : moves;
+    if (validMoves.length === 0) {
+      console.log(`[Gemini] ⚠️ WARNING: No valid moves after filtering! Using all moves as fallback (this should not happen)`);
+    }
     const movesToEvaluate = finalMovesToConsider.slice(0, 20); // More moves for better selection
     // Keep track of which original indices correspond to movesToEvaluate
     const evaluateIndices = validMoves.length > 0 
