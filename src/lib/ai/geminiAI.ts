@@ -240,6 +240,26 @@ DO NOT let opponent use the same pattern again!
   let piecesNearOpponentGoal = { bot: 0, opp: 0 };
   let piecesNearOwnGoal = { bot: 0, opp: 0 };
   
+  // PRO LEVEL: Advanced tactical analysis
+  let tacticalCombinations = {
+    doubleThreats: [] as Array<{ piece1: { row: number; col: number; type: string }, piece2: { row: number; col: number; type: string }, target: string }>,
+    coordinatedAttacks: [] as Array<{ pieces: Array<{ row: number; col: number; type: string }>, description: string }>,
+    tacticalSacrifices: [] as Array<{ sacrifice: string, gain: string }>,
+  };
+  
+  // PRO LEVEL: Repetition detection - check last 4 moves for patterns
+  const recentMoves: string[] = [];
+  if (state.history && state.history.length >= 2) {
+    for (let i = Math.max(0, state.history.length - 4); i < state.history.length; i++) {
+      const move = state.history[i];
+      if (move && move.from && move.to) {
+        const fromStr = `${String.fromCharCode(65 + move.from.col)}${move.from.row + 1}`;
+        const toStr = `${String.fromCharCode(65 + move.to.col)}${move.to.row + 1}`;
+        recentMoves.push(`${fromStr}→${toStr}`);
+      }
+    }
+  }
+  
   for (let row = 0; row < 12; row++) {
     for (let col = 0; col < 8; col++) {
       const piece = state.board[row]?.[col];
@@ -306,6 +326,8 @@ ${offensiveAdvantage > 0 ? "✅ You have attacking initiative - press the advant
 ${offensiveAdvantage < 0 ? "⚠️ Opponent has more pieces near your goal - focus on defense!" : ""}
 ${goalColumnControl < 0 ? "🚨 OPPONENT CONTROLS GOAL COLUMNS - THIS IS DANGEROUS! Block/capture immediately!" : ""}
 ${piecesNearOwnGoal.bot < 3 ? "⚠️ Your goal area is lightly defended - position defenders!" : ""}
+
+${recentMoves.length >= 4 ? `Recent moves pattern: ${recentMoves.slice(-4).join(", ")}` : ""}
 `;
 
   let description = `FOOTBALL CHESS GAME STATE
@@ -827,11 +849,25 @@ export const getGeminiRecommendation = async (
         
         for (const oppMove of oppMovesAfterCapture) {
           // Check if opponent can capture our piece at the capture location
-          if (oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
-            ourPieceExposed = true;
-            exposedPieceValue = ourPieceValue;
-            break;
+          // IMPORTANT: Only consider it exposed if there's actually an opponent piece that can capture
+          const oppPiece = oppStateAfterCapture.board[oppMove.from.row]?.[oppMove.from.col];
+          if (oppPiece && oppPiece.owner === opponent && 
+              oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
+            // Verify this move is actually legal and can capture
+            try {
+              const oppSimState: GameState = { ...oppStateAfterCapture, turn: opponent as PlayerId };
+              const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+              if (oppOutcome.capture && oppOutcome.capture.id === piece.id) {
+                // Our piece can actually be captured - it's exposed
+                ourPieceExposed = true;
+                exposedPieceValue = ourPieceValue;
+                break;
+              }
+            } catch (e) {
+              // Invalid move, skip
+            }
           }
+          
           // Also check if we expose any other valuable piece
           const oppSimState: GameState = { ...oppStateAfterCapture, turn: opponent as PlayerId };
           try {
@@ -1057,18 +1093,57 @@ export const getGeminiRecommendation = async (
       return goalMove;
     }
     
-    // CRITICAL: Check if we have captures in goal columns BEFORE blocking
+    // CRITICAL: Prioritize FAVORABLE captures in goal columns FIRST
     // Captures remove threats permanently, while blocking only delays them
+    const favorableCapturesInGoalColumns = valuableCaptures
+      .filter(idx => {
+        const move = moves[idx];
+        return [3, 4].includes(move.to.col) && !movesAllowingGoal.includes(idx); // Goal columns D-E and safe
+      });
+    
+    if (favorableCapturesInGoalColumns.length > 0 && !opponentCanScoreNow) {
+      // Sort by captured piece value
+      favorableCapturesInGoalColumns.sort((a, b) => {
+        const moveA = moves[a];
+        const moveB = moves[b];
+        const pieceA = state.board[moveA.to.row]?.[moveA.to.col];
+        const pieceB = state.board[moveB.to.row]?.[moveB.to.col];
+        if (!pieceA || !pieceB) return 0;
+        return getPieceValue(pieceA.type) - getPieceValue(pieceB.type);
+      });
+      
+      const bestCaptureIdx = favorableCapturesInGoalColumns[favorableCapturesInGoalColumns.length - 1];
+      const captureMove = moves[bestCaptureIdx];
+      const moveText = moveToText(captureMove);
+      const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
+      const pieceType = targetPiece?.type === "delantero" ? "F" :
+                       targetPiece?.type === "mediocampista" ? "M" : "C";
+      console.log(`[Gemini] ⚔️ DECISION: Found FAVORABLE capture in goal column - ${moveText}`);
+      console.log(`[Gemini] Reason: Capturing ${pieceType} in goal column (FAVORABLE - no loss)!`);
+      const safeCaptureMove = captureMove.player === botPlayer ? captureMove : { ...captureMove, player: botPlayer };
+      return safeCaptureMove;
+    }
+    
+    // If no favorable captures in goal columns, check all captures in goal columns
     const capturesInGoalColumns = forwardCaptures
       .concat(midfielderCaptures)
       .filter(idx => {
         const move = moves[idx];
-        return [3, 4].includes(move.to.col); // Goal columns D-E
+        return [3, 4].includes(move.to.col) && !movesAllowingGoal.includes(idx); // Goal columns D-E and safe
       });
     
     if (capturesInGoalColumns.length > 0 && !opponentCanScoreNow) {
-      // If opponent can't score immediately, capturing is better than blocking
-      const captureMove = moves[capturesInGoalColumns[0]];
+      // Sort by captured piece value
+      capturesInGoalColumns.sort((a, b) => {
+        const moveA = moves[a];
+        const moveB = moves[b];
+        const pieceA = state.board[moveA.to.row]?.[moveA.to.col];
+        const pieceB = state.board[moveB.to.row]?.[moveB.to.col];
+        if (!pieceA || !pieceB) return 0;
+        return getPieceValue(pieceA.type) - getPieceValue(pieceB.type);
+      });
+      
+      const captureMove = moves[capturesInGoalColumns[capturesInGoalColumns.length - 1]];
       const moveText = moveToText(captureMove);
       const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
       const pieceType = targetPiece?.type === "delantero" ? "F" :
@@ -1093,11 +1168,16 @@ export const getGeminiRecommendation = async (
     
     // CRITICAL: Prioritize favorable captures (no loss or favorable trade)
     // These are captures that don't expose our pieces OR we trade favorably
-    const favorableCaptures = valuableCaptures.filter(idx => !movesAllowingGoal.includes(idx));
+    // BUT: Exclude those already handled (goal column captures)
+    const favorableCapturesElsewhere = valuableCaptures.filter(
+      idx => !movesAllowingGoal.includes(idx) && 
+             !favorableCapturesInGoalColumns.includes(idx) &&
+             !capturesInGoalColumns.includes(idx)
+    );
     
-    if (favorableCaptures.length > 0 && !opponentCanScoreNow) {
+    if (favorableCapturesElsewhere.length > 0 && !opponentCanScoreNow) {
       // Sort by captured piece value (highest first)
-      favorableCaptures.sort((a, b) => {
+      favorableCapturesElsewhere.sort((a, b) => {
         const moveA = moves[a];
         const moveB = moves[b];
         const pieceA = state.board[moveA.to.row]?.[moveA.to.col];
@@ -1106,7 +1186,7 @@ export const getGeminiRecommendation = async (
         return getPieceValue(pieceA.type) - getPieceValue(pieceB.type);
       });
       
-      const bestCaptureIdx = favorableCaptures[favorableCaptures.length - 1]; // Highest value
+      const bestCaptureIdx = favorableCapturesElsewhere[favorableCapturesElsewhere.length - 1]; // Highest value
       const captureMove = moves[bestCaptureIdx];
       const moveText = moveToText(captureMove);
       const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
