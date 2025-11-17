@@ -1383,6 +1383,15 @@ export const getGeminiRecommendation = async (
         try {
           const simState: GameState = { ...state, turn: botPlayer };
           const moveOutcome = RuleEngine.applyMove(simState, move);
+          const moveText = moveToText(move);
+          
+          console.log(`[Gemini] 🔍 Analyzing delantero move ${idx + 1}: ${moveText}`);
+          
+          // Log if this is a capture
+          if (moveOutcome.capture) {
+            const capturedValue = getPieceValue(moveOutcome.capture.type);
+            console.log(`[Gemini]   📊 This move CAPTURES: ${moveOutcome.capture.type} (value: ${capturedValue})`);
+          }
           
           const oppStateAfterMove: GameState = {
             ...moveOutcome.nextState,
@@ -1390,41 +1399,113 @@ export const getGeminiRecommendation = async (
           };
           const nextOppMoves = RuleEngine.getLegalMoves(oppStateAfterMove, opponent);
           
+          console.log(`[Gemini]   🔍 Checking opponent's ${nextOppMoves.length} possible moves after this delantero move...`);
+          
           // Check if opponent can capture this delantero (especially by defensa - very bad!)
           let canBeCapturedByDefensa = false;
           let canBeCaptured = false;
+          let capturingPieceType: string | null = null;
+          let capturingPiecePosition: string | null = null;
           
           for (const oppMove of nextOppMoves) {
             if (oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
-              canBeCaptured = true;
-              // Check if capturing piece is a defensa (even worse!)
-              const oppPiece = oppStateAfterMove.board[oppMove.from.row]?.[oppMove.from.col];
-              if (oppPiece && oppPiece.type === "defensa" && oppPiece.owner === opponent) {
-                canBeCapturedByDefensa = true;
-                break;
+              // Verify this capture is actually legal
+              try {
+                const oppSimState: GameState = { ...oppStateAfterMove, turn: opponent as PlayerId };
+                const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+                
+                // Check if opponent actually captures our delantero at this position
+                const movedDelantero = moveOutcome.nextState.board[move.to.row]?.[move.to.col];
+                if (oppOutcome.capture && movedDelantero && 
+                    oppOutcome.capture.id === movedDelantero.id) {
+                  canBeCaptured = true;
+                  // Check what piece type is capturing
+                  const oppPiece = oppStateAfterMove.board[oppMove.from.row]?.[oppMove.from.col];
+                  if (oppPiece && oppPiece.owner === opponent) {
+                    capturingPieceType = oppPiece.type;
+                    const fromCol = String.fromCharCode(65 + oppMove.from.col);
+                    capturingPiecePosition = `${capturingPieceType} at ${fromCol}${oppMove.from.row + 1}`;
+                    if (oppPiece.type === "defensa") {
+                      canBeCapturedByDefensa = true;
+                      console.log(`[Gemini]   ⚠️⚠️ CRITICAL THREAT DETECTED: Defensa can capture this delantero!`);
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {
+                // Invalid move, skip
               }
             }
           }
           
           // If delantero can be captured by defensa, ALWAYS filter it out (too bad!)
           if (canBeCapturedByDefensa) {
-            console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveToText(move)}) - exposes delantero to defensa capture (TOO RISKY!)`);
+            console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveText})`);
+            console.log(`[Gemini]   ❌ REASON: Exposes delantero (value 100) to defensa capture - TOO RISKY!`);
+            console.log(`[Gemini]   📍 Capturing piece: ${capturingPiecePosition}`);
+            if (moveOutcome.capture) {
+              const capturedValue = getPieceValue(moveOutcome.capture.type);
+              console.log(`[Gemini]   💰 Trade value: -100 (delantero) + ${capturedValue} (${moveOutcome.capture.type}) = ${capturedValue - 100} (HORRIBLE TRADE!)`);
+            }
             continue;
           }
           
-          // If delantero can be captured AND we're not blocking a goal, filter it out unless it's a very favorable capture
+          // If delantero can be captured, filter it out unless:
+          // 1. It blocks a critical goal threat, OR
+          // 2. It's a very favorable capture (captures much more valuable piece)
           const preventsGoal = blockingMoves.includes(idx);
+          console.log(`[Gemini]   🛡️ Blocks goal threat: ${preventsGoal}`);
+          
           if (canBeCaptured && !preventsGoal) {
-            // Only allow if it's a favorable capture (capturing more valuable piece)
+            console.log(`[Gemini]   ⚠️ WARNING: Delantero can be captured by ${capturingPieceType || "opponent piece"}`);
+            console.log(`[Gemini]   📍 Capturing piece: ${capturingPiecePosition}`);
+            
+            // Check if it's a favorable capture
             const isFavorableCapture = valuableCaptures.includes(idx);
+            console.log(`[Gemini]   💰 Marked as favorable capture: ${isFavorableCapture}`);
+            
+            // Even if it's marked as favorable, if it exposes delantero to any capture, 
+            // we should be very cautious (delantero = 100 value)
+            // Only allow if capturing a delantero (value 100) or if captured value >> 100
             if (!isFavorableCapture) {
-              console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveToText(move)}) - exposes delantero to capture without sufficient compensation`);
+              console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveText})`);
+              console.log(`[Gemini]   ❌ REASON: Exposes delantero to ${capturingPieceType || "piece"} capture without sufficient compensation`);
+              if (moveOutcome.capture) {
+                const capturedValue = getPieceValue(moveOutcome.capture.type);
+                console.log(`[Gemini]   💰 Trade value: -100 (delantero) + ${capturedValue} (${moveOutcome.capture.type}) = ${capturedValue - 100} (BAD TRADE!)`);
+              }
               continue;
+            } else {
+              // Even if favorable, if capturing piece is not defensa but still captures, be cautious
+              // Check the captured piece value from the outcome
+              const capturedPiece = moveOutcome.capture;
+              if (capturedPiece) {
+                const capturedValue = getPieceValue(capturedPiece.type);
+                console.log(`[Gemini]   💰 Evaluating trade: Delantero (100) vs ${capturedPiece.type} (${capturedValue})`);
+                // Only allow if capturing a delantero (value 100) - otherwise too risky
+                if (capturedValue < 100) {
+                  console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveText})`);
+                  console.log(`[Gemini]   ❌ REASON: Exposes delantero (value 100) to capture for ${capturedPiece.type} (value ${capturedValue}) - NOT WORTH IT!`);
+                  console.log(`[Gemini]   💰 Trade value: -100 (delantero) + ${capturedValue} (${capturedPiece.type}) = ${capturedValue - 100} (UNFAVORABLE TRADE!)`);
+                  console.log(`[Gemini]   📊 Even though marked as "favorable", losing a delantero for a lower-value piece is too risky!`);
+                  continue;
+                } else {
+                  console.log(`[Gemini]   ✅ ALLOWED: Capturing delantero (100) with delantero (100) - acceptable trade`);
+                }
+              }
             }
+          } else if (canBeCaptured && preventsGoal) {
+            console.log(`[Gemini]   ⚠️ WARNING: Delantero can be captured BUT it blocks a critical goal threat - ALLOWING (defense is critical!)`);
+          } else if (!canBeCaptured) {
+            console.log(`[Gemini]   ✅ SAFE: Delantero move does not expose it to capture`);
+          }
+          
+          if (!canBeCapturedByDefensa && (!canBeCaptured || preventsGoal || (moveOutcome.capture && getPieceValue(moveOutcome.capture.type) >= 100))) {
+            console.log(`[Gemini]   ✅ ALLOWING delantero move ${idx + 1} (${moveText})`);
           }
         } catch (e) {
           // Invalid move, skip it
-          console.log(`[Gemini] ⚠️ Invalid move ${idx + 1} (${moveToText(move)}), skipping`);
+          console.log(`[Gemini] ⚠️ Invalid move ${idx + 1} (${moveToText(move)}), skipping: ${e instanceof Error ? e.message : String(e)}`);
           continue;
         }
       }
@@ -1686,7 +1767,65 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
                          piece?.type === "mediocampista" ? "M" :
                          piece?.type === "carrilero" ? "C" : "D";
         
+        console.log(`[Gemini] ========== GEMINI SELECTED MOVE ==========`);
         console.log(`[Gemini] ✅ SELECTED MOVE #${moveIndex + 1}: ${moveText} (${pieceType})`);
+        console.log(`[Gemini] 📍 From: ${String.fromCharCode(65 + selectedMove.from.col)}${selectedMove.from.row + 1}`);
+        console.log(`[Gemini] 📍 To: ${String.fromCharCode(65 + selectedMove.to.col)}${selectedMove.to.row + 1}`);
+        console.log(`[Gemini] 🎯 Original move index in full list: ${originalIdx + 1}`);
+        
+        // Check if this is a delantero move and log risks
+        if (piece?.type === "delantero") {
+          console.log(`[Gemini] ⚠️ ATTENTION: This is a DELANTERO move - checking for risks...`);
+          try {
+            const simState: GameState = { ...state, turn: botPlayer };
+            const moveOutcome = RuleEngine.applyMove(simState, selectedMove);
+            const oppStateAfterMove: GameState = {
+              ...moveOutcome.nextState,
+              turn: opponent as PlayerId,
+            };
+            const nextOppMoves = RuleEngine.getLegalMoves(oppStateAfterMove, opponent);
+            
+            let canBeCaptured = false;
+            let capturingPieceInfo: string | null = null;
+            
+            for (const oppMove of nextOppMoves) {
+              if (oppMove.to.row === selectedMove.to.row && oppMove.to.col === selectedMove.to.col) {
+                try {
+                  const oppSimState: GameState = { ...oppStateAfterMove, turn: opponent as PlayerId };
+                  const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+                  const movedDelantero = moveOutcome.nextState.board[selectedMove.to.row]?.[selectedMove.to.col];
+                  if (oppOutcome.capture && movedDelantero && 
+                      oppOutcome.capture.id === movedDelantero.id) {
+                    canBeCaptured = true;
+                    const oppPiece = oppStateAfterMove.board[oppMove.from.row]?.[oppMove.from.col];
+                    if (oppPiece && oppPiece.owner === opponent) {
+                      const fromCol = String.fromCharCode(65 + oppMove.from.col);
+                      capturingPieceInfo = `${oppPiece.type} at ${fromCol}${oppMove.from.row + 1}`;
+                      break;
+                    }
+                  }
+                } catch (e) {
+                  // Invalid move, skip
+                }
+              }
+            }
+            
+            if (canBeCaptured) {
+              console.log(`[Gemini] ⚠️⚠️ WARNING: Selected delantero move exposes it to capture by ${capturingPieceInfo}!`);
+              if (moveOutcome.capture) {
+                const capturedValue = getPieceValue(moveOutcome.capture.type);
+                console.log(`[Gemini] ⚠️⚠️ Trade analysis: -100 (delantero) + ${capturedValue} (${moveOutcome.capture.type}) = ${capturedValue - 100}`);
+                if (capturedValue < 100) {
+                  console.log(`[Gemini] ⚠️⚠️ CRITICAL: This is an unfavorable trade! Gemini chose a risky move!`);
+                }
+              }
+            } else {
+              console.log(`[Gemini] ✅ Delantero move is safe - no immediate capture threat`);
+            }
+          } catch (e) {
+            console.log(`[Gemini] ⚠️ Could not verify delantero move safety: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
         
         // Detailed explanation of why this move was selected
         let reason = "";
