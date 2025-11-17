@@ -727,10 +727,14 @@ export const getGeminiRecommendation = async (
     }
     
     if (immediateGoals.length > 0) {
-      const goalMove = moves[immediateGoals[0]];
+      let goalMove = moves[immediateGoals[0]];
       const moveText = moveToText(goalMove);
       console.log(`[Gemini] ✅ DECISION: Found immediate goal move - ${moveText}`);
       console.log(`[Gemini] Reason: Can score immediately!`);
+      // Ensure the move has the correct player field
+      if (goalMove.player !== botPlayer) {
+        goalMove = { ...goalMove, player: botPlayer };
+      }
       return goalMove;
     }
     
@@ -742,7 +746,9 @@ export const getGeminiRecommendation = async (
       if (opponentCanScoreNow) {
         console.log(`[Gemini] ⚠️ CRITICAL: Opponent can score next turn if not blocked!`);
       }
-      return blockMove;
+      // Ensure the move has the correct player field
+      const safeBlockMove = blockMove.player === botPlayer ? blockMove : { ...blockMove, player: botPlayer };
+      return safeBlockMove;
     }
     
     // CRITICAL: Filter out risky moves that expose delanteros/mediocampistas to capture
@@ -955,7 +961,7 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
     if (moveMatch) {
       const moveIndex = parseInt(moveMatch[0], 10) - 1;
       if (moveIndex >= 0 && moveIndex < movesToEvaluate.length) {
-        const selectedMove = movesToEvaluate[moveIndex];
+        let selectedMove = movesToEvaluate[moveIndex];
         const moveText = moveToText(selectedMove);
         // Use evaluateIndices to get the original index from moves array
         const originalIdx = evaluateIndices[moveIndex];
@@ -1073,6 +1079,17 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
         
         console.log(`[Gemini] ==========================================`);
         
+        // CRITICAL: Ensure the move has the correct player field
+        // This should already be correct, but we verify it for safety
+        if (selectedMove.player !== botPlayer) {
+          console.warn(`[Gemini] ⚠️ WARNING: Selected move has incorrect player field! Fixing...`);
+          console.warn(`[Gemini] Move player: ${selectedMove.player}, Expected: ${botPlayer}`);
+          selectedMove = {
+            ...selectedMove,
+            player: botPlayer,
+          };
+        }
+        
         return selectedMove;
       } else {
         console.warn(`[Gemini] ❌ Move number out of range: ${moveIndex} (Available: 0-${movesToEvaluate.length - 1})`);
@@ -1084,29 +1101,34 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
     console.log(`[Gemini] ⚠️ Falling back to priority-based selection (Gemini response unparseable)`);
     console.log(`[Gemini] Fallback priorities: ${forwardCaptures.length > 0 ? `Forward captures (${forwardCaptures.length})` : ""} ${forwardAdvances.length > 0 ? `Forward advances (${forwardAdvances.length})` : ""}`);
     
+    // Helper function to ensure move has correct player field
+    const ensureCorrectPlayer = (move: Move): Move => {
+      return move.player === botPlayer ? move : { ...move, player: botPlayer };
+    };
+    
     if (forwardCaptures.length > 0) {
-      const fallbackMove = moves[forwardCaptures[0]];
+      const fallbackMove = ensureCorrectPlayer(moves[forwardCaptures[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using forward capture - ${moveToText(fallbackMove)}`);
       return fallbackMove;
     }
     if (forwardAdvances.length > 0) {
-      const fallbackMove = moves[forwardAdvances[0]];
+      const fallbackMove = ensureCorrectPlayer(moves[forwardAdvances[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using forward advance - ${moveToText(fallbackMove)}`);
       return fallbackMove;
     }
     if (midfielderCaptures.length > 0) {
-      const fallbackMove = moves[midfielderCaptures[0]];
+      const fallbackMove = ensureCorrectPlayer(moves[midfielderCaptures[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using midfielder capture - ${moveToText(fallbackMove)}`);
       return fallbackMove;
     }
     if (midfielderAdvances.length > 0) {
-      const fallbackMove = moves[midfielderAdvances[0]];
+      const fallbackMove = ensureCorrectPlayer(moves[midfielderAdvances[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using midfielder advance - ${moveToText(fallbackMove)}`);
       return fallbackMove;
     }
     // Only use defensas if they're valid (blocking/capturing)
     if (validDefensiveMoves.length > 0) {
-      const fallbackMove = moves[validDefensiveMoves[0]];
+      const fallbackMove = ensureCorrectPlayer(moves[validDefensiveMoves[0]]);
       console.log(`[Gemini] 🔄 FALLBACK: Using valid defensive move - ${moveToText(fallbackMove)}`);
       return fallbackMove;
     }
@@ -1116,12 +1138,12 @@ Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
       return piece && piece.type !== "defensa";
     });
     if (offensiveMoves.length > 0) {
-      const fallbackMove = offensiveMoves[0];
+      const fallbackMove = ensureCorrectPlayer(offensiveMoves[0]);
       console.log(`[Gemini] 🔄 FALLBACK: Using first offensive move - ${moveToText(fallbackMove)}`);
       return fallbackMove;
     }
     console.log(`[Gemini] 🔄 FALLBACK: Last resort - using first available move - ${moveToText(moves[0])}`);
-    return moves[0]; // Last resort
+    return ensureCorrectPlayer(moves[0]); // Last resort
   } catch (error) {
     console.error(`[Gemini] ❌ ERROR getting recommendation from Gemini:`);
     console.error(`[Gemini] Error type: ${error instanceof Error ? error.constructor.name : typeof error}`);
