@@ -456,11 +456,23 @@ export const getGeminiRecommendation = async (
     const botGoalRow = botPlayer === "home" ? 0 : 11;
     const opponentGoalRow = botPlayer === "home" ? 11 : 0;
     
+    // Helper function to get piece value (higher = more valuable)
+    const getPieceValue = (pieceType: string): number => {
+      switch (pieceType) {
+        case "delantero": return 100;
+        case "mediocampista": return 50;
+        case "carrilero": return 30;
+        case "defensa": return 10;
+        default: return 0;
+      }
+    };
+    
     // Analyze moves and categorize them
     const immediateGoals: number[] = [];
     const blockingMoves: number[] = [];
     const forwardCaptures: number[] = [];
     const midfielderCaptures: number[] = [];
+    const valuableCaptures: number[] = []; // Captures that are favorable (no loss or lose less valuable piece)
     const forwardAdvances: number[] = [];
     const midfielderAdvances: number[] = [];
     const defensiveMoves: number[] = []; // Moves that use defensas
@@ -496,13 +508,17 @@ export const getGeminiRecommendation = async (
       distanceToGoal: number;
       isInGoalColumn: boolean;
       canMoveToGoalColumn: boolean;
+      canScoreImmediately?: boolean;
     }> = [];
     
     for (let row = 0; row < 12; row++) {
       for (let col = 0; col < 8; col++) {
         const piece = state.board[row]?.[col];
         if (piece && piece.owner === opponent && piece.type !== "defensa") {
-          const distanceToGoal = botPlayer === "home" ? row : (11 - row);
+          // Calculate distance to bot's goal correctly
+          // Bot "home" has goal at row 11, bot "away" has goal at row 0
+          const botGoalRow = botPlayer === "home" ? 11 : 0;
+          const distanceToGoal = Math.abs(row - botGoalRow);
           const piecePos = { row, col };
           const legalMoves = RuleEngine.getLegalMovesForPiece(state, piecePos);
           
@@ -512,14 +528,14 @@ export const getGeminiRecommendation = async (
           
           // Check if piece can move toward goal or to goal columns
           for (const moveTo of legalMoves) {
-            const newDistance = botPlayer === "home" ? moveTo.row : (11 - moveTo.row);
+            const newDistance = Math.abs(moveTo.row - botGoalRow);
             
-            // If moving in same column toward goal (advancing)
+            // If moving toward goal (closer to goal)
             if (moveTo.col === col && newDistance < distanceToGoal) {
               canReachGoal = true;
             }
             
-            // If can reach goal squares (row 0 or 11 in columns D-E)
+            // If can reach goal squares (row matching botGoalRow in columns D-E)
             if (newDistance === 0 && [3, 4].includes(moveTo.col)) {
               canReachGoal = true;
             }
@@ -530,11 +546,22 @@ export const getGeminiRecommendation = async (
             }
           }
           
+          // CRITICAL: Check if piece can score immediately (at goal row and in goal column)
+          const canScoreImmediately = row === botGoalRow && [3, 4].includes(col);
+          
+          // CRITICAL: Also check if piece is in goal column and VERY close (within 1-2 rows)
+          // This catches cases like E12 where the piece is almost at the goal
+          const isVeryCloseToGoal = [3, 4].includes(col) && distanceToGoal <= 2;
+          
           // Consider a threat if:
-          // 1. In goal column and within 6 rows of goal
-          // 2. Can move to goal column and within 5 rows of goal (delanteros can move long distances)
-          // 3. Advancing in same column toward goal (within 4 rows)
-          const isThreat = (isInGoalColumn && distanceToGoal <= 6) ||
+          // 1. Can score immediately (CRITICAL! - must block/capture NOW)
+          // 2. Very close to goal in goal column (within 2 rows - urgent!)
+          // 3. In goal column and within 6 rows of goal
+          // 4. Can move to goal column and within 5 rows of goal (delanteros can move long distances)
+          // 5. Advancing in same column toward goal (within 4 rows)
+          const isThreat = canScoreImmediately ||
+                          isVeryCloseToGoal ||
+                          (isInGoalColumn && distanceToGoal <= 6) ||
                           (canMoveToGoalColumn && distanceToGoal <= 5) ||
                           (canReachGoal && distanceToGoal <= 4);
           
@@ -547,6 +574,7 @@ export const getGeminiRecommendation = async (
               distanceToGoal,
               isInGoalColumn,
               canMoveToGoalColumn,
+              canScoreImmediately: canScoreImmediately || false,
             });
           }
         }
@@ -778,6 +806,91 @@ export const getGeminiRecommendation = async (
       
       // Check if this move exposes our valuable pieces to capture OR allows opponent to score
       // CRITICAL: Detect if moving a piece exposes a delantero/mediocampista to capture
+      // CRITICAL: For capture moves, evaluate if it's a favorable trade
+      // Should capture if:
+      // 1. No loss (our piece doesn't get exposed)
+      // 2. Or we lose a piece of lesser value
+      // BUT NOT if it allows opponent to score a goal
+      if (outcome.capture && !preventsOpponentGoal) {
+        const capturedPieceValue = getPieceValue(outcome.capture.type);
+        const ourPieceType = piece.type;
+        const ourPieceValue = getPieceValue(ourPieceType);
+        
+        // Check if our piece becomes exposed after the capture
+        const oppStateAfterCapture: GameState = {
+          ...outcome.nextState,
+          turn: opponent as PlayerId,
+        };
+        const oppMovesAfterCapture = RuleEngine.getLegalMoves(oppStateAfterCapture, opponent);
+        let ourPieceExposed = false;
+        let exposedPieceValue = 0;
+        
+        for (const oppMove of oppMovesAfterCapture) {
+          // Check if opponent can capture our piece at the capture location
+          if (oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
+            ourPieceExposed = true;
+            exposedPieceValue = ourPieceValue;
+            break;
+          }
+          // Also check if we expose any other valuable piece
+          const oppSimState: GameState = { ...oppStateAfterCapture, turn: opponent as PlayerId };
+          try {
+            const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+            if (oppOutcome.capture && oppOutcome.capture.owner === botPlayer) {
+              const exposedPieceType = oppOutcome.capture.type;
+              const value = getPieceValue(exposedPieceType);
+              if (value > exposedPieceValue) {
+                ourPieceExposed = true;
+                exposedPieceValue = value;
+              }
+            }
+          } catch (e) {
+            // Invalid move, skip
+          }
+        }
+        
+        // Check if this capture allows opponent to score (CRITICAL - should NOT capture!)
+        let allowsGoalAfterCapture = false;
+        for (const oppMove of oppMovesAfterCapture) {
+          const oppSimState: GameState = { ...oppStateAfterCapture, turn: opponent as PlayerId };
+          try {
+            const oppOutcome = RuleEngine.applyMove(oppSimState, oppMove);
+            if (oppOutcome.goal?.scoringPlayer === opponent) {
+              allowsGoalAfterCapture = true;
+              break;
+            }
+          } catch (e) {
+            // Invalid move, skip
+          }
+        }
+        
+        // If allows goal, mark as critical risk (should NOT do this capture!)
+        if (allowsGoalAfterCapture) {
+          if (!movesAllowingGoal.includes(idx)) {
+            movesAllowingGoal.push(idx);
+          }
+          console.log(`[Gemini] ⚠️⚠️ Capture ${idx + 1} (${moveToText(move)}) CRITICAL RISK - Allows opponent to score a goal after capture!`);
+        } else if (!ourPieceExposed) {
+          // Favorable capture: we capture without losing anything
+          if (!valuableCaptures.includes(idx)) {
+            valuableCaptures.push(idx);
+          }
+          console.log(`[Gemini] ✅ Capture ${idx + 1} (${moveToText(move)}) FAVORABLE - Capturing ${outcome.capture.type} without losing any piece`);
+        } else if (capturedPieceValue > exposedPieceValue) {
+          // Favorable trade: we capture more valuable piece than we lose
+          if (!valuableCaptures.includes(idx)) {
+            valuableCaptures.push(idx);
+          }
+          console.log(`[Gemini] ✅ Capture ${idx + 1} (${moveToText(move)}) FAVORABLE TRADE - Capturing ${outcome.capture.type} (value: ${capturedPieceValue}) vs losing value: ${exposedPieceValue}`);
+        } else if (capturedPieceValue === exposedPieceValue) {
+          // Even trade - still consider it but lower priority
+          console.log(`[Gemini] ⚖️ Capture ${idx + 1} (${moveToText(move)}) EVEN TRADE - Capturing ${outcome.capture.type} (value: ${capturedPieceValue}) vs losing same value`);
+        } else {
+          // Unfavorable trade - we lose more valuable piece
+          console.log(`[Gemini] ⚠️ Capture ${idx + 1} (${moveToText(move)}) UNFAVORABLE TRADE - Capturing ${outcome.capture.type} (value: ${capturedPieceValue}) but losing value: ${exposedPieceValue}`);
+        }
+      }
+      
       // ALSO CRITICAL: Detect if moving a piece allows opponent to score a goal
       // This includes the piece being moved itself, or any other valuable piece
       if (!outcome.capture && !preventsOpponentGoal) {
@@ -914,11 +1027,13 @@ export const getGeminiRecommendation = async (
     console.log(`  - Immediate goals: ${immediateGoals.length}`);
     console.log(`  - Blocking moves: ${blockingMoves.length}`);
     console.log(`  - Forward captures: ${forwardCaptures.length}`);
-    console.log(`  - Forward advances: ${forwardAdvances.length}`);
     console.log(`  - Midfielder captures: ${midfielderCaptures.length}`);
+    console.log(`  - Favorable captures (no loss or good trade): ${valuableCaptures.length}`);
+    console.log(`  - Forward advances: ${forwardAdvances.length}`);
     console.log(`  - Midfielder advances: ${midfielderAdvances.length}`);
     console.log(`  - Valid defensive moves: ${validDefensiveMoves.length}`);
     console.log(`  - Risky moves (expose pieces): ${riskyMoves.length}`);
+    console.log(`  - Moves allowing opponent goal: ${movesAllowingGoal.length}`);
     console.log(`  - Opponent threats detected: ${opponentThreats.length}`);
     if (opponentThreats.length > 0) {
       console.log(`  - Threat details:`);
@@ -976,9 +1091,51 @@ export const getGeminiRecommendation = async (
       return safeBlockMove;
     }
     
+    // CRITICAL: Prioritize favorable captures (no loss or favorable trade)
+    // These are captures that don't expose our pieces OR we trade favorably
+    const favorableCaptures = valuableCaptures.filter(idx => !movesAllowingGoal.includes(idx));
+    
+    if (favorableCaptures.length > 0 && !opponentCanScoreNow) {
+      // Sort by captured piece value (highest first)
+      favorableCaptures.sort((a, b) => {
+        const moveA = moves[a];
+        const moveB = moves[b];
+        const pieceA = state.board[moveA.to.row]?.[moveA.to.col];
+        const pieceB = state.board[moveB.to.row]?.[moveB.to.col];
+        if (!pieceA || !pieceB) return 0;
+        return getPieceValue(pieceA.type) - getPieceValue(pieceB.type);
+      });
+      
+      const bestCaptureIdx = favorableCaptures[favorableCaptures.length - 1]; // Highest value
+      const captureMove = moves[bestCaptureIdx];
+      const moveText = moveToText(captureMove);
+      const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
+      const pieceType = targetPiece?.type === "delantero" ? "F" :
+                       targetPiece?.type === "mediocampista" ? "M" : "C";
+      console.log(`[Gemini] ⚔️ DECISION: Found favorable capture move - ${moveText}`);
+      console.log(`[Gemini] Reason: Capturing ${pieceType} (FAVORABLE - no loss or favorable trade)!`);
+      const safeCaptureMove = captureMove.player === botPlayer ? captureMove : { ...captureMove, player: botPlayer };
+      return safeCaptureMove;
+    }
+    
     // If we have captures (even not in goal columns) and no immediate goal threat, prioritize them
-    if ((forwardCaptures.length > 0 || midfielderCaptures.length > 0) && !opponentCanScoreNow) {
-      const captureIdx = forwardCaptures.length > 0 ? forwardCaptures[0] : midfielderCaptures[0];
+    // But exclude captures that allow opponent to score
+    const safeCaptures = (forwardCaptures.concat(midfielderCaptures)).filter(
+      idx => !movesAllowingGoal.includes(idx)
+    );
+    
+    if (safeCaptures.length > 0 && !opponentCanScoreNow) {
+      // Sort by captured piece value
+      safeCaptures.sort((a, b) => {
+        const moveA = moves[a];
+        const moveB = moves[b];
+        const pieceA = state.board[moveA.to.row]?.[moveA.to.col];
+        const pieceB = state.board[moveB.to.row]?.[moveB.to.col];
+        if (!pieceA || !pieceB) return 0;
+        return getPieceValue(pieceA.type) - getPieceValue(pieceB.type);
+      });
+      
+      const captureIdx = safeCaptures[safeCaptures.length - 1]; // Highest value
       const captureMove = moves[captureIdx];
       const moveText = moveToText(captureMove);
       const targetPiece = state.board[captureMove.to.row]?.[captureMove.to.col];
@@ -1078,6 +1235,16 @@ export const getGeminiRecommendation = async (
         const label = `${idx + 1}. ${moveToText(move)} (${pieceType})`;
         let extra = "";
         if (immediateGoals.includes(originalIdx)) extra += " [GOAL!] 🎯";
+        else if (valuableCaptures.includes(originalIdx)) {
+          // Favorable capture - no loss or favorable trade
+          const isGoalColCapture = [3, 4].includes(move.to.col);
+          const targetPiece = state.board[move.to.row]?.[move.to.col];
+          const pieceType = targetPiece?.type === "delantero" ? "F" :
+                           targetPiece?.type === "mediocampista" ? "M" : "C";
+          extra += isGoalColCapture 
+            ? ` [✅⚔️ FAVORABLE CAPTURE ${pieceType} in GOAL COL! No loss or good trade!]` 
+            : ` [✅⚔️ FAVORABLE CAPTURE ${pieceType} - No loss or favorable trade!]`;
+        }
         else if (forwardCaptures.includes(originalIdx)) {
           // Check if capture is in goal column - prioritize these VERY highly
           const isGoalColCapture = [3, 4].includes(move.to.col);
@@ -1145,20 +1312,25 @@ GAME RULES:
 
 STRATEGY PRIORITIES (in order):
 1. SCORE A GOAL NOW: If you can move C/M/F to opponent goal (⚽O), do it!
-2. CAPTURE OPPONENT PIECES IN GOAL COLUMNS (CRITICAL!): If opponent has ANY piece (F/M/C) in columns D or E near your goal, CAPTURE IT IMMEDIATELY! This is often MORE IMPORTANT than blocking!
+2. FAVORABLE CAPTURES (HIGH PRIORITY!): Always capture if:
+   - You capture WITHOUT losing any piece, OR
+   - You capture a MORE VALUABLE piece than you lose
+   - Piece values: F (delantero) = 100, M (mediocampista) = 50, C (carrilero) = 30, D (defensa) = 10
+   - EXCEPTION: NEVER capture if it allows opponent to score a goal on their next turn!
+3. CAPTURE OPPONENT PIECES IN GOAL COLUMNS (CRITICAL!): If opponent has ANY piece (F/M/C) in columns D or E near your goal, CAPTURE IT IMMEDIATELY! This is often MORE IMPORTANT than blocking!
    - Capturing a piece removes the threat permanently
    - Blocking only delays the threat - the piece can still attack later
    - If you can capture AND block, capture is usually better!
-3. BLOCK OPPONENT GOAL (CRITICAL): If opponent can score NEXT TURN (immediate threat), BLOCK THEM!
+4. BLOCK OPPONENT GOAL (CRITICAL): If opponent can score NEXT TURN (immediate threat), BLOCK THEM!
    - Only if capture is not available
    - Position pieces to prevent immediate goal
-4. CAPTURE OPPONENT DELANTERO (F) ANYWHERE: Remove their best attacking piece - always valuable!
-5. CAPTURE OPPONENT PIECES: Capture opponent C/M pieces - removes their attacking options
-6. COORDINATE ATTACKS: When you have attacking advantage, coordinate multiple pieces (F+M, F+C) for stronger threats
-7. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal, but protect them!
-8. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal - they're versatile attackers
-9. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal - support your forwards
-10. CONTROL CENTER: Maintain control of columns C-F (central control helps both attack and defense)
+5. CAPTURE OPPONENT DELANTERO (F) ANYWHERE: Remove their best attacking piece - always valuable!
+6. CAPTURE OPPONENT PIECES: Capture opponent C/M pieces - removes their attacking options
+7. COORDINATE ATTACKS: When you have attacking advantage, coordinate multiple pieces (F+M, F+C) for stronger threats
+8. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal, but protect them!
+9. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal - they're versatile attackers
+10. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal - support your forwards
+11. CONTROL CENTER: Maintain control of columns C-F (central control helps both attack and defense)
 
 DEFENSE IS CRITICAL:
 - If opponent has pieces in columns D or E approaching your goal, you MUST block or capture
@@ -1206,8 +1378,12 @@ RISK EVALUATION - IMPORTANT:
 - When evaluating risky moves, consider: "Is this the ONLY way to prevent a goal or gain critical advantage?"
 
 REMEMBER:
-- Moves marked [⚔️⚔️ CRITICAL: CAPTURE in GOAL COL] are HIGHEST PRIORITY - capture removes threat permanently!
-- Moves marked [⚔️ CAPTURE] are VERY HIGH PRIORITY - removing opponent pieces is often better than blocking!
+- Moves marked [✅⚔️ FAVORABLE CAPTURE] are HIGHEST PRIORITY - you capture without losing anything or with favorable trade!
+- Moves marked [⚔️⚔️ CRITICAL: CAPTURE in GOAL COL] are VERY HIGH PRIORITY - capture removes threat permanently!
+- Moves marked [⚔️ CAPTURE] are HIGH PRIORITY - removing opponent pieces is often better than blocking!
+- CRITICAL RULE: ALWAYS capture if you don't lose a piece OR you trade favorably (capture > loss value)!
+- EXCEPTION: NEVER capture if it allows opponent to score a goal on their next turn!
+- Piece values: F=100, M=50, C=30, D=10 (always prefer capturing higher value pieces)
 - Moves marked [BLOCKS THREAT] are important, but capturing the threatening piece is usually better!
 - CRITICAL INSIGHT: Capturing removes the piece forever - blocking only delays it!
 - If opponent has a piece in goal columns D-E, CAPTURE IT if possible before blocking!
