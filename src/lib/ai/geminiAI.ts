@@ -1376,7 +1376,60 @@ export const getGeminiRecommendation = async (
         continue; // Skip defensas that don't block/capture (they have limited movement rules)
       }
       
-      // For all other pieces: include ALL moves (risky or not) so Gemini can evaluate
+      // CRITICAL: Filter out moves that expose delanteros to capture (especially by defensas)
+      // These are TOO risky and should be avoided completely
+      if (piece.type === "delantero") {
+        // Apply the move to check what happens
+        try {
+          const simState: GameState = { ...state, turn: botPlayer };
+          const moveOutcome = RuleEngine.applyMove(simState, move);
+          
+          const oppStateAfterMove: GameState = {
+            ...moveOutcome.nextState,
+            turn: opponent as PlayerId,
+          };
+          const nextOppMoves = RuleEngine.getLegalMoves(oppStateAfterMove, opponent);
+          
+          // Check if opponent can capture this delantero (especially by defensa - very bad!)
+          let canBeCapturedByDefensa = false;
+          let canBeCaptured = false;
+          
+          for (const oppMove of nextOppMoves) {
+            if (oppMove.to.row === move.to.row && oppMove.to.col === move.to.col) {
+              canBeCaptured = true;
+              // Check if capturing piece is a defensa (even worse!)
+              const oppPiece = oppStateAfterMove.board[oppMove.from.row]?.[oppMove.from.col];
+              if (oppPiece && oppPiece.type === "defensa" && oppPiece.owner === opponent) {
+                canBeCapturedByDefensa = true;
+                break;
+              }
+            }
+          }
+          
+          // If delantero can be captured by defensa, ALWAYS filter it out (too bad!)
+          if (canBeCapturedByDefensa) {
+            console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveToText(move)}) - exposes delantero to defensa capture (TOO RISKY!)`);
+            continue;
+          }
+          
+          // If delantero can be captured AND we're not blocking a goal, filter it out unless it's a very favorable capture
+          const preventsGoal = blockingMoves.includes(idx);
+          if (canBeCaptured && !preventsGoal) {
+            // Only allow if it's a favorable capture (capturing more valuable piece)
+            const isFavorableCapture = valuableCaptures.includes(idx);
+            if (!isFavorableCapture) {
+              console.log(`[Gemini] 🚫 FILTERED OUT: Delantero move ${idx + 1} (${moveToText(move)}) - exposes delantero to capture without sufficient compensation`);
+              continue;
+            }
+          }
+        } catch (e) {
+          // Invalid move, skip it
+          console.log(`[Gemini] ⚠️ Invalid move ${idx + 1} (${moveToText(move)}), skipping`);
+          continue;
+        }
+      }
+      
+      // For all other pieces: include moves (but risky ones are marked in prompt)
       validMoves.push(move);
       validMoveIndices.push(idx);
     }
@@ -1510,27 +1563,18 @@ GAME RULES:
 - Pieces: C=Carrilero, D=Defensa, M=Mediocampista, F=Delantero
 - Ownership: H=Home (You), A=Away (Opponent)
 
-STRATEGY PRIORITIES (in order):
-1. SCORE A GOAL NOW: If you can move C/M/F to opponent goal (⚽O), do it!
-2. FAVORABLE CAPTURES (HIGH PRIORITY!): Always capture if:
-   - You capture WITHOUT losing any piece, OR
-   - You capture a MORE VALUABLE piece than you lose
-   - Piece values: F (delantero) = 100, M (mediocampista) = 50, C (carrilero) = 30, D (defensa) = 10
-   - EXCEPTION: NEVER capture if it allows opponent to score a goal on their next turn!
-3. CAPTURE OPPONENT PIECES IN GOAL COLUMNS (CRITICAL!): If opponent has ANY piece (F/M/C) in columns D or E near your goal, CAPTURE IT IMMEDIATELY! This is often MORE IMPORTANT than blocking!
-   - Capturing a piece removes the threat permanently
-   - Blocking only delays the threat - the piece can still attack later
-   - If you can capture AND block, capture is usually better!
-4. BLOCK OPPONENT GOAL (CRITICAL): If opponent can score NEXT TURN (immediate threat), BLOCK THEM!
-   - Only if capture is not available
-   - Position pieces to prevent immediate goal
-5. CAPTURE OPPONENT DELANTERO (F) ANYWHERE: Remove their best attacking piece - always valuable!
-6. CAPTURE OPPONENT PIECES: Capture opponent C/M pieces - removes their attacking options
-7. COORDINATE ATTACKS: When you have attacking advantage, coordinate multiple pieces (F+M, F+C) for stronger threats
-8. ADVANCE YOUR DELANTEROS (F): Move your forwards (F) toward opponent goal, but protect them!
-9. ADVANCE MEDIOCAMPISTAS (M): Move midfielders toward opponent goal - they're versatile attackers
-10. ADVANCE CARRILEROS (C): Move carrileros toward opponent goal - support your forwards
-11. CONTROL CENTER: Maintain control of columns C-F (central control helps both attack and defense)
+STRATEGIC PRIORITIES:
+1. Score goals when possible
+2. Capture pieces when favorable (no loss or good trade)
+3. Block opponent goals when threatened
+4. Advance pieces toward opponent goal safely
+5. Control key positions (goal columns D-E, center columns)
+
+IMPORTANT PRINCIPLES:
+- Piece values: F=100, M=50, C=30, D=10 (use for evaluating trades)
+- Protect your valuable pieces (F/M) - never expose them to capture unless it's absolutely critical
+- Capturing removes threats permanently; blocking only delays them
+- Think ahead: consider what opponent can do after your move
 
 DEFENSE IS CRITICAL:
 - If opponent has pieces in columns D or E approaching your goal, you MUST block or capture
@@ -1577,37 +1621,30 @@ RISK EVALUATION - IMPORTANT:
 - CRITICAL RULE: NEVER select a move that allows opponent to score unless it's the only available move!
 - When evaluating risky moves, consider: "Is this the ONLY way to prevent a goal or gain critical advantage?"
 
-REMEMBER:
-- Moves marked [✅⚔️ FAVORABLE CAPTURE] are HIGHEST PRIORITY - you capture without losing anything or with favorable trade!
-- Moves marked [⚔️⚔️ CRITICAL: CAPTURE in GOAL COL] are VERY HIGH PRIORITY - capture removes threat permanently!
-- Moves marked [⚔️ CAPTURE] are HIGH PRIORITY - removing opponent pieces is often better than blocking!
-- CRITICAL RULE: ALWAYS capture if you don't lose a piece OR you trade favorably (capture > loss value)!
-- EXCEPTION: NEVER capture if it allows opponent to score a goal on their next turn!
-- Piece values: F=100, M=50, C=30, D=10 (always prefer capturing higher value pieces)
-- Moves marked [BLOCKS THREAT] are important, but capturing the threatening piece is usually better!
-- CRITICAL INSIGHT: Capturing removes the piece forever - blocking only delays it!
-- If opponent has a piece in goal columns D-E, CAPTURE IT if possible before blocking!
-- Don't let opponent pieces advance unchecked in columns D or E toward your goal
-- If opponent just scored, prevent the SAME pattern from happening again!
-- PROTECT YOUR DELANTEROS - Never expose them to capture!
+KEY MOVES TO CONSIDER:
+- [GOAL!] 🎯 = Can score immediately - highest priority
+- [✅⚔️ FAVORABLE CAPTURE] = Capture without losing anything or with good trade - very high priority
+- [⚔️⚔️ CRITICAL: CAPTURE in GOAL COL] = Capture in goal column - removes threat permanently
+- [⚔️ CAPTURE] = Capture opponent piece - generally good
+- [BLOCKS THREAT] = Blocks opponent from scoring - important for defense
+- [⚠️ RISKY] = Exposes your valuable piece - avoid unless critical
+- [⚠️⚠️ CRITICAL RISK] = Allows opponent to score - almost never select
 
-TACTICAL CONSIDERATIONS:
-- COORDINATION: Try to move pieces that work together (e.g., advance F and M together, or position C to support F)
-- PROGRESSIVE PLAY: Each move should either advance your attack OR improve your defense - avoid repetitive moves
-- PIECE ACTIVITY: Prefer moves that activate multiple pieces rather than moving the same piece repeatedly
-- CONTROL: Maintaining control of central columns (C-F) gives flexibility for both attack and defense
-- INITIATIVE: If you have more pieces near opponent goal, maintain pressure - don't retreat unnecessarily
+CRITICAL RULES:
+- NEVER expose delanteros (F) to capture unless absolutely necessary
+- NEVER select moves that allow opponent to score unless no other option
+- Always evaluate: "After this move, can opponent capture my valuable piece or score a goal?"
+- Favor moves that improve your position without weakening it
 
-DECISION FRAMEWORK:
-1. Check if you can score immediately - if yes, do it!
-2. Check if opponent can score - if yes, block it!
-3. If attacking advantage: press forward, coordinate pieces, create multiple threats
-4. If defensive position: consolidate, block threats, prepare counter-attack
-5. If material ahead: trade pieces to simplify (but keep your F/M)
-6. If material behind: avoid trades, play tactically, create complications
+DECISION PROCESS:
+1. Can I score? → Do it
+2. Can opponent score next turn? → Block it
+3. Can I capture safely (no loss or good trade)? → Consider it
+4. Can I advance safely without exposing pieces? → Consider it
+5. Does this move weaken my position? → Avoid it
 
-Think carefully: Which move best follows the priorities above?
-Consider not just this move, but how it sets up future moves and coordinates with your other pieces.
+Think strategically: Choose the move that improves your position while minimizing risk.
+Balance attack and defense based on the current game situation.
 ${isPro ? `\n🔥 PRO LEVEL - ADVANCED STRATEGY:\nYou are playing at the highest difficulty level. Apply these advanced concepts:\n- MULTI-TURN PLANNING: Consider 2-3 moves ahead - how does this move affect future positions?\n- COMBINATIONS: Look for sequences of moves that create multiple threats (double attacks)\n- PIECE COORDINATION: Position pieces to work together - support attacks with M/C while advancing F\n- PROPHYLACTIC MOVES: Anticipate opponent threats and prevent them BEFORE they become dangerous\n- TEMPO: Each move should improve your position - avoid moves that waste time or don't advance your plan\n- POSITIONAL ADVANTAGE: Control key squares, especially in columns D-E near opponent goal\n- ENDGAME AWARENESS: If score is tied or close, prioritize defense and safe play. If ahead, simplify. If behind, take calculated risks.\n- VARIANT EVALUATION: Consider multiple candidate moves and evaluate which leads to the best long-term position\nThink strategically about the entire game flow, not just the immediate move!\n` : ""}
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;

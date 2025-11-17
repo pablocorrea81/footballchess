@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { createRouteSupabaseClient } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { executeBotTurnIfNeeded } from "@/lib/ai/footballBot";
+import { executeBotTurnIfNeeded, getRandomPlayingStyle, type AIPlayingStyle } from "@/lib/ai/footballBot";
 import type { Database } from "@/lib/database.types";
 
 export async function POST(request: Request) {
@@ -159,6 +159,44 @@ export async function POST(request: Request) {
       
       console.log("[api/games/update] Bot game detected, preparing to execute bot turn for game:", gameId);
       console.log("[api/games/update] Updated game state - turn:", gameState?.turn, "score:", gameState?.score);
+      
+      // Check if a goal was scored by comparing scores
+      // If score increased, change AI playing style randomly (only for hard/pro difficulties)
+      const botDifficulty = updatedGame.bot_difficulty as string | null;
+      if (botDifficulty === "hard" || botDifficulty === "pro") {
+        // Get previous game state to compare scores
+        const { data: previousGameData } = await supabaseAdmin
+          .from("games")
+          .select("game_state, bot_style")
+          .eq("id", gameId)
+          .single();
+        
+        if (previousGameData) {
+          const previousGameRow = previousGameData as Database["public"]["Tables"]["games"]["Row"];
+          const previousGameState = (previousGameRow.game_state as unknown as { score?: { home: number; away: number } }) || {};
+          const previousScore = previousGameState.score || { home: 0, away: 0 };
+          const newScore = gameState?.score || { home: 0, away: 0 };
+          
+          // Check if score increased (a goal was scored)
+          const scoreIncreased = 
+            newScore.home > previousScore.home || 
+            newScore.away > previousScore.away;
+          
+          if (scoreIncreased) {
+            // Goal was scored! Change AI playing style randomly
+            const newStyle: AIPlayingStyle = getRandomPlayingStyle();
+            const previousStyle = previousGameRow.bot_style as string | null;
+            console.log(`[api/games/update] 🎯 Goal detected! Changing AI style from ${previousStyle || "none"} to ${newStyle}`);
+            
+            // Update bot_style in database
+            await (supabaseAdmin.from("games") as any)
+              .update({ bot_style: newStyle })
+              .eq("id", gameId);
+            
+            console.log(`[api/games/update] ✅ AI style updated to: ${newStyle}`);
+          }
+        }
+      }
       
       // Verify the update was successful by checking the turn
       // If the turn is now the bot's turn, execute the bot move
