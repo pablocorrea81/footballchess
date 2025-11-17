@@ -211,13 +211,39 @@ const gameStateToText = (state: GameState, botPlayer: PlayerId): string => {
     boardVisual += "\n";
   }
   
-  // Piece type legend
+  // Piece type legend with detailed movement rules
   const legend = `
-PIECE TYPES:
-- C = Carrilero (can move 1-2 squares horizontally/vertically, CAN SCORE)
-- D = Defensa (can move 1 square any direction, CANNOT SCORE)
-- M = Mediocampista (can move diagonally any distance, CAN SCORE)
-- F = Delantero/Forward (can move any direction any distance, CAN SCORE)
+PIECE TYPES AND MOVEMENT RULES:
+- C = Carrilero (Wing-back)
+  * Moves: 1-2 squares in straight lines ONLY (horizontal OR vertical, NOT diagonal)
+  * Path must be clear (cannot jump over pieces)
+  * CAN SCORE goals
+  
+- D = Defensa (Defender)
+  * Moves: Exactly 1 square in ANY direction (horizontal, vertical, or diagonal)
+  * CANNOT SCORE goals - avoid moving toward opponent goal unless blocking
+  * Best used for defense and blocking opponent attacks
+  
+- M = Mediocampista (Midfielder)
+  * Moves: Any distance diagonally ONLY (must move diagonally)
+  * Path must be clear (cannot jump over pieces)
+  * CAN SCORE goals
+  
+- F = Delantero/Forward (Striker)
+  * Moves: Any distance in straight lines OR diagonally (can choose either)
+  * Straight = horizontal OR vertical (not both at once)
+  * Diagonal = diagonal direction
+  * Path must be clear (cannot jump over pieces)
+  * CAN SCORE goals
+  * Your most valuable attacking piece - protect them!
+
+MOVEMENT RULES:
+- All pieces can CAPTURE opponent pieces by moving to their square
+- Pieces CANNOT jump over other pieces (path must be clear)
+- Pieces CANNOT capture their own pieces
+- Pieces CANNOT end their move in their own goal area
+- Only CARRILERO, MEDIOCAMPISTA, and DELANTERO can score goals
+- DEFENSAS cannot score - they can only block and capture
 
 OWNERS:
 - H = Home (Bot)
@@ -226,6 +252,7 @@ OWNERS:
 GOAL AREAS:
 - ⚽B = Your goal (row ${botGoalRow + 1}, columns D-E)
 - ⚽O = Opponent goal (row ${opponentGoalRow + 1}, columns D-E)
+- To score: Move a C, M, or F piece to opponent's goal area (⚽O)
 `;
 
   // Analyze last goal received to learn from it
@@ -434,12 +461,25 @@ ${positionEvaluation}
 ${lastGoalAnalysis}
 
 RULES REMINDER:
-1. Goal = Move a CARRILERO, MEDIOCAMPISTA, or DELANTERO to opponent's goal area (⚽O)
-2. DEFENSAS CANNOT score goals - avoid moving them toward opponent goal unless blocking
-3. DELANTEROS (F) are your best offensive pieces - advance them toward opponent goal
-4. Block opponent's DELANTEROS if they're near your goal
-5. Capture opponent pieces, especially DELANTEROS (F)
-${lastGoalAnalysis ? "6. ⚠️ WARNING: Opponent just scored - prevent the same pattern!" : ""}
+1. GOAL: Move a CARRILERO (C), MEDIOCAMPISTA (M), or DELANTERO (F) to opponent's goal area (⚽O at row ${opponentGoalRow + 1}, columns D-E)
+
+2. MOVEMENT RULES:
+   - CARRILERO (C): 1-2 squares straight (horizontal/vertical only, NOT diagonal), path must be clear
+   - DEFENSA (D): Exactly 1 square any direction, CANNOT score goals
+   - MEDIOCAMPISTA (M): Any distance diagonally only, path must be clear
+   - DELANTERO (F): Any distance straight OR diagonal, path must be clear
+
+3. CAPTURE: All pieces can capture opponent pieces by moving to their square. Cannot capture own pieces.
+
+4. DEFENSAS (D): Cannot score - use them ONLY for blocking opponent attacks and capturing threats near your goal
+
+5. DELANTEROS (F): Your most valuable attacking pieces - advance them toward opponent goal, but protect them from capture
+
+6. BLOCKING: If opponent has pieces (especially F/M) near your goal, block them immediately!
+
+7. PATH CLEARANCE: Pieces cannot jump over other pieces - the path from "from" to "to" must be empty
+
+${lastGoalAnalysis ? "8. ⚠️ WARNING: Opponent just scored - prevent the same pattern!" : ""}
 `;
 
   return description;
@@ -566,7 +606,12 @@ export const getGeminiMoveDirect = async (
   console.log(`[Gemini]   - Legal moves available: ${legalMoves.length}`);
   console.log(`[Gemini]   - Bot player: ${botPlayer}`);
   console.log(`[Gemini]   - Pro level: ${isPro}`);
-  console.log(`[Gemini]   - Playing style: ${playingStyle || "default"}`);
+  if (playingStyle) {
+    console.log(`[Gemini]   - 🎨 Playing style: ${playingStyle.toUpperCase()}`);
+    console.log(`[Gemini]   - 📋 Style instructions will be included in prompt`);
+  } else {
+    console.log(`[Gemini]   - Playing style: default (no specific style)`);
+  }
   
   // Build game state description
   const gameDescription = gameStateToText(state, botPlayer);
@@ -583,6 +628,39 @@ export const getGeminiMoveDirect = async (
     }
   });
   
+  // Prioritize moves: goals first, then captures, then advances
+  const prioritizedMoves = [...immediateGoals];
+  const captures = legalMoves.filter(move => {
+    const piece = state.board[move.to.row]?.[move.to.col];
+    return piece && piece.owner === opponent;
+  });
+  prioritizedMoves.push(...captures.filter(m => !immediateGoals.includes(m)));
+  const otherMoves = legalMoves.filter(m => !prioritizedMoves.includes(m));
+  prioritizedMoves.push(...otherMoves);
+  
+  // Limit to first 40 moves to keep prompt manageable
+  const movesToShow = prioritizedMoves.slice(0, 40);
+  const remainingCount = legalMoves.length - movesToShow.length;
+  
+  // Build list of legal moves for Gemini to choose from
+  const legalMovesList = movesToShow.map((move, idx) => {
+    const piece = state.board[move.from.row]?.[move.from.col];
+    const pieceType = piece?.type === "delantero" ? "F" : 
+                     piece?.type === "mediocampista" ? "M" :
+                     piece?.type === "carrilero" ? "C" : "D";
+    const fromText = positionToText(move.from.row, move.from.col);
+    const toText = positionToText(move.to.row, move.to.col);
+    let annotation = "";
+    if (immediateGoals.includes(move)) annotation = " [GOAL!]";
+    else if (captures.includes(move)) {
+      const capturedPiece = state.board[move.to.row]?.[move.to.col];
+      const capturedType = capturedPiece?.type === "delantero" ? "F" :
+                          capturedPiece?.type === "mediocampista" ? "M" : "C";
+      annotation = ` [CAPTURE ${capturedType}]`;
+    }
+    return `${idx + 1}. ${fromText}→${toText} (${pieceType})${annotation}`;
+  }).join("\n");
+  
   // Build prompt asking Gemini to choose a move directly
   const prompt = `You are playing Football Chess as the ${botPlayer.toUpperCase()} player.
 
@@ -595,6 +673,10 @@ CURRENT SITUATION:
 ${immediateGoals.length > 0 ? `- ⚠️ CRITICAL: You have ${immediateGoals.length} move(s) that score immediately!` : ""}
 ${opponentThreats.length > 0 ? `- ⚠️ THREATS: Opponent has ${opponentThreats.length} piece(s) threatening your goal` : ""}
 
+LEGAL MOVES (choose from these - moves are prioritized by importance):
+${legalMovesList}
+${remainingCount > 0 ? `\n... and ${remainingCount} more legal moves available` : ""}
+
 STRATEGIC PRIORITIES:
 1. 🎯 SCORE A GOAL if possible (highest priority!)
 2. 🛡️ BLOCK opponent goal threats (defense is critical)
@@ -606,162 +688,221 @@ ${isPro ? `\n🔥 PRO LEVEL - Apply advanced strategy:\n- Multi-turn planning\n-
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 
 YOUR TASK:
-Choose ONE move to make. Respond ONLY with valid JSON in this exact format:
+Choose ONE move from the LEGAL MOVES list above. Respond ONLY with valid JSON in this exact format:
 {
   "from": "A1",
   "to": "A2",
   "reasoning": "Brief explanation of why you chose this move (2-3 sentences)"
 }
 
-RULES:
-- "from" must be a square where you have a piece (format: A1-H12)
-- "to" must be a valid destination square (format: A1-H12)
-- The move must be legal according to Football Chess rules
+CRITICAL RULES:
+- You MUST choose a move from the LEGAL MOVES list above
+- The "from" and "to" squares must match EXACTLY one of the moves in the list
+- Do NOT invent moves that are not in the legal moves list
 - Use column letters A-H and row numbers 1-12
-- Example: {"from": "D2", "to": "D3", "reasoning": "Advancing midfielder to support attack"}
+- Example: If the list shows "1. A1→A2 (F)", you can use {"from": "A1", "to": "A2", "reasoning": "..."}
 
 ${immediateGoals.length > 0 ? `\n⚠️ CRITICAL: You have moves that score immediately! Consider them first!\n` : ""}
 ${opponentThreats.length > 0 ? `\n⚠️ DEFENSE NEEDED: Block opponent threats before they become dangerous!\n` : ""}
 
 Respond with ONLY the JSON object, no other text:`;
 
-  try {
-    const temperature = isPro ? 0.4 : 0.1;
-    
-    console.log(`[Gemini] 📤 Sending direct move request to Gemini:`);
-    console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
-    console.log(`[Gemini]   - Temperature: ${temperature}`);
-    console.log(`[Gemini]   - Max output tokens: ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()}`);
-    
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature,
-        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
-        topP: 0.95,
-        topK: 40,
-      },
-    });
-    
-    const response = await result.response;
-    let text = "";
-    
+  // Retry configuration for overloaded service (503 errors)
+  const maxRetries = 3;
+  const baseDelay = 1000; // 1 second
+  let lastError: any = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      text = response.text().trim();
-    } catch (textError) {
-      // Try alternative extraction
-      if (response.candidates && response.candidates.length > 0) {
-        const candidate = response.candidates[0];
-        if (candidate.content && candidate.content.parts) {
-          const parts = candidate.content.parts.filter((p: any) => p.text);
-          if (parts.length > 0) {
-            text = parts.map((p: any) => p.text).join(" ").trim();
+      const temperature = isPro ? 0.4 : 0.1;
+      
+      if (attempt > 1) {
+        const delay = baseDelay * Math.pow(2, attempt - 2); // Exponential backoff: 1s, 2s, 4s
+        console.log(`[Gemini] 🔄 Retry attempt ${attempt}/${maxRetries} after ${delay}ms delay...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.log(`[Gemini] 📤 Sending direct move request to Gemini:`);
+        console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
+        console.log(`[Gemini]   - Temperature: ${temperature}`);
+        console.log(`[Gemini]   - Max output tokens: ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()}`);
+        if (playingStyle) {
+          console.log(`[Gemini]   - ✅ Playing style "${playingStyle}" included in prompt`);
+        } else {
+          console.log(`[Gemini]   - ℹ️ No specific playing style (using default strategy)`);
+        }
+      }
+      
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+          topP: 0.95,
+          topK: 40,
+        },
+      });
+      
+      // Success! Process the response
+      const response = await result.response;
+      let text = "";
+      
+      try {
+        text = response.text().trim();
+      } catch (textError) {
+        // Try alternative extraction
+        if (response.candidates && response.candidates.length > 0) {
+          const candidate = response.candidates[0];
+          if (candidate.content && candidate.content.parts) {
+            const parts = candidate.content.parts.filter((p: any) => p.text);
+            if (parts.length > 0) {
+              text = parts.map((p: any) => p.text).join(" ").trim();
+            }
           }
         }
       }
-    }
-    
-    console.log(`[Gemini] 📥 Response from Gemini: "${text}"`);
-    
-    if (!text) {
-      console.error(`[Gemini] ❌ Empty response from Gemini`);
-      return null;
-    }
-    
-    // Try to extract JSON from response (might have extra text)
-    let jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      // Try to find JSON-like structure
-      jsonMatch = text.match(/\{.*\}/);
-    }
-    
-    if (!jsonMatch) {
-      console.error(`[Gemini] ❌ Could not find JSON in response: "${text}"`);
-      return null;
-    }
-    
-    let parsedResponse: { from?: string; to?: string; reasoning?: string };
-    try {
-      parsedResponse = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
-      console.error(`[Gemini] ❌ Failed to parse JSON: ${parseError}`);
-      console.error(`[Gemini] Raw text: "${text}"`);
-      return null;
-    }
-    
-    if (!parsedResponse.from || !parsedResponse.to) {
-      console.error(`[Gemini] ❌ Missing 'from' or 'to' in response:`, parsedResponse);
-      return null;
-    }
-    
-    // Convert text positions to coordinates
-    const fromPos = textToPosition(parsedResponse.from);
-    const toPos = textToPosition(parsedResponse.to);
-    
-    if (!fromPos || !toPos) {
-      console.error(`[Gemini] ❌ Invalid position format: from="${parsedResponse.from}", to="${parsedResponse.to}"`);
-      return null;
-    }
-    
-    // Find matching legal move
-    const matchingMove = legalMoves.find(move => 
-      move.from.row === fromPos.row &&
-      move.from.col === fromPos.col &&
-      move.to.row === toPos.row &&
-      move.to.col === toPos.col
-    );
-    
-    if (!matchingMove) {
-      console.error(`[Gemini] ❌ Move ${parsedResponse.from}→${parsedResponse.to} is not a legal move!`);
-      console.error(`[Gemini] Available legal moves (first 10):`, legalMoves.slice(0, 10).map(m => 
-        `${positionToText(m.from.row, m.from.col)}→${positionToText(m.to.row, m.to.col)}`
-      ));
       
-      // Try to find a similar move (same piece, different destination)
-      const samePieceMoves = legalMoves.filter(m => 
-        m.from.row === fromPos.row && m.from.col === fromPos.col
-      );
+      console.log(`[Gemini] 📥 Response from Gemini: "${text}"`);
       
-      if (samePieceMoves.length > 0) {
-        console.log(`[Gemini] 💡 Found ${samePieceMoves.length} legal moves for piece at ${parsedResponse.from}`);
-        console.log(`[Gemini] 💡 Suggesting closest move: ${positionToText(samePieceMoves[0].to.row, samePieceMoves[0].to.col)}`);
-        // Use the first legal move for that piece as fallback
-        return {
-          move: { ...samePieceMoves[0], player: botPlayer },
-          reasoning: parsedResponse.reasoning || `Adjusted move from ${parsedResponse.to} to valid destination`,
-        };
+      if (!text) {
+        console.error(`[Gemini] ❌ Empty response from Gemini`);
+        if (attempt < maxRetries) continue; // Retry if not last attempt
+        return null;
       }
       
-      return null;
+      // Try to extract JSON from response (might have markdown code blocks or extra text)
+      // First, try to extract from markdown code blocks (```json ... ```)
+      let jsonText: string | null = null;
+      const markdownMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (markdownMatch && markdownMatch[1]) {
+        jsonText = markdownMatch[1];
+        console.log(`[Gemini] ✅ Extracted JSON from markdown code block`);
+      } else {
+        // Try to find JSON object directly
+        const directMatch = text.match(/\{[\s\S]*\}/);
+        if (directMatch) {
+          jsonText = directMatch[0];
+        } else {
+          // Try to find JSON-like structure (more lenient)
+          const lenientMatch = text.match(/\{.*\}/);
+          if (lenientMatch) {
+            jsonText = lenientMatch[0];
+          }
+        }
+      }
+      
+      if (!jsonText) {
+        console.error(`[Gemini] ❌ Could not find JSON in response: "${text}"`);
+        if (attempt < maxRetries) continue; // Retry if not last attempt
+        return null;
+      }
+      
+      let parsedResponse: { from?: string; to?: string; reasoning?: string };
+      try {
+        parsedResponse = JSON.parse(jsonText);
+      } catch (parseError) {
+        console.error(`[Gemini] ❌ Failed to parse JSON: ${parseError}`);
+        console.error(`[Gemini] Raw text: "${text}"`);
+        if (attempt < maxRetries) continue; // Retry if not last attempt
+        return null;
+      }
+      
+      if (!parsedResponse.from || !parsedResponse.to) {
+        console.error(`[Gemini] ❌ Missing 'from' or 'to' in response:`, parsedResponse);
+        if (attempt < maxRetries) continue; // Retry if not last attempt
+        return null;
+      }
+      
+      // Convert text positions to coordinates
+      const fromPos = textToPosition(parsedResponse.from);
+      const toPos = textToPosition(parsedResponse.to);
+      
+      if (!fromPos || !toPos) {
+        console.error(`[Gemini] ❌ Invalid position format: from="${parsedResponse.from}", to="${parsedResponse.to}"`);
+        if (attempt < maxRetries) continue; // Retry if not last attempt
+        return null;
+      }
+      
+      // Find matching legal move
+      const matchingMove = legalMoves.find(move => 
+        move.from.row === fromPos.row &&
+        move.from.col === fromPos.col &&
+        move.to.row === toPos.row &&
+        move.to.col === toPos.col
+      );
+      
+      if (!matchingMove) {
+        console.error(`[Gemini] ❌ Move ${parsedResponse.from}→${parsedResponse.to} is not a legal move!`);
+        console.error(`[Gemini] Available legal moves (first 10):`, legalMoves.slice(0, 10).map(m => 
+          `${positionToText(m.from.row, m.from.col)}→${positionToText(m.to.row, m.to.col)}`
+        ));
+        
+        // Try to find a similar move (same piece, different destination)
+        const samePieceMoves = legalMoves.filter(m => 
+          m.from.row === fromPos.row && m.from.col === fromPos.col
+        );
+        
+        if (samePieceMoves.length > 0) {
+          console.log(`[Gemini] 💡 Found ${samePieceMoves.length} legal moves for piece at ${parsedResponse.from}`);
+          console.log(`[Gemini] 💡 Suggesting closest move: ${positionToText(samePieceMoves[0].to.row, samePieceMoves[0].to.col)}`);
+          // Use the first legal move for that piece as fallback
+          return {
+            move: { ...samePieceMoves[0], player: botPlayer },
+            reasoning: parsedResponse.reasoning || `Adjusted move from ${parsedResponse.to} to valid destination`,
+          };
+        }
+        
+        if (attempt < maxRetries) continue; // Retry if not last attempt
+        return null;
+      }
+      
+      // Success! Log the decision
+      const reasoning = parsedResponse.reasoning || "No reasoning provided";
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] ✅✅✅ GEMINI DIRECT MOVE SELECTION ✅✅✅`);
+      console.log(`[Gemini] ============================================================`);
+      console.log(`[Gemini] ✅ SELECTED MOVE: ${parsedResponse.from}→${parsedResponse.to}`);
+      console.log(`[Gemini] 📍 From: ${parsedResponse.from} (row ${fromPos.row + 1}, col ${fromPos.col})`);
+      console.log(`[Gemini] 📍 To: ${parsedResponse.to} (row ${toPos.row + 1}, col ${toPos.col})`);
+      console.log(`[Gemini] 💭 REASONING: ${reasoning}`);
+      console.log(`[Gemini] 🤖 DECISION SOURCE: Gemini AI (direct move selection)`);
+      console.log(`[Gemini] ============================================================`);
+      
+      // Ensure move has correct player field
+      const finalMove: Move = {
+        ...matchingMove,
+        player: botPlayer,
+      };
+      
+      return {
+        move: finalMove,
+        reasoning,
+      };
+      
+    } catch (error: any) {
+      lastError = error;
+      const is503 = error?.status === 503 || error?.message?.includes("503") || error?.message?.includes("overloaded");
+      
+      if (is503 && attempt < maxRetries) {
+        // 503 error - retry with exponential backoff
+        console.warn(`[Gemini] ⚠️ Service overloaded (503), will retry (attempt ${attempt}/${maxRetries})`);
+        continue;
+      } else {
+        // Other error or last attempt - log and return null
+        console.error(`[Gemini] ❌ Error in getGeminiMoveDirect (attempt ${attempt}/${maxRetries}):`, error);
+        if (attempt >= maxRetries) {
+          console.error(`[Gemini] ❌ Max retries reached, giving up`);
+        }
+        if (attempt < maxRetries) {
+          continue; // Retry for non-503 errors too
+        }
+        return null;
+      }
     }
-    
-    // Success! Log the decision
-    const reasoning = parsedResponse.reasoning || "No reasoning provided";
-    console.log(`[Gemini] ============================================================`);
-    console.log(`[Gemini] ✅✅✅ GEMINI DIRECT MOVE SELECTION ✅✅✅`);
-    console.log(`[Gemini] ============================================================`);
-    console.log(`[Gemini] ✅ SELECTED MOVE: ${parsedResponse.from}→${parsedResponse.to}`);
-    console.log(`[Gemini] 📍 From: ${parsedResponse.from} (row ${fromPos.row + 1}, col ${fromPos.col})`);
-    console.log(`[Gemini] 📍 To: ${parsedResponse.to} (row ${toPos.row + 1}, col ${toPos.col})`);
-    console.log(`[Gemini] 💭 REASONING: ${reasoning}`);
-    console.log(`[Gemini] 🤖 DECISION SOURCE: Gemini AI (direct move selection)`);
-    console.log(`[Gemini] ============================================================`);
-    
-    // Ensure move has correct player field
-    const finalMove: Move = {
-      ...matchingMove,
-      player: botPlayer,
-    };
-    
-    return {
-      move: finalMove,
-      reasoning,
-    };
-    
-  } catch (error) {
-    console.error(`[Gemini] ❌ Error in getGeminiMoveDirect:`, error);
-    return null;
   }
+  
+  // If we get here, all retries failed
+  console.error(`[Gemini] ❌ All ${maxRetries} attempts failed`);
+  return null;
 };
 
 // Helper function to detect opponent threats (reused from getGeminiRecommendation logic)
