@@ -567,22 +567,37 @@ export const getGeminiRecommendation = async (
           }
           
           // Check if we move adjacent to threat (can intercept from any column)
+          // For defensas: only allow if threat is in goal column OR we're moving to goal column
+          // This prevents defensas from moving to lateral columns unnecessarily
           if (Math.abs(move.to.col - threat.col) === 1) {
-            // If threat is close (within 2 rows of goal), be more aggressive in blocking
-            if (threat.distanceToGoal <= 2 && ourDistance <= 3) {
-              preventsOpponentGoal = true;
-              blockingMoves.push(idx);
-              if (isDefensa) {
-                validDefensiveMoves.push(idx);
+            if (isDefensa) {
+              const threatInGoalCol = [3, 4].includes(threatCol);
+              const weInGoalCol = [3, 4].includes(ourCol);
+              // Defensas should only block adjacent threats if they're in goal columns or we're in goal columns
+              if (threatInGoalCol || weInGoalCol) {
+                if (threat.distanceToGoal <= 2 && ourDistance <= 3) {
+                  preventsOpponentGoal = true;
+                  blockingMoves.push(idx);
+                  validDefensiveMoves.push(idx);
+                  return;
+                } else if (ourDistance <= threat.distanceToGoal + 1 && threat.distanceToGoal <= 4) {
+                  preventsOpponentGoal = true;
+                  blockingMoves.push(idx);
+                  validDefensiveMoves.push(idx);
+                  return;
+                }
               }
-              return;
-            } else if (ourDistance <= threat.distanceToGoal + 1 && threat.distanceToGoal <= 4) {
-              preventsOpponentGoal = true;
-              blockingMoves.push(idx);
-              if (isDefensa) {
-                validDefensiveMoves.push(idx);
+            } else {
+              // For other pieces, allow adjacent blocking
+              if (threat.distanceToGoal <= 2 && ourDistance <= 3) {
+                preventsOpponentGoal = true;
+                blockingMoves.push(idx);
+                return;
+              } else if (ourDistance <= threat.distanceToGoal + 1 && threat.distanceToGoal <= 4) {
+                preventsOpponentGoal = true;
+                blockingMoves.push(idx);
+                return;
               }
-              return;
             }
           }
           
@@ -591,17 +606,29 @@ export const getGeminiRecommendation = async (
           // Bot "away" has goal at row 0, so threats at row 10-11 are close
           // Bot "home" has goal at row 11, so threats at row 0-1 are close
           // (defensiveRows already defined above)
+          // BUT: For defensas, be more strict - only allow if threat is in goal columns or we're in goal columns
           
           if (isThreatVeryClose && defensiveRows.includes(ourRow)) {
             const colDiff = Math.abs(ourCol - threatCol);
-            // Allow blocking in same column or adjacent columns
-            if (colDiff <= 1 && ourDistance <= 3) {
-              preventsOpponentGoal = true;
-              blockingMoves.push(idx);
-              if (isDefensa) {
+            // For defensas: only allow if threat is in goal column OR we're moving to goal column
+            // This prevents defensas from moving to lateral columns (F/G/H) when threat is elsewhere
+            if (isDefensa) {
+              const threatInGoalCol = [3, 4].includes(threatCol);
+              const weInGoalCol = [3, 4].includes(ourCol);
+              // Defensas should only block if: threat is in goal col, OR we're moving to goal col, AND same/adjacent column
+              if ((threatInGoalCol || weInGoalCol) && colDiff <= 1 && ourDistance <= 3) {
+                preventsOpponentGoal = true;
+                blockingMoves.push(idx);
                 validDefensiveMoves.push(idx);
+                return;
               }
-              return;
+            } else {
+              // For other pieces, allow blocking in same column or adjacent columns
+              if (colDiff <= 1 && ourDistance <= 3) {
+                preventsOpponentGoal = true;
+                blockingMoves.push(idx);
+                return;
+              }
             }
           }
           
