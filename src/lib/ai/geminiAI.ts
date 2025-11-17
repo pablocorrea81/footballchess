@@ -13,6 +13,9 @@ let genAI: GoogleGenerativeAI | null = null;
 let model: any = null;
 let initializationAttempted = false;
 
+// Configuration constants
+const GEMINI_MAX_OUTPUT_TOKENS = 10000; // Very large limit to prevent truncation - we'll monitor actual usage via logs
+
 const getGeminiApiKey = (): string | null => {
   // Try server-side variable first (more secure)
   // In Vercel, environment variables are available via process.env
@@ -1745,7 +1748,7 @@ Format: Just the number. Example: 5`;
     console.log(`[Gemini]   - Current threats: ${currentThreatsList.length > 0 ? currentThreatsList.join(", ") : "None"}`);
     console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
     console.log(`[Gemini]   - Temperature: ${temperature}`);
-    console.log(`[Gemini]   - Max output tokens: 10000 (monitoring actual usage)`);
+    console.log(`[Gemini]   - Max output tokens: ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()} (monitoring actual usage)`);
     console.log(`[Gemini]   - Model: gemini-2.5-flash`);
     
     // Check if prompt is too long (Gemini has limits)
@@ -1775,7 +1778,7 @@ Format: Just the number. Example: 5`;
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
-            maxOutputTokens: 10000, // Very large limit to avoid truncation - we'll monitor actual usage
+            maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS, // Very large limit to avoid truncation - we'll monitor actual usage
             topP: 0.95,
             topK: 40,
           },
@@ -1796,12 +1799,22 @@ Format: Just the number. Example: 5`;
           const promptTokens = usage.promptTokenCount || 0;
           const completionTokens = usage.completionTokenCount || 0;
           const totalTokens = usage.totalTokenCount || 0;
-          const maxOutputTokens = 10000;
-          const completionPercent = completionTokens ? Math.round((completionTokens / maxOutputTokens) * 100) : 0;
+          
+          // Fallback: Calculate completion tokens from total - prompt if completionTokenCount is missing or 0
+          const actualCompletionTokens = completionTokens > 0 
+            ? completionTokens 
+            : Math.max(0, totalTokens - promptTokens);
+          
+          const completionPercent = actualCompletionTokens > 0 
+            ? Math.round((actualCompletionTokens / GEMINI_MAX_OUTPUT_TOKENS) * 100) 
+            : 0;
           
           console.log(`[Gemini] 📊 Token Usage Statistics:`);
           console.log(`[Gemini]   - Prompt tokens: ${promptTokens.toLocaleString()}`);
-          console.log(`[Gemini]   - Completion tokens: ${completionTokens.toLocaleString()} / ${maxOutputTokens.toLocaleString()} (${completionPercent}% of max)`);
+          console.log(`[Gemini]   - Completion tokens: ${actualCompletionTokens.toLocaleString()} / ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()} (${completionPercent}% of max)`);
+          if (completionTokens === 0 && actualCompletionTokens > 0) {
+            console.log(`[Gemini]   - Note: Calculated from total - prompt (API didn't provide completionTokenCount)`);
+          }
           console.log(`[Gemini]   - Total tokens (prompt + completion): ${totalTokens.toLocaleString()}`);
           
           // Cost estimation (approximate - Gemini Flash pricing as of 2024)
@@ -1809,7 +1822,7 @@ Format: Just the number. Example: 5`;
           const promptCostPer1M = 0.075; // $0.075 per 1M input tokens
           const outputCostPer1M = 0.30; // $0.30 per 1M output tokens
           const estimatedPromptCost = (promptTokens / 1000000) * promptCostPer1M;
-          const estimatedOutputCost = (completionTokens / 1000000) * outputCostPer1M;
+          const estimatedOutputCost = (actualCompletionTokens / 1000000) * outputCostPer1M;
           const estimatedTotalCost = estimatedPromptCost + estimatedOutputCost;
           
           if (estimatedTotalCost > 0) {
@@ -1819,6 +1832,16 @@ Format: Just the number. Example: 5`;
           // Warn if using significant portion of max output tokens
           if (completionPercent > 10) {
             console.warn(`[Gemini] ⚠️ Using ${completionPercent}% of max output tokens - response may be verbose`);
+          }
+          
+          // Log raw usage metadata structure for debugging if there's a discrepancy
+          if (completionTokens === 0 && actualCompletionTokens > 0) {
+            console.log(`[Gemini] 🔍 Debug: usageMetadata structure:`, JSON.stringify({
+              promptTokenCount: usage.promptTokenCount,
+              completionTokenCount: usage.completionTokenCount,
+              totalTokenCount: usage.totalTokenCount,
+              calculatedCompletion: actualCompletionTokens,
+            }));
           }
         } else {
           console.warn(`[Gemini] ⚠️ No usage metadata available in response`);
@@ -1902,7 +1925,7 @@ Format: Just the number. Example: 5`;
           const candidate = response.candidates[0];
           if (candidate.finishReason === "MAX_TOKENS") {
             console.warn(`[Gemini] ⚠️ WARNING: Response truncated due to MAX_TOKENS limit!`);
-            console.warn(`[Gemini] ⚠️ Current maxOutputTokens: 10000`);
+            console.warn(`[Gemini] ⚠️ Current maxOutputTokens: ${GEMINI_MAX_OUTPUT_TOKENS.toLocaleString()}`);
             console.warn(`[Gemini] ⚠️ This should not happen with such a large limit - investigate prompt complexity`);
             
             // Try to extract partial content if available
