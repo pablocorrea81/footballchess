@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { createRouteSupabaseClient } from "@/lib/supabaseServer";
-import { getGlobalRankings, getHardBotRankings } from "@/lib/stats/statsHelpers";
+import { getGlobalRankings, getHardBotRankings, getProBotRankings } from "@/lib/stats/statsHelpers";
 
 export async function GET(request: Request) {
   try {
@@ -17,12 +17,14 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get("type") || "global"; // "global" or "hard-bot"
+    const type = searchParams.get("type") || "global"; // "global", "hard-bot", or "pro-bot"
     const limit = parseInt(searchParams.get("limit") || "100", 10);
 
     let rankings;
     if (type === "hard-bot") {
       rankings = await getHardBotRankings(limit);
+    } else if (type === "pro-bot") {
+      rankings = await getProBotRankings(limit);
     } else {
       rankings = await getGlobalRankings(limit);
     }

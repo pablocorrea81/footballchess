@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { RuleEngine, type GameState, type Move, type PlayerId } from "@/lib/ruleEngine";
+import type { AIPlayingStyle } from "@/lib/ai/footballBot";
 
 // Initialize Gemini AI
 // IMPORTANT: API key must be set via GEMINI_API_KEY environment variable in .env.local
@@ -45,6 +46,90 @@ const getGeminiApiKey = (): string | null => {
   }
   console.warn("[Gemini] process.env not available");
   return null;
+};
+
+// Get playing style-specific instructions for the AI prompt
+const getPlayingStyleInstructions = (style: AIPlayingStyle): string => {
+  const styleInstructions: Record<AIPlayingStyle, string> = {
+    defensive: `
+🛡️ PLAYING STYLE: DEFENSIVE
+Your primary goal is to prevent opponent goals and maintain a solid defense:
+- PRIORITIZE blocking opponent threats over advancing your pieces
+- Keep your defensas (D) well-positioned to block goal columns D-E
+- AVOID taking risks that expose your valuable pieces (F/M)
+- Only advance pieces when it's SAFE and doesn't weaken your defense
+- Trade pieces cautiously - prefer to keep material on the board for defense
+- Focus on solid positional play rather than aggressive attacks
+- Counter-attack only when opponent overcommits to their attack
+- PATIENCE is key - wait for opponent mistakes rather than forcing play
+Remember: A strong defense wins games! Be patient and wait for opportunities.`,
+
+    offensive: `
+⚔️ PLAYING STYLE: OFFENSIVE
+Your primary goal is to create and maintain constant pressure on opponent:
+- PRIORITIZE advancing your forwards (F) and midfielders (M) toward opponent goal
+- Create MULTIPLE threats simultaneously - force opponent to defend
+- Take calculated risks to gain attacking positions
+- Trade pieces aggressively if it improves your attacking position
+- Keep opponent on the defensive - don't let them counter-attack
+- Look for ways to create double threats (two pieces attacking same goal column)
+- Sacrifice material if it leads to a strong attack or goal opportunity
+- AGGRESSION pays off - maintain pressure and force opponent mistakes
+Remember: The best defense is a good offense! Keep pushing forward.`,
+
+    moderate: `
+⚖️ PLAYING STYLE: MODERATE
+Your approach balances attack and defense:
+- Balance between advancing pieces and maintaining defense
+- React to opponent's play - defend when threatened, attack when safe
+- Prioritize favorable captures over pure advancement or pure defense
+- Maintain piece coordination - don't overcommit to either attack or defense
+- Evaluate each position carefully - choose the best move based on context
+- Adapt your strategy based on score and game situation
+- Look for opportunities while ensuring your defense isn't compromised
+Remember: Flexibility wins - adapt to each position and opponent's style.`,
+
+    tactical: `
+🧩 PLAYING STYLE: TACTICAL
+Your focus is on finding the best tactical moves and combinations:
+- PRIORITIZE favorable captures (capturing without losing or with good trades)
+- Look for tactical combinations: double attacks, pins, forks
+- Calculate concrete variations - find the best move in each position
+- Value piece activity over static advantages
+- Create threats that force opponent into difficult choices
+- Look for positional improvements that lead to tactical opportunities
+- Exploit opponent weaknesses with precise moves
+- Think in sequences - plan 2-3 moves ahead for tactical shots
+Remember: Tactical awareness wins - find the strongest move in each position.`,
+
+    counterattack: `
+🔄 PLAYING STYLE: COUNTERATTACK
+You allow opponent to advance, then strike back with powerful counterattacks:
+- Allow opponent to advance their pieces, but monitor for overcommitment
+- Keep your pieces well-coordinated and ready to counter-attack
+- Let opponent create threats, then strike when they're vulnerable
+- Position pieces to create counter-threats when opponent attacks
+- Look for moments when opponent overextends - then counter-attack decisively
+- Maintain defensive solidity but be ready to transition to attack quickly
+- Trade pieces when it simplifies to a favorable endgame
+- PATIENCE and TIMING are crucial - wait for the right moment to strike
+Remember: Counterattacks are powerful - lure opponent forward, then strike back!`,
+
+    control: `
+🎯 PLAYING STYLE: CONTROL
+Your goal is to control key squares and maintain positional advantage:
+- PRIORITIZE controlling columns D-E (goal columns) and central columns C-F
+- Maintain piece activity - keep all pieces working together
+- Control key squares that restrict opponent's options
+- Build up your position gradually rather than rushing
+- Look for ways to improve piece placement and coordination
+- Prevent opponent from getting active pieces while increasing your activity
+- Create long-term positional advantages that accumulate over time
+- Initiative matters - keep opponent reacting to your moves
+Remember: Control the board, control the game! Gradually build your advantage.`,
+  };
+  
+  return styleInstructions[style];
 };
 
 const initializeGemini = (): void => {
@@ -441,6 +526,7 @@ export const getGeminiRecommendation = async (
   moves: Move[],
   botPlayer: PlayerId,
   isPro: boolean = false, // Pro level gets enhanced features
+  playingStyle: AIPlayingStyle | null = null, // Playing style: defensive, offensive, moderate, tactical, counterattack, control
 ): Promise<Move | null> => {
   // Initialize lazily when first needed (ensures env vars are loaded in Vercel)
   initializeGemini();
@@ -451,7 +537,8 @@ export const getGeminiRecommendation = async (
   console.log(`  - Model available: ${!!model}`);
   console.log(`  - API key available: ${!!apiKey}`);
   console.log(`  - Moves available: ${moves.length}`);
-  console.log(`  - Bot player: ${botPlayer}`);
+  console.log(`  - Pro level: ${isPro}`);
+  console.log(`  - Playing style: ${playingStyle || "default (no style)"}`);
   
   if (!model) {
     console.error(`[Gemini] ❌ Model not initialized - returning null`);
@@ -568,21 +655,43 @@ export const getGeminiRecommendation = async (
             }
           }
           
-          // CRITICAL: Check if piece can score immediately (at goal row and in goal column)
-          const canScoreImmediately = row === botGoalRow && [3, 4].includes(col);
+          // CRITICAL: Check if piece can score immediately (can move to goal in one move)
+          // This means checking if any legal move reaches the goal row in goal columns
+          let canScoreImmediately = false;
+          for (const moveTo of legalMoves) {
+            // Check if this move reaches the goal row in goal columns (D-E)
+            if (moveTo.row === botGoalRow && [3, 4].includes(moveTo.col)) {
+              canScoreImmediately = true;
+              break;
+            }
+          }
+          
+          // Also check if piece is already at goal position
+          if (row === botGoalRow && [3, 4].includes(col)) {
+            canScoreImmediately = true;
+          }
           
           // CRITICAL: Also check if piece is in goal column and VERY close (within 1-2 rows)
           // This catches cases like E12 where the piece is almost at the goal
+          // For bot "away" (goal at row 0), a piece at row 1-2 in column D-E is very close
+          // For bot "home" (goal at row 11), a piece at row 9-10 in column D-E is very close
           const isVeryCloseToGoal = [3, 4].includes(col) && distanceToGoal <= 2;
+          
+          // CRITICAL: Also detect if piece is on the OPPOSITE side but can reach goal
+          // A mediocampista in D12 (row 11 for bot "away") can move diagonally to row 0 (goal)
+          const isOnOppositeSide = (botPlayer === "away" && row >= 9) || (botPlayer === "home" && row <= 2);
+          const canReachGoalFromFar = isOnOppositeSide && [3, 4].includes(col) && canReachGoal;
           
           // Consider a threat if:
           // 1. Can score immediately (CRITICAL! - must block/capture NOW)
           // 2. Very close to goal in goal column (within 2 rows - urgent!)
-          // 3. In goal column and within 6 rows of goal
-          // 4. Can move to goal column and within 5 rows of goal (delanteros can move long distances)
-          // 5. Advancing in same column toward goal (within 4 rows)
+          // 3. Can reach goal from opposite side in goal column (mediocampistas/delanteros can move long distances)
+          // 4. In goal column and within 6 rows of goal
+          // 5. Can move to goal column and within 5 rows of goal (delanteros can move long distances)
+          // 6. Advancing in same column toward goal (within 4 rows)
           const isThreat = canScoreImmediately ||
                           isVeryCloseToGoal ||
+                          canReachGoalFromFar ||
                           (isInGoalColumn && distanceToGoal <= 6) ||
                           (canMoveToGoalColumn && distanceToGoal <= 5) ||
                           (canReachGoal && distanceToGoal <= 4);
@@ -596,8 +705,17 @@ export const getGeminiRecommendation = async (
               distanceToGoal,
               isInGoalColumn,
               canMoveToGoalColumn,
-              canScoreImmediately: canScoreImmediately || false,
+              canScoreImmediately: canScoreImmediately,
             });
+            
+            // Log critical threats for debugging
+            if (canScoreImmediately) {
+              const colLabel = String.fromCharCode(65 + col);
+              console.log(`[Gemini] 🚨🚨 CRITICAL THREAT: ${piece.type} at ${colLabel}${row + 1} CAN SCORE IMMEDIATELY! (at goal row ${botGoalRow + 1} or can move there)`);
+            } else if (canReachGoalFromFar) {
+              const colLabel = String.fromCharCode(65 + col);
+              console.log(`[Gemini] 🚨 CRITICAL THREAT: ${piece.type} at ${colLabel}${row + 1} can reach goal from opposite side!`);
+            }
           }
         }
       }
@@ -1276,11 +1394,13 @@ export const getGeminiRecommendation = async (
     }
     
     const finalMovesToConsider = validMoves;
-    const movesToEvaluate = finalMovesToConsider.slice(0, 20); // More moves for better selection
+    // PRO LEVEL: Evaluate more moves (30 instead of 20) for better strategic choice
+    const movesToEvaluateLimit = isPro ? 30 : 20;
+    const movesToEvaluate = finalMovesToConsider.slice(0, movesToEvaluateLimit);
     // Keep track of which original indices correspond to movesToEvaluate
     const evaluateIndices = validMoves.length > 0 
-      ? validMoveIndices.slice(0, 20)
-      : moves.slice(0, 20).map((_, i) => i);
+      ? validMoveIndices.slice(0, movesToEvaluateLimit)
+      : moves.slice(0, movesToEvaluateLimit).map((_, i) => i);
     
     // Detect current threats on board for annotation and prompt
     const currentThreatsList: string[] = [];
@@ -1488,10 +1608,16 @@ DECISION FRAMEWORK:
 
 Think carefully: Which move best follows the priorities above?
 Consider not just this move, but how it sets up future moves and coordinates with your other pieces.
+${isPro ? `\n🔥 PRO LEVEL - ADVANCED STRATEGY:\nYou are playing at the highest difficulty level. Apply these advanced concepts:\n- MULTI-TURN PLANNING: Consider 2-3 moves ahead - how does this move affect future positions?\n- COMBINATIONS: Look for sequences of moves that create multiple threats (double attacks)\n- PIECE COORDINATION: Position pieces to work together - support attacks with M/C while advancing F\n- PROPHYLACTIC MOVES: Anticipate opponent threats and prevent them BEFORE they become dangerous\n- TEMPO: Each move should improve your position - avoid moves that waste time or don't advance your plan\n- POSITIONAL ADVANTAGE: Control key squares, especially in columns D-E near opponent goal\n- ENDGAME AWARENESS: If score is tied or close, prioritize defense and safe play. If ahead, simplify. If behind, take calculated risks.\n- VARIANT EVALUATION: Consider multiple candidate moves and evaluate which leads to the best long-term position\nThink strategically about the entire game flow, not just the immediate move!\n` : ""}
+${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 Respond with ONLY the move number (1-${movesToEvaluate.length}), nothing else.`;
 
     // Pro level: Higher temperature for more creative/strategic play
     const temperature = isPro ? 0.4 : 0.1;
+    
+    if (isPro) {
+      console.log(`[Gemini] 🔥 PRO LEVEL ACTIVE - Enhanced strategic analysis with ${movesToEvaluate.length} moves evaluated`);
+    }
     
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],

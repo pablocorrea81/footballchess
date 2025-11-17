@@ -109,6 +109,24 @@ export function PlayerStatsCard({ playerId }: PlayerStatsCardProps) {
           </div>
         )}
 
+        {/* Pro Bot Stats */}
+        {stats.proBotGames > 0 && (
+          <div className="rounded-lg bg-orange-500/20 p-4">
+            <div className="text-sm text-orange-200">🔥 vs IA Pro</div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-white">{stats.proBotWins}</span>
+              <span className="text-sm text-orange-100/80">
+                / {stats.proBotGames} partidas
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-orange-100/60">
+              {stats.proBotGames > 0
+                ? `${Math.round((stats.proBotWins / stats.proBotGames) * 10000) / 100}% de victorias`
+                : "0%"}
+            </div>
+          </div>
+        )}
+
         {/* All Bot Stats */}
         {stats.botGames > 0 && (
           <div className="rounded-lg bg-gray-500/20 p-4">

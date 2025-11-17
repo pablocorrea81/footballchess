@@ -113,6 +113,7 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
       score,
       winner_id,
       bot_difficulty,
+      bot_style,
       is_bot_game,
       bot_player,
       bot_display_name,

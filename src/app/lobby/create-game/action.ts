@@ -7,8 +7,10 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { RuleEngine, type PlayerId } from "@/lib/ruleEngine";
 import {
   type BotDifficulty,
+  type AIPlayingStyle,
   FOOTBALL_BOT_DEFAULT_DIFFICULTY,
   FOOTBALL_BOT_DEFAULT_NAME,
+  getRandomPlayingStyle,
   executeBotTurnIfNeeded,
 } from "@/lib/ai/footballBot";
 import { generateInviteCode } from "@/lib/inviteCode";
@@ -115,6 +117,12 @@ export async function createBotGameAction(
   const startingPlayer = Math.random() < 0.5 ? "home" : "away";
   const botPlayer: PlayerId = "away";
   const initialState = RuleEngine.createInitialState(startingPlayer);
+  
+  // Randomly select a playing style for this game
+  // Only applies to "hard" and "pro" difficulties (Gemini AI)
+  const botStyle: AIPlayingStyle | null = (difficulty === "hard" || difficulty === "pro") 
+    ? getRandomPlayingStyle() 
+    : null;
 
   const { data, error } = await supabase
     .from("games")
@@ -127,6 +135,7 @@ export async function createBotGameAction(
       is_bot_game: true,
       bot_player: botPlayer,
       bot_difficulty: difficulty,
+      bot_style: botStyle,
       bot_display_name: FOOTBALL_BOT_DEFAULT_NAME,
       turn_started_at: null, // Timer will start when first move is made
       winning_score: 3, // Default for bot games

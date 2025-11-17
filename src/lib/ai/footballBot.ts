@@ -14,8 +14,31 @@ import { evaluateMoveWithGemini, getGeminiRecommendation } from "@/lib/ai/gemini
 
 export type BotDifficulty = "easy" | "medium" | "hard" | "pro";
 
+export type AIPlayingStyle = 
+  | "defensive"    // Defensivo: Prioriza bloquear amenazas, mantiene piezas cerca del arco, evita riesgos
+  | "offensive"    // Ofensivo: Prioriza avanzar piezas, crea múltiples amenazas, toma más riesgos calculados
+  | "moderate"     // Moderado: Balance entre ataque y defensa
+  | "tactical"     // Táctico: Busca combinaciones y capturas favorables, juega por posición
+  | "counterattack" // Contrataque: Permite algunas amenazas para crear contraataques potentes
+  | "control";     // Controlador: Busca control del centro y columnas clave, mantiene iniciativa
+
 export const FOOTBALL_BOT_DEFAULT_NAME = "FootballBot";
 export const FOOTBALL_BOT_DEFAULT_DIFFICULTY: BotDifficulty = "easy";
+
+// All available playing styles
+export const AI_PLAYING_STYLES: AIPlayingStyle[] = [
+  "defensive",
+  "offensive", 
+  "moderate",
+  "tactical",
+  "counterattack",
+  "control",
+];
+
+// Select a random playing style
+export const getRandomPlayingStyle = (): AIPlayingStyle => {
+  return AI_PLAYING_STYLES[Math.floor(Math.random() * AI_PLAYING_STYLES.length)];
+};
 
 type GameRow = Database["public"]["Tables"]["games"]["Row"];
 
@@ -1147,6 +1170,7 @@ export const executeBotTurnIfNeeded = async (
          is_bot_game,
          bot_player,
          bot_difficulty,
+         bot_style,
          bot_display_name,
          winning_score`,
       )
@@ -1298,10 +1322,16 @@ export const executeBotTurnIfNeeded = async (
             // Small delay and retry once
             await new Promise(resolve => setTimeout(resolve, 500));
             try {
+              const playingStyle: AIPlayingStyle | null = (difficulty === "hard" || difficulty === "pro")
+                ? (game.bot_style as AIPlayingStyle | null)
+                : null;
+              
               const retryMove = await getGeminiRecommendation(
                 currentState,
                 legalMoves,
                 botPlayer,
+                difficulty === "pro",
+                playingStyle,
               );
               if (retryMove) {
                 const moveText = `${String.fromCharCode(65 + retryMove.from.col)}${retryMove.from.row + 1}→${String.fromCharCode(65 + retryMove.to.col)}${retryMove.to.row + 1}`;

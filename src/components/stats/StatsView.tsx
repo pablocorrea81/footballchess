@@ -11,19 +11,22 @@ type StatsViewProps = {
   profileId: string;
   initialGlobalRankings: RankingsEntry[];
   initialHardBotRankings: RankingsEntry[];
+  initialProBotRankings: RankingsEntry[];
 };
 
-type RankingsType = "global" | "hard-bot" | "multiplayer";
+type RankingsType = "global" | "hard-bot" | "pro-bot" | "multiplayer";
 
 export function StatsView({
   profileId,
   initialGlobalRankings,
   initialHardBotRankings,
+  initialProBotRankings,
 }: StatsViewProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<RankingsType>("global");
   const [globalRankings, setGlobalRankings] = useState<RankingsEntry[]>(initialGlobalRankings);
   const [hardBotRankings, setHardBotRankings] = useState<RankingsEntry[]>(initialHardBotRankings);
+  const [proBotRankings, setProBotRankings] = useState<RankingsEntry[]>(initialProBotRankings);
   const [isPending, startTransition] = useTransition();
 
   const handleRefresh = () => {
@@ -54,6 +57,8 @@ export function StatsView({
     switch (activeTab) {
       case "hard-bot":
         return hardBotRankings;
+      case "pro-bot":
+        return proBotRankings;
       case "multiplayer":
         return multiplayerRankings;
       default:
@@ -69,6 +74,8 @@ export function StatsView({
         return "👥 Multijugador";
       case "hard-bot":
         return "🤖 vs IA Difícil";
+      case "pro-bot":
+        return "🔥 vs IA Pro";
       default:
         return tab;
     }
@@ -78,7 +85,7 @@ export function StatsView({
     <div className="flex flex-col gap-8">
       {/* Tabs */}
       <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/5 p-2">
-        {(["global", "multiplayer", "hard-bot"] as RankingsType[]).map((tab) => (
+        {(["global", "multiplayer", "hard-bot", "pro-bot"] as RankingsType[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}

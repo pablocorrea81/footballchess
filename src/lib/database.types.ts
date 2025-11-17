@@ -51,6 +51,7 @@ export interface Database {
           is_bot_game: boolean;
           bot_player: string | null;
           bot_difficulty: string | null;
+          bot_style: string | null;
           bot_display_name: string | null;
           invite_code: string | null;
           turn_started_at: string | null;

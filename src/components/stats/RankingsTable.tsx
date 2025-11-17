@@ -6,7 +6,7 @@ import type { RankingsEntry } from "@/lib/stats/statsHelpers";
 
 type RankingsTableProps = {
   rankings: RankingsEntry[];
-  type: "global" | "hard-bot" | "multiplayer";
+  type: "global" | "hard-bot" | "pro-bot" | "multiplayer";
   currentPlayerId: string;
 };
 
@@ -44,7 +44,9 @@ export function RankingsTable({ rankings, type, currentPlayerId }: RankingsTable
             ? "🏆 Ranking Global"
             : type === "multiplayer"
               ? "👥 Ranking Multijugador"
-              : "🤖 Ranking vs IA Difícil"}
+              : type === "hard-bot"
+                ? "🤖 Ranking vs IA Difícil"
+                : "🔥 Ranking vs IA Pro"}
         </h2>
         <input
           type="text"
@@ -66,6 +68,9 @@ export function RankingsTable({ rankings, type, currentPlayerId }: RankingsTable
               <th className="pb-3 text-right">% Victoria</th>
               {type === "hard-bot" && (
                 <th className="pb-3 text-right">Vs IA Difícil</th>
+              )}
+              {type === "pro-bot" && (
+                <th className="pb-3 text-right">Vs IA Pro</th>
               )}
             </tr>
           </thead>
@@ -143,12 +148,17 @@ export function RankingsTable({ rankings, type, currentPlayerId }: RankingsTable
                       {entry.hardBotWins}/{entry.hardBotGames}
                     </td>
                   )}
+                  {type === "pro-bot" && (
+                    <td className="py-3 text-right text-sm text-emerald-100/80">
+                      {entry.proBotWins}/{entry.proBotGames}
+                    </td>
+                  )}
                 </tr>
               );
             })}
             {filteredRankings.length === 0 && (
               <tr>
-                <td colSpan={type === "hard-bot" ? 6 : 5} className="py-8 text-center text-emerald-100/60">
+                <td colSpan={type === "hard-bot" || type === "pro-bot" ? 6 : 5} className="py-8 text-center text-emerald-100/60">
                   No se encontraron jugadores con ese nombre.
                 </td>
               </tr>

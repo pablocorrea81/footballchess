@@ -22,6 +22,9 @@ export type PlayerStats = {
   hardBotWins: number;
   hardBotLosses: number;
   hardBotGames: number;
+  proBotWins: number;
+  proBotLosses: number;
+  proBotGames: number;
 };
 
 export type HeadToHeadStats = {
@@ -48,6 +51,8 @@ export type RankingsEntry = {
   multiplayerGames: number;
   hardBotWins: number;
   hardBotGames: number;
+  proBotWins: number;
+  proBotGames: number;
 };
 
 /**
@@ -116,6 +121,9 @@ export async function getPlayerStats(playerId: string): Promise<PlayerStats | nu
         hardBotWins: 0,
         hardBotLosses: 0,
         hardBotGames: 0,
+        proBotWins: 0,
+        proBotLosses: 0,
+        proBotGames: 0,
       };
     }
 
@@ -130,6 +138,9 @@ export async function getPlayerStats(playerId: string): Promise<PlayerStats | nu
     let hardBotWins = 0;
     let hardBotLosses = 0;
     let hardBotGames = 0;
+    let proBotWins = 0;
+    let proBotLosses = 0;
+    let proBotGames = 0;
 
     for (const game of finishedGames) {
       const isPlayer1 = game.player_1_id === playerId;
@@ -137,6 +148,7 @@ export async function getPlayerStats(playerId: string): Promise<PlayerStats | nu
       const isMultiplayer = !game.is_bot_game && game.player_2_id !== null;
       const isBotGame = game.is_bot_game;
       const isHardBot = game.bot_difficulty === "hard";
+      const isProBot = game.bot_difficulty === "pro";
       const isWinner = game.winner_id === playerId;
       const isLoser = !isWinner && (isPlayer1 || isPlayer2);
 
@@ -175,6 +187,16 @@ export async function getPlayerStats(playerId: string): Promise<PlayerStats | nu
             hardBotLosses++;
           }
         }
+
+        // Count pro bot games
+        if (isProBot) {
+          proBotGames++;
+          if (isWinner) {
+            proBotWins++;
+          } else if (isLoser) {
+            proBotLosses++;
+          }
+        }
       }
     }
 
@@ -198,6 +220,9 @@ export async function getPlayerStats(playerId: string): Promise<PlayerStats | nu
       hardBotWins,
       hardBotLosses,
       hardBotGames,
+      proBotWins,
+      proBotLosses,
+      proBotGames,
     };
   } catch (error) {
     console.error("[stats] Error in getPlayerStats:", error);
@@ -360,6 +385,8 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
             multiplayerGames: 0,
             hardBotWins: 0,
             hardBotGames: 0,
+            proBotWins: 0,
+            proBotGames: 0,
           });
         }
 
@@ -384,6 +411,14 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
             stats.hardBotWins++;
           }
         }
+
+        // Count pro bot games
+        if (game.is_bot_game && game.bot_difficulty === "pro") {
+          stats.proBotGames++;
+          if (game.winner_id === playerId) {
+            stats.proBotWins++;
+          }
+        }
       }
 
       // Process player 2 (if exists and not bot)
@@ -405,6 +440,8 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
             multiplayerGames: 0,
             hardBotWins: 0,
             hardBotGames: 0,
+            proBotWins: 0,
+            proBotGames: 0,
           });
         }
 
@@ -478,6 +515,133 @@ export async function getGlobalRankings(limit: number = 100): Promise<RankingsEn
 }
 
 /**
+ * Get rankings for pro bot games only (players vs bot difficulty pro)
+ */
+export async function getProBotRankings(limit: number = 100): Promise<RankingsEntry[]> {
+  try {
+    // Get all finished games vs pro bot
+    const { data: finishedGamesData, error } = await supabaseAdmin
+      .from("games")
+      .select(`
+        id,
+        player_1_id,
+        winner_id,
+        player1:profiles!games_player_1_id_fkey(id, username, avatar_url)
+      `)
+      .eq("status", "finished")
+      .eq("is_bot_game", true)
+      .eq("bot_difficulty", "pro");
+
+    if (error) {
+      console.error("[stats] Error fetching pro bot games:", error);
+      throw error;
+    }
+
+    if (!finishedGamesData || finishedGamesData.length === 0) {
+      return [];
+    }
+
+    type ProBotGame = {
+      id: string;
+      player_1_id: string;
+      winner_id: string | null;
+      player1: { id: string; username: string | null; avatar_url: string | null } | { id: string; username: string | null; avatar_url: string | null }[];
+    };
+
+    const finishedGames = finishedGamesData as ProBotGame[];
+
+    // Aggregate stats by player
+    const playerStatsMap = new Map<string, RankingsEntry>();
+    const playerIdsSet = new Set<string>();
+
+    for (const game of finishedGames) {
+      const player1 = Array.isArray(game.player1) ? game.player1[0] : game.player1;
+      if (!player1) continue;
+
+      const playerId = player1.id;
+      playerIdsSet.add(playerId);
+      if (!playerStatsMap.has(playerId)) {
+        playerStatsMap.set(playerId, {
+          playerId,
+          username: player1.username,
+          avatarUrl: player1.avatar_url,
+          teamName: null,
+          teamPrimaryColor: null,
+          teamSecondaryColor: null,
+          totalWins: 0,
+          totalGames: 0,
+          winRate: 0,
+          multiplayerWins: 0,
+          multiplayerGames: 0,
+          hardBotWins: 0,
+          hardBotGames: 0,
+          proBotWins: 0,
+          proBotGames: 0,
+        });
+      }
+
+      const stats = playerStatsMap.get(playerId)!;
+      stats.proBotGames++;
+      stats.totalGames++;
+      if (game.winner_id === playerId) {
+        stats.proBotWins++;
+        stats.totalWins++;
+      }
+    }
+
+    // Fetch teams for all players
+    if (playerIdsSet.size > 0) {
+      const { data: teamsData } = await supabaseAdmin
+        .from("teams")
+        .select("owner_id, name, primary_color, secondary_color")
+        .in("owner_id", Array.from(playerIdsSet));
+
+      if (teamsData) {
+        const teams = teamsData as { owner_id: string; name: string; primary_color: string; secondary_color: string }[];
+        const teamsMap = new Map<string, { name: string; primary_color: string; secondary_color: string }>();
+        for (const team of teams) {
+          teamsMap.set(team.owner_id, {
+            name: team.name,
+            primary_color: team.primary_color,
+            secondary_color: team.secondary_color,
+          });
+        }
+
+        // Assign teams to rankings
+        for (const stats of playerStatsMap.values()) {
+          const team = teamsMap.get(stats.playerId);
+          if (team) {
+            stats.teamName = team.name;
+            stats.teamPrimaryColor = team.primary_color;
+            stats.teamSecondaryColor = team.secondary_color;
+          }
+        }
+      }
+    }
+
+    // Calculate win rates and sort
+    const rankings: RankingsEntry[] = Array.from(playerStatsMap.values())
+      .map((stats) => ({
+        ...stats,
+        winRate: stats.proBotGames > 0 ? Math.round((stats.proBotWins / stats.proBotGames) * 10000) / 100 : 0,
+      }))
+      .sort((a, b) => {
+        // Sort by pro bot wins (descending), then by win rate (descending)
+        if (b.proBotWins !== a.proBotWins) {
+          return b.proBotWins - a.proBotWins;
+        }
+        return b.winRate - a.winRate;
+      })
+      .slice(0, limit);
+
+    return rankings;
+  } catch (error) {
+    console.error("[stats] Error in getProBotRankings:", error);
+    throw error;
+  }
+}
+
+/**
  * Get rankings for hard bot games only (players vs bot difficulty hard)
  */
 export async function getHardBotRankings(limit: number = 100): Promise<RankingsEntry[]> {
@@ -536,10 +700,12 @@ export async function getHardBotRankings(limit: number = 100): Promise<RankingsE
           winRate: 0,
           multiplayerWins: 0,
           multiplayerGames: 0,
-          hardBotWins: 0,
-          hardBotGames: 0,
-        });
-      }
+            hardBotWins: 0,
+            hardBotGames: 0,
+            proBotWins: 0,
+            proBotGames: 0,
+          });
+        }
 
       const stats = playerStatsMap.get(playerId)!;
       stats.hardBotGames++;

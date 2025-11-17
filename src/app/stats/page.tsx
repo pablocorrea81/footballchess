@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
 import { StatsView } from "@/components/stats/StatsView";
-import { getGlobalRankings, getHardBotRankings } from "@/lib/stats/statsHelpers";
+import { getGlobalRankings, getHardBotRankings, getProBotRankings } from "@/lib/stats/statsHelpers";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,9 +24,10 @@ export default async function StatsPage() {
     .single();
 
   // Fetch rankings
-  const [globalRankings, hardBotRankings] = await Promise.all([
+  const [globalRankings, hardBotRankings, proBotRankings] = await Promise.all([
     getGlobalRankings(100),
     getHardBotRankings(100),
+    getProBotRankings(100),
   ]);
 
   return (
@@ -73,6 +74,7 @@ export default async function StatsPage() {
           profileId={session.user.id}
           initialGlobalRankings={globalRankings}
           initialHardBotRankings={hardBotRankings}
+          initialProBotRankings={proBotRankings}
         />
       </main>
     </div>
