@@ -1729,9 +1729,23 @@ Balance attack and defense based on the current game situation.
 ${isPro ? `\n🔥 PRO LEVEL - ADVANCED STRATEGY:\nYou are playing at the highest difficulty level. Apply these advanced concepts:\n- MULTI-TURN PLANNING: Consider 2-3 moves ahead - how does this move affect future positions?\n- COMBINATIONS: Look for sequences of moves that create multiple threats (double attacks)\n- PIECE COORDINATION: Position pieces to work together - support attacks with M/C while advancing F\n- PROPHYLACTIC MOVES: Anticipate opponent threats and prevent them BEFORE they become dangerous\n- TEMPO: Each move should improve your position - avoid moves that waste time or don't advance your plan\n- POSITIONAL ADVANTAGE: Control key squares, especially in columns D-E near opponent goal\n- ENDGAME AWARENESS: If score is tied or close, prioritize defense and safe play. If ahead, simplify. If behind, take calculated risks.\n- VARIANT EVALUATION: Consider multiple candidate moves and evaluate which leads to the best long-term position\nThink strategically about the entire game flow, not just the immediate move!\n` : ""}
 ${playingStyle ? `\n${getPlayingStyleInstructions(playingStyle)}\n` : ""}
 
-IMPORTANT: Respond with ONLY a single number between 1 and ${movesToEvaluate.length} representing the move number.
-Do not include any explanation, text, or punctuation. Just the number.
-Example: If you choose move 5, respond with: 5`;
+CRITICAL INSTRUCTION - READ CAREFULLY:
+You must respond with ONLY a single number between 1 and ${movesToEvaluate.length}.
+This number represents which move to make from the list above.
+
+FORMAT REQUIREMENTS:
+- Only the number, nothing else
+- No text before or after
+- No punctuation
+- No explanation
+- No spaces
+
+EXAMPLES OF CORRECT RESPONSES:
+- If choosing move #1: 1
+- If choosing move #5: 5  
+- If choosing move #${movesToEvaluate.length}: ${movesToEvaluate.length}
+
+REMEMBER: Respond with ONLY the number. Nothing else!`;
 
     // Pro level: Higher temperature for more creative/strategic play
     const temperature = isPro ? 0.4 : 0.1;
@@ -1745,7 +1759,7 @@ Example: If you choose move 5, respond with: 5`;
     console.log(`[Gemini]   - Current threats: ${currentThreatsList.length > 0 ? currentThreatsList.join(", ") : "None"}`);
     console.log(`[Gemini]   - Prompt length: ${prompt.length} characters`);
     console.log(`[Gemini]   - Temperature: ${temperature}`);
-    console.log(`[Gemini]   - Max output tokens: 10`);
+    console.log(`[Gemini]   - Max output tokens: 50`);
     console.log(`[Gemini]   - Model: gemini-2.5-flash`);
     
     // Check if prompt is too long (Gemini has limits)
@@ -1765,7 +1779,7 @@ Example: If you choose move 5, respond with: 5`;
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
           temperature, // Pro: 0.4 for creativity, others: 0.1 for consistency
-          maxOutputTokens: 10, // Only need a number
+          maxOutputTokens: 50, // Increased from 10 - sometimes Gemini needs more tokens even for simple responses
           topP: 0.95,
           topK: 40,
         },
@@ -1810,11 +1824,45 @@ Example: If you choose move 5, respond with: 5`;
         console.error(`[Gemini] ❌ ERROR: Failed to extract text from response!`);
         console.error(`[Gemini] Error:`, textError);
         console.error(`[Gemini] Response object:`, response);
-        text = "";
+        
+        // Try to extract text from candidates directly
+        if (response.candidates && response.candidates.length > 0) {
+          const candidate = response.candidates[0];
+          if (candidate.content && candidate.content.parts) {
+            const parts = candidate.content.parts.filter((p: any) => p.text);
+            if (parts.length > 0) {
+              text = parts.map((p: any) => p.text).join(" ").trim();
+              console.log(`[Gemini] ✅ Recovered text from candidate parts: "${text}"`);
+            }
+          }
+        }
+        
+        if (!text) {
+          text = "";
+        }
       }
       
       console.log(`[Gemini] 📝 Raw response text: "${text}"`);
       console.log(`[Gemini] 📏 Response text length: ${text.length} characters`);
+      
+      // Check for MAX_TOKENS finish reason (indicates truncation)
+      if (response.candidates && response.candidates.length > 0) {
+        const candidate = response.candidates[0];
+        if (candidate.finishReason === "MAX_TOKENS") {
+          console.warn(`[Gemini] ⚠️ WARNING: Response truncated due to MAX_TOKENS limit!`);
+          console.warn(`[Gemini] ⚠️ Current maxOutputTokens: 50`);
+          console.warn(`[Gemini] ⚠️ This might cause empty responses if content generation was cut off`);
+          
+          // Try to extract partial content if available
+          if (!text && candidate.content && candidate.content.parts) {
+            const parts = candidate.content.parts.filter((p: any) => p.text);
+            if (parts.length > 0) {
+              text = parts.map((p: any) => p.text).join(" ").trim();
+              console.log(`[Gemini] ✅ Extracted partial text from truncated response: "${text}"`);
+            }
+          }
+        }
+      }
       
       if (!text || text === "" || text === '""') {
         console.error(`[Gemini] ❌ ERROR: Empty response detected!`);
@@ -1823,7 +1871,10 @@ Example: If you choose move 5, respond with: 5`;
           candidates: response.candidates?.map((c: any) => ({
             finishReason: c.finishReason,
             safetyRatings: c.safetyRatings,
-            content: c.content?.parts?.map((p: any) => ({ text: p.text?.substring(0, 100) })) || [],
+            content: c.content?.parts?.map((p: any) => ({ 
+              text: p.text?.substring(0, 100),
+              type: p.type 
+            })) || [],
           })),
           promptFeedback: response.promptFeedback,
         }, null, 2));
