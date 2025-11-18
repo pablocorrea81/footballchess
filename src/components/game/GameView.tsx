@@ -1746,7 +1746,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 : ""
                             } ${
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
-                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
+                            } ${
+                              // Highlight player's pieces when it's their turn (mobile only)
+                              currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress"
+                                ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
+                                : ""
+                            } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[50%] md:h-[50%] text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
@@ -1801,37 +1806,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
                   Partido #{initialGameId.slice(0, 8)}
                 </h1>
-                {/* Turn indicator badge - visible only on mobile */}
-                {status === "in_progress" && (
-                  <div className={`md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 text-xs sm:text-sm font-semibold shadow-lg ${
-                    currentTurnIsPlayer
-                      ? "bg-emerald-600/90 text-white border-emerald-400/80 ring-2 ring-emerald-400/60"
-                      : "bg-sky-600/90 text-white border-sky-400/80"
-                  }`}>
-                    <span className={currentTurnIsPlayer ? "text-emerald-100" : "text-sky-100"}>
-                      {currentTurnIsPlayer ? "✅" : "⏳"}
-                    </span>
-                    <span className="font-bold whitespace-nowrap">
-                      {currentTurnLabel}
-                    </span>
-                  </div>
-                )}
-                {status === "finished" && (
-                  <div className="md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
-                    <span>🏁</span>
-                    <span className="font-bold whitespace-nowrap">
-                      {computedWinnerLabel
-                        ? `Ganó: ${computedWinnerLabel}`
-                        : "Finalizado"}
-                    </span>
-                  </div>
-                )}
-                {status === "waiting" && (
-                  <div className="md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 border-yellow-400/80 bg-yellow-600/90 text-white text-xs sm:text-sm font-semibold shadow-lg">
-                    <span>⏳</span>
-                    <span className="font-bold whitespace-nowrap">Esperando</span>
-                  </div>
-                )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Link
