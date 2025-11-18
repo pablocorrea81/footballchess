@@ -154,6 +154,8 @@ export function GameView({
   const [scoreChanged, setScoreChanged] = useState<PlayerId | null>(null);
   const boardRef = useRef<HTMLDivElement>(null);
   const { playSound } = useGameSounds();
+  // Track board update counter to force re-render on mobile
+  const [boardUpdateCounter, setBoardUpdateCounter] = useState(0);
   // Track if we're currently processing a local move to avoid overwriting with Realtime updates
   const isProcessingLocalMoveRef = useRef<boolean>(false);
   // Track the last move we processed to avoid duplicate updates
@@ -367,9 +369,11 @@ export function GameView({
         lastMove: newLastMove,
       };
 
-      setGameState(updatedState);
-      setScore(newScore);
-      setStatus(gameData.status);
+          setGameState(updatedState);
+          setScore(newScore);
+          setStatus(gameData.status);
+          // Force re-render on mobile by incrementing update counter
+          setBoardUpdateCounter((prev) => prev + 1);
       setPlayers({
         home: gameData.player_1_id,
         away: gameData.player_2_id,
@@ -587,6 +591,8 @@ export function GameView({
           setGameState(updatedState);
           setScore(newScore);
           setStatus(payload.new.status);
+          // Force re-render on mobile by incrementing update counter
+          setBoardUpdateCounter((prev) => prev + 1);
           setPlayers({
             home: payload.new.player_1_id,
             away: payload.new.player_2_id,
@@ -799,6 +805,8 @@ export function GameView({
       
       setGameState(outcome.nextState);
       setScore(newScore);
+      // Force re-render on mobile by incrementing update counter
+      setBoardUpdateCounter((prev) => prev + 1);
       setSelection(null);
       
       // Update feedback based on move result
@@ -1585,6 +1593,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         >
           <div 
             id="game-board-container"
+            key={`board-${boardUpdateCounter}`}
             className="w-full border border-white/20 shadow-2xl"
           >
             {/* Column labels (A-H) */}
@@ -1676,7 +1685,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
                   return (
                     <div
-                      key={`${actualRow}-${actualCol}`}
+                      key={`cell-${actualRow}-${actualCol}-${cell?.id || 'empty'}-${boardUpdateCounter}`}
                       className="relative"
                       onMouseEnter={() => {
                         if (cell && cell.owner === playerRole && canAct) {
@@ -1726,6 +1735,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         {/* Piece */}
                         {cell && (
                           <span
+                            key={`piece-${cell.id}-${boardUpdateCounter}`}
                             className={`relative z-10 flex items-center justify-center rounded-full border ${
                               cell.owner === playerRole 
                                 ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
