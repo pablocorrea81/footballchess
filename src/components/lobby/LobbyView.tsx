@@ -348,22 +348,18 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                 <button
                   onClick={createBotGame}
                   disabled={botLoading || isPending || loading}
-                  className="mt-2 rounded-full border-2 border-sky-300/80 bg-gradient-to-r from-sky-500 via-purple-500 to-sky-500 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-500/50 transition-all hover:scale-105 hover:bg-sky-400 hover:shadow-xl hover:shadow-sky-500/70 disabled:cursor-not-allowed disabled:scale-100 disabled:bg-sky-700/50 disabled:opacity-60 disabled:shadow-none"
+                  className="mt-2 rounded-full border-2 border-sky-300/50 bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-sky-700/50 disabled:opacity-60"
                 >
-                  {botLoading ? "Invocando IA..." : `🤖 Crear partida vs IA (${selectedDifficulty === "easy" ? "Fácil" : selectedDifficulty === "medium" ? "Medio" : selectedDifficulty === "hard" ? "Difícil" : "Pro"})`}
+                  {botLoading ? "Invocando IA..." : `Crear partida vs IA (${selectedDifficulty === "easy" ? "Fácil" : selectedDifficulty === "medium" ? "Medio" : selectedDifficulty === "hard" ? "Difícil" : "Pro"})`}
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => setShowDifficultySelector(true)}
                 disabled={botLoading || isPending || loading || showGameSettings}
-                className="group relative rounded-full border-2 border-sky-300/80 bg-gradient-to-r from-sky-500 via-purple-500 to-sky-500 px-6 py-3 text-base font-bold text-white shadow-lg shadow-sky-500/50 transition-all hover:scale-105 hover:border-sky-200 hover:shadow-xl hover:shadow-sky-500/70 disabled:cursor-not-allowed disabled:scale-100 disabled:border-sky-100/30 disabled:bg-sky-700/50 disabled:opacity-60 disabled:shadow-none"
+                className="rounded-full border border-sky-300/50 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-200 hover:text-white disabled:cursor-not-allowed disabled:border-sky-100/30 disabled:text-sky-100/40"
               >
-                <span className="relative z-10 flex items-center gap-2">
-                  <span className="text-xl">🤖</span>
-                  <span>{botLoading ? "Invocando IA..." : "Partida vs IA"}</span>
-                </span>
-                <span className="absolute inset-0 rounded-full bg-gradient-to-r from-sky-400 via-purple-400 to-sky-400 opacity-0 transition-opacity group-hover:opacity-100"></span>
+                {botLoading ? "Invocando IA..." : "🤖 Partida vs IA"}
               </button>
             )}
           </div>
@@ -429,7 +425,7 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
               <button
                 onClick={() => setShowGameSettings(true)}
                 disabled={loading || isPending || botLoading || showDifficultySelector}
-                className="rounded-full border border-emerald-400/40 bg-emerald-600/40 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-600/60 hover:border-emerald-400/60 disabled:cursor-not-allowed disabled:bg-emerald-700/30 disabled:border-emerald-400/20 disabled:text-emerald-100/50"
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-700/50"
               >
                 {loading ? "Procesando..." : "Crear partida"}
               </button>
