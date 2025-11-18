@@ -286,10 +286,14 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
     setError(null);
     try {
       await deleteGameAction(id);
-      // Refresh games list and server page
+      // Optimistically update UI: remove game from list immediately
+      setGames((prevGames) => prevGames.filter((game) => game.id !== id));
+      // Refresh games list and server page in background
       await refreshGames();
       router.refresh();
     } catch (actionError) {
+      // If deletion failed, refresh to restore correct state
+      await refreshGames();
       setError(
         actionError instanceof Error
           ? actionError.message

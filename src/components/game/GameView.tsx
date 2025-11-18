@@ -1569,6 +1569,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         >
           <div 
             id="game-board-container"
+            key={`board-${gameState.turn}-${gameState.history?.length ?? 0}-${gameState.score.home}-${gameState.score.away}`}
             className="w-full border border-white/20 shadow-2xl"
           >
             {/* Column labels (A-H) */}
@@ -1661,7 +1662,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
                   return (
                     <div
-                      key={`cell-${actualRow}-${actualCol}-${cell?.id || 'empty'}-${cell?.type || 'empty'}`}
+                      key={`cell-${actualRow}-${actualCol}`}
                       className="relative"
                       onMouseEnter={() => {
                         if (cell && cell.owner === playerRole && canAct) {
@@ -1711,7 +1712,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         {/* Piece */}
                         {cell && (
                           <span
-                            key={`piece-${cell.id}-${actualRow}-${actualCol}`}
+                            key={`piece-${cell.id}`}
                             className={`relative z-10 flex items-center justify-center rounded-full border ${
                               cell.owner === playerRole 
                                 ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
