@@ -142,6 +142,7 @@ export function GameView({
   const [showYourTurnAlert, setShowYourTurnAlert] = useState(false);
   const [showTimeoutAlert, setShowTimeoutAlert] = useState(false);
   const [showVictoryAlert, setShowVictoryAlert] = useState(false);
+  const [showDefeatAlert, setShowDefeatAlert] = useState(false);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
   const [showSurrenderAlert, setShowSurrenderAlert] = useState(false);
   const [isSurrendering, setIsSurrendering] = useState(false);
@@ -171,6 +172,10 @@ export function GameView({
   const victoryTimersRef = useRef<{ hideTimer?: NodeJS.Timeout; redirectTimer?: NodeJS.Timeout }>({});
   // Track if victory alert has been shown to prevent showing again
   const victoryAlertShownRef = useRef<boolean>(false);
+  // Track defeat timers to prevent cleanup issues
+  const defeatTimersRef = useRef<{ hideTimer?: NodeJS.Timeout; redirectTimer?: NodeJS.Timeout }>({});
+  // Track if defeat alert has been shown to prevent showing again
+  const defeatAlertShownRef = useRef<boolean>(false);
   // Timeout constants
   const TURN_TIMEOUT_SECONDS = 60;
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1049,22 +1054,24 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     }
   }, [gameState.history, effectivePlayerLabels, showGoalCelebration, playSound, team1Name, team2Name, isBotGame, botDisplayName]);
 
-  // Monitor game status and winner_id to detect victory
+  // Monitor game status and winner_id to detect victory and defeat
   useEffect(() => {
     const currentStatus = status;
     const currentWinnerId = winnerId;
     const previousStatus = previousStatusRef.current;
     const previousWinnerId = previousWinnerIdRef.current;
     
-    // Check if game just finished and player won
+    // Check if game just finished
     const gameJustFinished = currentStatus === "finished" && previousStatus !== "finished";
     
-    // Also check if winner_id just changed to profileId (in case status was already finished)
-    const winnerJustChanged = currentWinnerId === profileId && previousWinnerId !== profileId && currentStatus === "finished";
+    // Also check if winner_id just changed (in case status was already finished)
+    const winnerJustChanged = currentWinnerId !== previousWinnerId && currentStatus === "finished";
     
-    // Determine if player won
+    // Determine if player won or lost
     // For both multiplayer and bot games: if winner_id === profileId, the player won
     const playerWon = currentWinnerId === profileId;
+    // Player lost if game is finished, there's a winner, and it's not the player
+    const playerLost = currentStatus === "finished" && currentWinnerId !== null && currentWinnerId !== profileId;
     
     // Show victory alert if game just finished and player won, or if winner just changed to player
     // Use ref to prevent showing multiple times (more reliable than state)
@@ -1113,6 +1120,52 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
       previousWinnerIdRef.current = currentWinnerId;
     }
     
+    // Show defeat alert if game just finished and player lost, or if winner just changed to opponent
+    if ((gameJustFinished || winnerJustChanged) && playerLost && !defeatAlertShownRef.current) {
+      console.log("[GameView] Player lost the game! Showing defeat alert", {
+        currentStatus,
+        previousStatus,
+        currentWinnerId,
+        previousWinnerId,
+        profileId,
+        isBotGame,
+        playerLost,
+        gameJustFinished,
+        winnerJustChanged,
+      });
+      
+      // Mark as shown to prevent showing again
+      defeatAlertShownRef.current = true;
+      setShowDefeatAlert(true);
+      playSound("goal"); // Use goal sound for defeat too
+      
+      // Clear any existing timers first
+      if (defeatTimersRef.current.hideTimer) {
+        clearTimeout(defeatTimersRef.current.hideTimer);
+      }
+      if (defeatTimersRef.current.redirectTimer) {
+        clearTimeout(defeatTimersRef.current.redirectTimer);
+      }
+      
+      // Hide alert after 5 seconds
+      defeatTimersRef.current.hideTimer = setTimeout(() => {
+        console.log("[GameView] Hiding defeat alert after 5 seconds");
+        setShowDefeatAlert(false);
+        defeatTimersRef.current.hideTimer = undefined;
+      }, 5000);
+      
+      // Redirect to lobby after 5 seconds
+      defeatTimersRef.current.redirectTimer = setTimeout(() => {
+        console.log("[GameView] Redirecting to lobby after defeat");
+        router.push("/lobby");
+        defeatTimersRef.current.redirectTimer = undefined;
+      }, 5000);
+      
+      // Update refs after showing alert
+      previousStatusRef.current = currentStatus;
+      previousWinnerIdRef.current = currentWinnerId;
+    }
+    
     // Update refs if status or winner changed (but don't show alert again if already shown)
     if (previousStatus !== currentStatus) {
       previousStatusRef.current = currentStatus;
@@ -1122,15 +1175,21 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     }
   }, [status, winnerId, profileId, playSound, isBotGame, router]);
   
-  // Cleanup victory timers on unmount
+  // Cleanup victory and defeat timers on unmount
   useEffect(() => {
     return () => {
-      console.log("[GameView] Cleaning up victory timers on unmount");
+      console.log("[GameView] Cleaning up victory and defeat timers on unmount");
       if (victoryTimersRef.current.hideTimer) {
         clearTimeout(victoryTimersRef.current.hideTimer);
       }
       if (victoryTimersRef.current.redirectTimer) {
         clearTimeout(victoryTimersRef.current.redirectTimer);
+      }
+      if (defeatTimersRef.current.hideTimer) {
+        clearTimeout(defeatTimersRef.current.hideTimer);
+      }
+      if (defeatTimersRef.current.redirectTimer) {
+        clearTimeout(defeatTimersRef.current.redirectTimer);
       }
     };
   }, []);
@@ -1535,6 +1594,24 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         </div>
       )}
 
+      {showDefeatAlert && status === "finished" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <div className="animate-bounce-in rounded-3xl border-4 border-red-400 bg-gradient-to-br from-red-500 via-sky-500 to-red-500 px-8 md:px-12 py-6 md:py-8 shadow-2xl backdrop-blur-sm pointer-events-auto">
+            <div className="text-center">
+              <div className="text-6xl md:text-7xl lg:text-8xl mb-4 md:mb-5 animate-pulse">
+                😔
+              </div>
+              <div className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-2 md:mb-3 animate-pulse">
+                ¡Perdiste!
+              </div>
+              <div className="text-lg md:text-xl lg:text-2xl font-semibold text-red-100">
+                Mejor suerte la próxima vez
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Surrender Confirmation Modal */}
       {showSurrenderConfirm && status === "in_progress" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -1748,7 +1825,8 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
                             } ${
                               // Highlight player's pieces when it's their turn (mobile only)
-                              currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress"
+                              // Remove highlight when a piece is selected
+                              currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress" && !selection
                                 ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
                                 : ""
                             } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[50%] md:h-[50%] text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold`}
