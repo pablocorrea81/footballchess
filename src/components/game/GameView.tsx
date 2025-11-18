@@ -444,19 +444,12 @@ export function GameView({
             return;
           }
           
-          // Create a new state object to ensure React detects the change
-          const rawState = (payload.new.game_state as GameState | null) ?? RuleEngine.createInitialState();
-          const nextState: GameState = {
-            ...rawState,
-            // Create new arrays and objects to ensure React detects changes
-            board: rawState.board.map(row => row.map(cell => cell ? { ...cell } : null)),
-            history: rawState.history ? rawState.history.map(move => ({ ...move })) : [],
-            score: { ...rawState.score },
-            lastMove: rawState.lastMove ? { ...rawState.lastMove } : null,
-          };
-          const nextScore: GameState["score"] =
+          const nextState =
+            (payload.new.game_state as GameState | null) ??
+            RuleEngine.createInitialState();
+          const nextScore =
             (payload.new.score as GameState["score"] | null) ??
-            { ...nextState.score };
+            RuleEngine.createInitialState().score;
 
           const historyLength = nextState.history?.length ?? 0;
           const currentHistoryLength = lastProcessedHistoryLengthRef.current;
@@ -542,11 +535,7 @@ export function GameView({
             score: nextScore,
             status: payload.new.status,
             historyLength: nextState.history?.length ?? 0,
-            boardChanged: JSON.stringify(gameState.board) !== JSON.stringify(nextState.board),
           });
-          
-          // Force React to detect the change by ensuring we have a new object reference
-          console.log("[GameView] State update - current turn:", gameState.turn, "next turn:", nextState.turn);
 
           // Check if game just started (first move)
           const isGameStart = historyLength === 0 && status === "waiting" && payload.new.status === "in_progress";
@@ -723,22 +712,12 @@ export function GameView({
     const piece = gameState.board[position.row]?.[position.col];
     if (!piece || piece.owner !== playerRole) {
       setSelection(null);
-      setHoveredPiece(null);
-      setHintMoves([]);
-      setShowHint(false);
       return;
     }
 
     const legalMoves = RuleEngine.getLegalMovesForPiece(gameState, position);
     setSelection({ origin: position, moves: legalMoves });
     setFeedback(null);
-    
-    // In mobile: also set hint moves to show them on the board
-    if (showMoveHints) {
-      setHoveredPiece(position);
-      setHintMoves(legalMoves);
-      setShowHint(true);
-    }
   };
 
   const handleMove = async (destination: Position) => {
@@ -787,10 +766,6 @@ export function GameView({
       setGameState(outcome.nextState);
       setScore(newScore);
       setSelection(null);
-      // Clear hint moves when move is made
-      setHoveredPiece(null);
-      setHintMoves([]);
-      setShowHint(false);
       
       // Update feedback based on move result
       if (goalScored) {
@@ -868,10 +843,6 @@ export function GameView({
       selection.origin.col === position.col
     ) {
       setSelection(null);
-      // Clear hint moves when selection is cancelled
-      setHoveredPiece(null);
-      setHintMoves([]);
-      setShowHint(false);
       return;
     }
 
@@ -1662,7 +1633,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                     hoveredPiece.col === actualCol;
                   
                   // Check if this cell is a hint move destination
-                  // Shows hints when hovering over a piece (desktop) or when a piece is selected (mobile)
                   const isHintMove = 
                     showMoveHints &&
                     showHint &&
@@ -1672,7 +1642,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
                   return (
                     <div
-                      key={`cell-${actualRow}-${actualCol}-${cell?.id || 'empty'}`}
+                      key={`${actualRow}-${actualCol}`}
                       className="relative"
                       onMouseEnter={() => {
                         if (cell && cell.owner === playerRole && canAct) {
@@ -1722,7 +1692,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         {/* Piece */}
                         {cell && (
                           <span
-                            key={`piece-${cell.id}`}
                             className={`relative z-10 flex items-center justify-center rounded-full border ${
                               cell.owner === playerRole 
                                 ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
@@ -1733,12 +1702,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 : ""
                             } ${
                               isHoveredForHint ? "ring-4 ring-purple-400/80 shadow-lg shadow-purple-400/50" : ""
-                            } ${
-                              // Highlight player's pieces when it's their turn (mobile only)
-                              (currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress")
-                                ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
-                                : ""
-                            } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[50%] md:h-[50%] text-lg sm:text-xl md:text-xl lg:text-2xl xl:text-3xl font-bold p-1 sm:p-0.5 md:p-0`}
+                            } w-[40%] h-[40%] sm:w-[45%] sm:h-[45%] md:w-[50%] md:h-[50%] text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl`}
                           >
                             {pieceInitials[cell.type]}
                           </span>
@@ -1788,23 +1752,23 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
-            <div className="flex flex-row items-center justify-between gap-2 md:gap-3">
-              <div className="flex flex-row items-center gap-2 md:gap-3 flex-wrap">
-                <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white whitespace-nowrap">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3">
+              <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
                   Partido #{initialGameId.slice(0, 8)}
                 </h1>
-                {/* Turn indicator badge - visible only on mobile, more prominent */}
+                {/* Turn indicator badge - visible only on mobile */}
                 {status === "in_progress" && (
-                  <div className={`md:hidden inline-flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs sm:text-sm font-bold shadow-xl flex-shrink-0 ${
+                  <div className={`md:hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border-2 text-xs sm:text-sm font-semibold shadow-lg ${
                     currentTurnIsPlayer
-                      ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white border-emerald-300 ring-4 ring-emerald-400/70 animate-pulse"
-                      : "bg-gradient-to-r from-sky-500 to-sky-600 text-white border-sky-300"
+                      ? "bg-emerald-600/90 text-white border-emerald-400/80 ring-2 ring-emerald-400/60"
+                      : "bg-sky-600/90 text-white border-sky-400/80"
                   }`}>
-                    <span className={`text-base sm:text-lg ${currentTurnIsPlayer ? "animate-bounce" : ""}`}>
-                      {currentTurnIsPlayer ? "✨" : "⏳"}
+                    <span className={currentTurnIsPlayer ? "text-emerald-100" : "text-sky-100"}>
+                      {currentTurnIsPlayer ? "✅" : "⏳"}
                     </span>
-                    <span className="whitespace-nowrap">
-                      {currentTurnIsPlayer ? "TU TURNO" : `Turno: ${currentTurnLabel}`}
+                    <span className="font-bold whitespace-nowrap">
+                      {currentTurnLabel}
                     </span>
                   </div>
                 )}
