@@ -350,8 +350,25 @@ export function GameView({
         setTimeout(() => setScoreChanged(null), 1000);
       }
 
-      setGameState(nextState);
-      setScore(nextScore);
+      // Create new object references to ensure React detects changes
+      // This is critical for mobile updates, especially when bot makes a move
+      const newBoard = nextState.board.map((row) =>
+        row.map((cell) => (cell ? { ...cell } : null))
+      );
+      const newHistory = nextState.history ? [...nextState.history] : [];
+      const newScore = { ...nextScore };
+      const newLastMove = nextState.lastMove ? { ...nextState.lastMove } : null;
+      
+      const updatedState: GameState = {
+        ...nextState,
+        board: newBoard,
+        history: newHistory,
+        score: newScore,
+        lastMove: newLastMove,
+      };
+
+      setGameState(updatedState);
+      setScore(newScore);
       setStatus(gameData.status);
       setPlayers({
         home: gameData.player_1_id,
@@ -550,8 +567,25 @@ export function GameView({
             setTimeout(() => setScoreChanged(null), 1000);
           }
           
-          setGameState(nextState);
-          setScore(nextScore);
+          // Create new object references to ensure React detects changes
+          // This is critical for mobile updates, especially when bot makes a move
+          const newBoard = nextState.board.map((row) =>
+            row.map((cell) => (cell ? { ...cell } : null))
+          );
+          const newHistory = nextState.history ? [...nextState.history] : [];
+          const newScore = { ...nextScore };
+          const newLastMove = nextState.lastMove ? { ...nextState.lastMove } : null;
+          
+          const updatedState: GameState = {
+            ...nextState,
+            board: newBoard,
+            history: newHistory,
+            score: newScore,
+            lastMove: newLastMove,
+          };
+          
+          setGameState(updatedState);
+          setScore(newScore);
           setStatus(payload.new.status);
           setPlayers({
             home: payload.new.player_1_id,
