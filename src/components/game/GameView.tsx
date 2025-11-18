@@ -444,12 +444,19 @@ export function GameView({
             return;
           }
           
-          const nextState =
-            (payload.new.game_state as GameState | null) ??
-            RuleEngine.createInitialState();
-          const nextScore =
+          // Create a new state object to ensure React detects the change
+          const rawState = (payload.new.game_state as GameState | null) ?? RuleEngine.createInitialState();
+          const nextState: GameState = {
+            ...rawState,
+            // Create new arrays and objects to ensure React detects changes
+            board: rawState.board.map(row => row.map(cell => cell ? { ...cell } : null)),
+            history: rawState.history ? rawState.history.map(move => ({ ...move })) : [],
+            score: { ...rawState.score },
+            lastMove: rawState.lastMove ? { ...rawState.lastMove } : null,
+          };
+          const nextScore: GameState["score"] =
             (payload.new.score as GameState["score"] | null) ??
-            RuleEngine.createInitialState().score;
+            { ...nextState.score };
 
           const historyLength = nextState.history?.length ?? 0;
           const currentHistoryLength = lastProcessedHistoryLengthRef.current;
@@ -535,7 +542,11 @@ export function GameView({
             score: nextScore,
             status: payload.new.status,
             historyLength: nextState.history?.length ?? 0,
+            boardChanged: JSON.stringify(gameState.board) !== JSON.stringify(nextState.board),
           });
+          
+          // Force React to detect the change by ensuring we have a new object reference
+          console.log("[GameView] State update - current turn:", gameState.turn, "next turn:", nextState.turn);
 
           // Check if game just started (first move)
           const isGameStart = historyLength === 0 && status === "waiting" && payload.new.status === "in_progress";
@@ -1569,7 +1580,6 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         >
           <div 
             id="game-board-container"
-            key={`board-${gameState.turn}-${gameState.history?.length ?? 0}-${gameState.score.home}-${gameState.score.away}`}
             className="w-full border border-white/20 shadow-2xl"
           >
             {/* Column labels (A-H) */}
@@ -1662,7 +1672,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
 
                   return (
                     <div
-                      key={`cell-${actualRow}-${actualCol}`}
+                      key={`cell-${actualRow}-${actualCol}-${cell?.id || 'empty'}`}
                       className="relative"
                       onMouseEnter={() => {
                         if (cell && cell.owner === playerRole && canAct) {
