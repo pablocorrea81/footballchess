@@ -68,6 +68,7 @@ type LobbyViewProps = {
   profileId: string;
   initialGames: GameRow[];
   initialError?: string;
+  isAdmin?: boolean;
 };
 
 const GAME_CHANNEL = "games:lobby";
@@ -97,7 +98,7 @@ const GAME_SELECT = `
   team2:teams!games_team_2_id_fkey(name, primary_color, secondary_color)
 `;
 
-export function LobbyView({ profileId, initialGames, initialError }: LobbyViewProps) {
+export function LobbyView({ profileId, initialGames, initialError, isAdmin = false }: LobbyViewProps) {
   const router = useRouter();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -119,7 +120,9 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(initialError || null);
   const [isPending, startTransition] = useTransition();
-  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard" | "pro">("hard");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"easy" | "medium" | "hard" | "pro">(
+    isAdmin ? "hard" : "hard" // Start with "hard" for all users
+  );
   const [showDifficultySelector, setShowDifficultySelector] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
   const [selectedWinningScore, setSelectedWinningScore] = useState<1 | 2 | 3>(3);
@@ -217,6 +220,12 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
   };
 
   const createBotGame = async () => {
+    // Prevent creating Pro games if not admin
+    if (selectedDifficulty === "pro" && !isAdmin) {
+      setError("El nivel Pro solo está disponible para administradores");
+      return;
+    }
+    
     setError(null);
     setBotLoading(true);
     startTransition(async () => {
@@ -328,22 +337,32 @@ export function LobbyView({ profileId, initialGames, initialError }: LobbyViewPr
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  {(["easy", "medium", "hard", "pro"] as const).map((diff) => (
-                    <button
-                      key={diff}
-                      onClick={() => {
-                        setSelectedDifficulty(diff);
-                        // Don't close modal - user needs to click "Crear partida vs IA"
-                      }}
-                      className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
-                        selectedDifficulty === diff
-                          ? "bg-sky-500 text-white shadow-lg"
-                          : "bg-sky-700/50 text-sky-200 hover:bg-sky-600/70"
-                      }`}
-                    >
-                      {diff === "easy" ? "🟢 Fácil" : diff === "medium" ? "🟡 Medio" : diff === "hard" ? "🔴 Difícil" : "⭐ Pro"}
-                    </button>
-                  ))}
+                  {(["easy", "medium", "hard", "pro"] as const).map((diff) => {
+                    const isPro = diff === "pro";
+                    const isDisabled = isPro && !isAdmin;
+                    return (
+                      <button
+                        key={diff}
+                        onClick={() => {
+                          if (!isDisabled) {
+                            setSelectedDifficulty(diff);
+                            // Don't close modal - user needs to click "Crear partida vs IA"
+                          }
+                        }}
+                        disabled={isDisabled}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+                          isDisabled
+                            ? "bg-sky-900/30 text-sky-400/50 cursor-not-allowed opacity-50"
+                            : selectedDifficulty === diff
+                              ? "bg-sky-500 text-white shadow-lg"
+                              : "bg-sky-700/50 text-sky-200 hover:bg-sky-600/70"
+                        }`}
+                        title={isDisabled ? "Solo disponible para administradores" : undefined}
+                      >
+                        {diff === "easy" ? "🟢 Fácil" : diff === "medium" ? "🟡 Medio" : diff === "hard" ? "🔴 Difícil" : "⭐ Pro"}
+                      </button>
+                    );
+                  })}
                 </div>
                 <button
                   onClick={createBotGame}

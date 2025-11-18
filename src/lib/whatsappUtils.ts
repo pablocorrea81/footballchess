@@ -211,20 +211,21 @@ export function formatUruguayanPhoneForDisplay(phone: string): string {
 
 /**
  * Generate WhatsApp invitation message
- * Uses ⚽ emoji sparingly for better compatibility with WhatsApp
+ * Uses ⚽ emoji for better compatibility with WhatsApp
  * The soccer ball emoji is widely supported and should render correctly
  */
 export function generateWhatsAppInviteMessage(inviteCode: string, inviteUrl: string, gameCreator?: string): string {
   const creatorText = gameCreator ? `${gameCreator} te invita a ` : '';
-  // Using ⚽ only at the beginning and end - it's more compatible than 🎮
+  // Using ⚽ emoji throughout - it's widely supported by WhatsApp
   return `⚽ ¡Hola! ${creatorText}jugar Football Chess ⚽
 
-Código de invitación: ${inviteCode}
+⚽ Código de invitación: ${inviteCode} ⚽
 
 Haz clic en este link para unirte a la partida:
+
 ${inviteUrl}
 
-¡Nos vemos en el campo! ⚽`;
+⚽ ¡Nos vemos en el campo! ⚽`;
 }
 
 /**

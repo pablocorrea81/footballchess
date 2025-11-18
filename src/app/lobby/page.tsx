@@ -222,6 +222,7 @@ export default async function LobbyPage({ searchParams }: LobbyPageProps) {
           profileId={session.user.id}
           initialGames={games}
           initialError={initialError ?? undefined}
+          isAdmin={isAdmin}
         />
       </main>
     </div>

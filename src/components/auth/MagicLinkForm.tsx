@@ -1,13 +1,19 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 
-export function MagicLinkForm() {
+type MagicLinkFormProps = {
+  redirectTo?: string;
+};
+
+export function MagicLinkForm({ redirectTo }: MagicLinkFormProps) {
   const { session } = useSupabase();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectParam = redirectTo || searchParams?.get("redirect");
   const [email, setEmail] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
@@ -17,22 +23,31 @@ export function MagicLinkForm() {
 
   useEffect(() => {
     if (session) {
-      router.replace("/lobby");
+      // If there's a redirect parameter, use it; otherwise go to lobby
+      if (redirectParam) {
+        router.replace(redirectParam);
+      } else {
+        router.replace("/lobby");
+      }
     }
-  }, [session, router]);
+  }, [session, router, redirectParam]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setStatus("loading");
     setMessage(null);
 
-    const response = await fetch("/api/auth/direct-login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, accessCode }),
-    });
+      const response = await fetch("/api/auth/direct-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ 
+          email, 
+          accessCode,
+          redirectTo: redirectParam || undefined,
+        }),
+      });
 
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as

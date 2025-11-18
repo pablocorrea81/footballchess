@@ -155,8 +155,9 @@ export default async function InvitePage({ params }: InvitePageProps) {
     redirect(`/play/${game.id}`);
   }
 
-  // User is not authenticated, show invite form with redirect to join after auth
-  return <InviteView inviteCode={inviteCode} gameId={game.id} />;
+  // User is not authenticated, redirect to login with redirect back to invite
+  // After login, the user will be automatically joined to the game
+  redirect(`/login?redirect=/invite/${inviteCode}`);
 }
 
 

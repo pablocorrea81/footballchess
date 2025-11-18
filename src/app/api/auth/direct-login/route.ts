@@ -8,6 +8,7 @@ const ACCESS_CODE =
 type DirectLoginPayload = {
   email?: unknown;
   accessCode?: unknown;
+  redirectTo?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
 
   const email = body?.email;
   const accessCode = body?.accessCode;
+  const redirectTo = typeof body?.redirectTo === "string" ? body.redirectTo : undefined;
 
   if (typeof email !== "string" || !email.includes("@")) {
     console.warn("[direct-login] invalid email", email);
@@ -41,16 +43,23 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_SITE_URL ??
     `${requestUrl.protocol}//${requestUrl.host}`;
 
+  // Build redirect URL with next parameter if provided
+  const callbackUrl = redirectTo
+    ? `${siteUrl}/auth/callback?next=${encodeURIComponent(redirectTo)}`
+    : `${siteUrl}/auth/callback`;
+
   console.log("[direct-login] generating link", {
     siteUrl,
     email,
+    redirectTo,
+    callbackUrl,
   });
 
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
     options: {
-      redirectTo: `${siteUrl}/auth/callback`,
+      redirectTo: callbackUrl,
     },
   });
 
