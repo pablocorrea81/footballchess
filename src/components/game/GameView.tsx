@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { GoalCelebration } from "@/components/game/GoalCelebration";
 import { useGameSounds } from "@/hooks/useGameSounds";
+import { getPieceColors, hexToRgbString } from "@/lib/teamColors";
 import type { Database, Json } from "@/lib/database.types";
 import {
   BOARD_COLS,
@@ -118,6 +119,18 @@ export function GameView({
   team2SecondaryColor,
 }: GameViewProps) {
   const { supabase } = useSupabase();
+
+  // Calculate piece colors based on team colors
+  const pieceColors = useMemo(
+    () =>
+      getPieceColors(
+        team1PrimaryColor ?? null,
+        team1SecondaryColor ?? null,
+        team2PrimaryColor ?? null,
+        team2SecondaryColor ?? null,
+      ),
+    [team1PrimaryColor, team1SecondaryColor, team2PrimaryColor, team2SecondaryColor],
+  );
 
   const [gameState, setGameState] = useState<GameState>(initialState);
   const [score, setScore] = useState<GameState["score"]>(
@@ -1810,14 +1823,13 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                         )}
 
                         {/* Piece */}
-                        {cell && (
-                          <span
-                            key={`piece-${cell.id}-${boardUpdateCounter}`}
-                            className={`relative z-10 flex items-center justify-center rounded-full border ${
-                              cell.owner === playerRole 
-                                ? "border-emerald-200 bg-emerald-500/60 text-emerald-950" 
-                                : "border-sky-200 bg-sky-500/50 text-sky-950"
-                            } ${
+                        {cell && (() => {
+                          const isHomePiece = cell.owner === "home";
+                          const colors = isHomePiece ? pieceColors.home : pieceColors.away;
+                          return (
+                            <span
+                              key={`piece-${cell.id}-${boardUpdateCounter}`}
+                              className={`relative z-10 flex items-center justify-center rounded-full border ${
                               highlightStartingPiece
                                 ? "shadow-[0_0_0_2px_rgba(250,204,21,0.6)] sm:shadow-[0_0_0_3px_rgba(250,204,21,0.6)] md:shadow-[0_0_0_4px_rgba(250,204,21,0.6)] animate-pulse"
                                 : ""
@@ -1830,10 +1842,18 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                                 ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
                                 : ""
                             } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[50%] md:h-[50%] text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold`}
-                          >
-                            {pieceInitials[cell.type]}
-                          </span>
-                        )}
+                              style={{
+                                backgroundColor: hexToRgbString(colors.bg),
+                                borderColor: hexToRgbString(colors.border),
+                                color: colors.text,
+                                borderWidth: "2px",
+                                borderStyle: "solid",
+                              }}
+                            >
+                              {pieceInitials[cell.type]}
+                            </span>
+                          );
+                        })()}
                       </button>
                       
                       {/* Hint tooltip - Desktop: absolute positioning, Mobile: hidden (shown in fixed panel below) */}
