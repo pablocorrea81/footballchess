@@ -244,8 +244,8 @@ export function MagicLinkForm({ redirectTo }: MagicLinkFormProps) {
               type="text"
               value={otpCode}
               onChange={(event) => {
-                // Only allow numbers, max 6 digits
-                const value = event.target.value.replace(/\D/g, "").slice(0, 6);
+                // Only allow numbers, max 8 digits (Supabase sends 8-digit codes)
+                const value = event.target.value.replace(/\D/g, "").slice(0, 8);
                 setOtpCode(value);
                 // Clear access code when OTP is entered
                 if (value.trim() !== "") {
@@ -253,8 +253,8 @@ export function MagicLinkForm({ redirectTo }: MagicLinkFormProps) {
                 }
               }}
               className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-base text-emerald-950 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 text-center text-2xl tracking-widest"
-              placeholder="000000"
-              maxLength={6}
+              placeholder="00000000"
+              maxLength={8}
               disabled={status === "loading" || status === "verifying-otp" || status === "sending-otp"}
             />
             <button

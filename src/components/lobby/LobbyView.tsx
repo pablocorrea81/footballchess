@@ -14,6 +14,7 @@ import {
   deleteGameAction,
 } from "@/app/lobby/create-game/action";
 import { InviteWhatsAppModal } from "./InviteWhatsAppModal";
+import { TrophiesDisplay } from "./TrophiesDisplay";
 
 type GameRow = Database["public"]["Tables"]["games"]["Row"] & {
   player_1_username?: string | null;
@@ -315,6 +316,9 @@ export function LobbyView({ profileId, initialGames, initialError, isAdmin = fal
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Trophies Display */}
+      <TrophiesDisplay />
+      
       <div className="flex flex-col items-start gap-3 rounded-3xl border border-white/10 bg-white/10 p-6 shadow-lg text-white sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Partidas activas</h2>

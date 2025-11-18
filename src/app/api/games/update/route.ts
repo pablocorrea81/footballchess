@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { createRouteSupabaseClient } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { executeBotTurnIfNeeded, getRandomPlayingStyle, type AIPlayingStyle } from "@/lib/ai/footballBot";
+import { checkAndUnlockTrophies } from "@/lib/trophies/trophyHelpers";
 import type { Database } from "@/lib/database.types";
 
 export async function POST(request: Request) {
@@ -146,9 +147,27 @@ export async function POST(request: Request) {
       const gameState = updatedGame.game_state as unknown as { turn?: string };
       console.log("[api/games/update] Updated game state turn:", gameState?.turn);
       
-      // If game was just finished, log it
+      // If game was just finished, check for trophy unlocks
       if (isFinishingGame) {
         console.log("[api/games/update] Game finished! Winner:", updatedGame.winner_id);
+        
+        // Check and unlock trophies for the winner (if there is one)
+        if (updatedGame.winner_id) {
+          try {
+            const unlockedTrophies = await checkAndUnlockTrophies(
+              updatedGame.winner_id,
+              gameId,
+              updatedGame,
+            );
+            
+            if (unlockedTrophies.length > 0) {
+              console.log(`[api/games/update] 🏆 Unlocked ${unlockedTrophies.length} trophy/trophies for player ${updatedGame.winner_id}:`, unlockedTrophies);
+            }
+          } catch (trophyError) {
+            console.error("[api/games/update] Error checking trophies:", trophyError);
+            // Don't fail the request if trophy check fails
+          }
+        }
       }
     }
 
