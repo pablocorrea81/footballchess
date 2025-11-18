@@ -157,14 +157,21 @@ export function getPieceColors(
     return brightness > 128 ? "#1f2937" : "#ffffff"; // Dark text for light bg, white for dark bg
   };
 
+  // Add opacity to background colors for better visibility on board
+  const addOpacity = (color: string, opacity: number = 0.8): string => {
+    const rgb = hexToRgb(color);
+    if (!rgb) return color;
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`;
+  };
+
   return {
     home: {
-      bg: homePrimaryColor,
+      bg: addOpacity(homePrimaryColor, 0.85), // Slightly transparent for better board visibility
       border: homeSecondaryColor,
       text: getTextColor(homePrimaryColor),
     },
     away: {
-      bg: awayPrimaryColor,
+      bg: addOpacity(awayPrimaryColor, 0.85), // Slightly transparent for better board visibility
       border: awaySecondaryColor,
       text: getTextColor(awayPrimaryColor),
     },
@@ -172,11 +179,17 @@ export function getPieceColors(
 }
 
 /**
- * Convert hex color to Tailwind-compatible RGB for use in className
- * Returns format: rgb(r, g, b) for use in style prop
+ * Convert hex color or rgba string to RGB/RGBA string for use in style prop
+ * Handles both hex colors and rgba strings
  */
-export function hexToRgbString(hex: string): string {
-  const rgb = hexToRgb(hex);
+export function hexToRgbString(color: string): string {
+  // If it's already an rgba string, return as-is
+  if (color.startsWith("rgba(") || color.startsWith("rgb(")) {
+    return color;
+  }
+
+  // Otherwise, convert hex to rgb
+  const rgb = hexToRgb(color);
   if (!rgb) return "rgb(16, 185, 129)"; // Default emerald-500
   return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 }
