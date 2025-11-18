@@ -1778,19 +1778,19 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
           {/* Header */}
           <section className="flex flex-col gap-3 rounded-2xl md:rounded-3xl border-2 border-white/20 bg-gradient-to-br from-emerald-950/80 to-emerald-900/60 p-4 md:p-6 text-white shadow-2xl backdrop-blur-sm">
             {/* Top row: Partido # and Turn indicator (always visible, especially on mobile) */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-3">
-              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
-                <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white">
+            <div className="flex flex-row items-center justify-between gap-2 md:gap-3">
+              <div className="flex flex-row items-center gap-2 md:gap-3 flex-wrap">
+                <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white whitespace-nowrap">
                   Partido #{initialGameId.slice(0, 8)}
                 </h1>
                 {/* Turn indicator badge - visible only on mobile, more prominent */}
                 {status === "in_progress" && (
-                  <div className={`md:hidden inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 text-sm font-bold shadow-xl ${
+                  <div className={`md:hidden inline-flex items-center gap-2 px-3 py-2 rounded-xl border-2 text-xs sm:text-sm font-bold shadow-xl flex-shrink-0 ${
                     currentTurnIsPlayer
                       ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-white border-emerald-300 ring-4 ring-emerald-400/70 animate-pulse"
                       : "bg-gradient-to-r from-sky-500 to-sky-600 text-white border-sky-300"
                   }`}>
-                    <span className={`text-lg ${currentTurnIsPlayer ? "animate-bounce" : ""}`}>
+                    <span className={`text-base sm:text-lg ${currentTurnIsPlayer ? "animate-bounce" : ""}`}>
                       {currentTurnIsPlayer ? "✨" : "⏳"}
                     </span>
                     <span className="whitespace-nowrap">
