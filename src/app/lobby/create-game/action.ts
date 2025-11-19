@@ -17,7 +17,7 @@ import { generateInviteCode } from "@/lib/inviteCode";
 
 export async function createGameAction(
   profileId: string,
-  winningScore: number = 3,
+  winningScore: number = 1,
   timeoutEnabled: boolean = true,
 ) {
   const supabase = createServerActionSupabaseClient();
@@ -138,7 +138,7 @@ export async function createBotGameAction(
       bot_style: botStyle,
       bot_display_name: FOOTBALL_BOT_DEFAULT_NAME,
       turn_started_at: null, // Timer will start when first move is made
-      winning_score: 3, // Default for bot games
+      winning_score: 1, // Default for bot games
       timeout_enabled: true, // Default for bot games
       team_1_id: team?.id ?? null,
     })

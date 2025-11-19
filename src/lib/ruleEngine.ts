@@ -124,7 +124,7 @@ const INITIAL_POSITIONS: Record<PlayerId, Array<{ type: PieceType; position: Pos
 
 const PIECE_CAN_SCORE: Record<PieceType, boolean> = {
   carrilero: true,
-  defensa: false,
+  defensa: true, // Defensas ahora pueden marcar goles
   mediocampista: true,
   delantero: true,
 };
@@ -289,12 +289,8 @@ const ensureDestinationIsValid = (
     };
   }
 
-  if (isOpponentGoalSquare(piece, to) && !piece.canScore) {
-    return {
-      valid: false,
-      reason: "Los defensas no pueden marcar goles.",
-    };
-  }
+  // All pieces can now score goals (defensas included)
+  // Removed restriction on defensas scoring
 
   return {
     valid: true,

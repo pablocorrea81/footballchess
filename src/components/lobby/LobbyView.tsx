@@ -126,7 +126,7 @@ export function LobbyView({ profileId, initialGames, initialError, isAdmin = fal
   );
   const [showDifficultySelector, setShowDifficultySelector] = useState(false);
   const [showGameSettings, setShowGameSettings] = useState(false);
-  const [selectedWinningScore, setSelectedWinningScore] = useState<1 | 2 | 3>(3);
+  const [selectedWinningScore, setSelectedWinningScore] = useState<1 | 2 | 3>(1);
   const [selectedTimeoutEnabled, setSelectedTimeoutEnabled] = useState<boolean>(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedGameForInvite, setSelectedGameForInvite] = useState<{ id: string; inviteCode: string | null; creatorName: string } | null>(null);

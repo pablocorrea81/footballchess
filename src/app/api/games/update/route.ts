@@ -144,10 +144,51 @@ export async function POST(request: Request) {
     
     if (updateResult && updateResult[0]) {
       const updatedGame = updateResult[0] as Database["public"]["Tables"]["games"]["Row"];
-      const gameState = updatedGame.game_state as unknown as { turn?: string };
+      const gameState = updatedGame.game_state as unknown as { turn?: string; score?: { home: number; away: number } };
       console.log("[api/games/update] Updated game state turn:", gameState?.turn);
       
-      // If game was just finished, check for trophy unlocks
+      // Check if a goal was scored (for piece-specific trophies)
+      // Get previous game state to compare scores
+      const { data: previousGameData } = await supabaseAdmin
+        .from("games")
+        .select("game_state")
+        .eq("id", gameId)
+        .single();
+      
+      if (previousGameData) {
+        const previousGameRow = previousGameData as Database["public"]["Tables"]["games"]["Row"];
+        const previousGameState = (previousGameRow.game_state as unknown as { score?: { home: number; away: number } }) || {};
+        const previousScore = previousGameState.score || { home: 0, away: 0 };
+        const newScore = gameState?.score || { home: 0, away: 0 };
+        
+        // Check if score increased (a goal was scored)
+        const homeGoalScored = newScore.home > previousScore.home;
+        const awayGoalScored = newScore.away > previousScore.away;
+        
+        if (homeGoalScored || awayGoalScored) {
+          // A goal was scored! Check for piece-specific trophies
+          const goalScorerId = homeGoalScored ? updatedGame.player_1_id : updatedGame.player_2_id;
+          if (goalScorerId) {
+            try {
+              // Check trophies for goal scorer (only piece-specific trophies, not win trophies)
+              const unlockedTrophies = await checkAndUnlockTrophies(
+                goalScorerId,
+                gameId,
+                updatedGame,
+              );
+              
+              if (unlockedTrophies.length > 0) {
+                console.log(`[api/games/update] 🏆 Unlocked ${unlockedTrophies.length} trophy/trophies for goal scorer ${goalScorerId}:`, unlockedTrophies);
+              }
+            } catch (trophyError) {
+              console.error("[api/games/update] Error checking trophies after goal:", trophyError);
+              // Don't fail the request if trophy check fails
+            }
+          }
+        }
+      }
+      
+      // If game was just finished, check for trophy unlocks (including win trophies)
       if (isFinishingGame) {
         console.log("[api/games/update] Game finished! Winner:", updatedGame.winner_id);
         
@@ -161,7 +202,7 @@ export async function POST(request: Request) {
             );
             
             if (unlockedTrophies.length > 0) {
-              console.log(`[api/games/update] 🏆 Unlocked ${unlockedTrophies.length} trophy/trophies for player ${updatedGame.winner_id}:`, unlockedTrophies);
+              console.log(`[api/games/update] 🏆 Unlocked ${unlockedTrophies.length} trophy/trophies for winner ${updatedGame.winner_id}:`, unlockedTrophies);
             }
           } catch (trophyError) {
             console.error("[api/games/update] Error checking trophies:", trophyError);

@@ -72,16 +72,23 @@ export async function checkAndUnlockTrophies(
 
     // Check if player won this game
     const playerWon = game.winner_id === playerId;
-    if (!playerWon) {
-      // Most trophies require a win, but we can check some special ones
-      return unlockedTrophyIds;
-    }
+    
+    // Some trophies can be unlocked even if player didn't win (e.g., goal_with_piece)
+    // We'll check those separately
 
     // Get game details
     const isBotGame = game.is_bot_game ?? false;
     const botDifficulty = game.bot_difficulty as string | null;
     const gameState = game.game_state as
-      | { score?: { home: number; away: number } }
+      | { 
+          score?: { home: number; away: number };
+          history?: Array<{ 
+            player: string; 
+            pieceId: string; 
+            goal?: { scoringPlayer: string };
+            moveNumber: number;
+          }>;
+        }
       | null;
     const score = gameState?.score || { home: 0, away: 0 };
 
@@ -90,10 +97,47 @@ export async function checkAndUnlockTrophies(
     const playerScore = score[playerRole] || 0;
     const opponentScore = score[playerRole === "home" ? "away" : "home"] || 0;
 
+    // Find all goals scored by this player in this game (for piece-specific trophies)
+    // Track which piece types have scored goals
+    const goalsByPieceType = new Set<string>();
+    if (gameState?.history) {
+      // Find all goals by this player
+      for (const move of gameState.history) {
+        if (move.goal) {
+          // Check if this goal was scored by the current player
+          // The scoringPlayer in goal is "home" or "away", not the playerId
+          const goalScorerRole = move.goal.scoringPlayer as "home" | "away";
+          if (goalScorerRole === playerRole) {
+            // Extract piece type from pieceId
+            const pieceIdParts = move.pieceId.split("-");
+            if (pieceIdParts.length >= 2) {
+              const pieceType = pieceIdParts[1]; // "defensa", "delantero", etc.
+              goalsByPieceType.add(pieceType);
+            }
+          }
+        }
+      }
+    }
+
     // Check each trophy condition
     for (const trophy of trophies) {
       // Skip if already unlocked
       if (existingTrophyIds.has(trophy.id)) {
+        continue;
+      }
+
+      // Some trophies don't require winning (e.g., goal_with_piece)
+      const condition = trophy.condition_value as Record<string, unknown>;
+      const requiresWin = trophy.condition_type !== "special" || 
+                         (condition.type as string) !== "goal_with_piece";
+
+      // Skip win-required trophies if player didn't win
+      if (requiresWin && !playerWon) {
+        continue;
+      }
+
+      // For goal_with_piece, we need at least one goal scored
+      if (!requiresWin && goalsByPieceType.size === 0) {
         continue;
       }
 
@@ -107,6 +151,7 @@ export async function checkAndUnlockTrophies(
         opponentScore,
         isBotGame,
         botDifficulty,
+        goalsByPieceType,
       );
 
       if (shouldUnlock) {
@@ -145,6 +190,7 @@ function checkTrophyCondition(
   opponentScore: number,
   isBotGame: boolean,
   botDifficulty: string | null,
+  goalsByPieceType: Set<string>,
 ): boolean {
   const condition = trophy.condition_value as Record<string, unknown>;
 
@@ -232,6 +278,48 @@ function checkTrophyCondition(
       if (specialType === "hat_trick") {
         // Score 3+ goals in a single game
         return playerScore >= 3;
+      }
+
+      if (specialType === "goal_with_piece") {
+        const pieceType = condition.piece_type as string;
+        
+        // Check if player scored a goal with this piece type in this game
+        if (!goalsByPieceType.has(pieceType)) {
+          return false;
+        }
+
+        // Check if this is the first time the player has scored with this piece type
+        // Look through all previous games to see if they've scored with this piece before
+        let hasScoredWithPieceBefore = false;
+        for (const g of playerGames) {
+          if (g.id === currentGame.id) continue; // Skip current game
+          const gState = g.game_state as
+            | { history?: Array<{ 
+                player: string; 
+                pieceId: string; 
+                goal?: { scoringPlayer: string } 
+              }> }
+            | null;
+          if (gState?.history) {
+            for (const m of gState.history) {
+              if (m.goal) {
+                // Check if this goal was scored by the current player
+                const goalScorerRole = m.goal.scoringPlayer as "home" | "away";
+                if (goalScorerRole === playerRole) {
+                  const mPieceIdParts = m.pieceId.split("-");
+                  if (mPieceIdParts.length >= 2 && mPieceIdParts[1] === pieceType) {
+                    hasScoredWithPieceBefore = true;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          if (hasScoredWithPieceBefore) break;
+        }
+        
+        // Unlock trophy if this is the first goal with this piece type
+        return !hasScoredWithPieceBefore;
       }
 
       return false;

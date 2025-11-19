@@ -64,7 +64,13 @@ INSERT INTO public.trophies (id, name, description, icon, category, rarity, cond
 ('comeback_king', 'Rey del Remonte', 'Gana una partida después de estar perdiendo por 2 goles', '💪', 'special', 'epic', 'special', '{"type": "comeback", "deficit": 2}'),
 ('first_goal', 'Primer Gol', 'Marca tu primer gol', '⚽', 'special', 'common', 'special', '{"type": "first_goal"}'),
 ('hat_trick', 'Hat-Trick', 'Marca 3 goles en una sola partida', '🎩', 'special', 'rare', 'special', '{"type": "hat_trick"}'),
-('clean_sheet', 'Portería a Cero', 'Gana una partida sin recibir goles', '🛡️', 'special', 'rare', 'special', '{"type": "clean_sheet"}')
+('clean_sheet', 'Portería a Cero', 'Gana una partida sin recibir goles', '🛡️', 'special', 'rare', 'special', '{"type": "clean_sheet"}'),
+
+-- Piece-specific goal trophies
+('goal_with_defensa', 'Gol Defensivo', 'Marca un gol con un defensa', '🛡️⚽', 'special', 'rare', 'special', '{"type": "goal_with_piece", "piece_type": "defensa"}'),
+('goal_with_mediocampista', 'Gol del Mediocampo', 'Marca un gol con un mediocampista', '⚙️⚽', 'special', 'common', 'special', '{"type": "goal_with_piece", "piece_type": "mediocampista"}'),
+('goal_with_carrilero', 'Gol del Carril', 'Marca un gol con un carrilero', '👤⚽', 'special', 'common', 'special', '{"type": "goal_with_piece", "piece_type": "carrilero"}'),
+('goal_with_delantero', 'Gol del Delantero', 'Marca un gol con un delantero', '⚡⚽', 'special', 'common', 'special', '{"type": "goal_with_piece", "piece_type": "delantero"}')
 ON CONFLICT (id) DO NOTHING;
 
 -- Enable RLS

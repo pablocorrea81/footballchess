@@ -221,8 +221,8 @@ PIECE TYPES AND MOVEMENT RULES:
   
 - D = Defensa (Defender)
   * Moves: Exactly 1 square in ANY direction (horizontal, vertical, or diagonal)
-  * CANNOT SCORE goals - avoid moving toward opponent goal unless blocking
-  * Best used for defense and blocking opponent attacks
+  * CAN SCORE goals (all pieces can score)
+  * Best used for defense and blocking opponent attacks, but can also score if opportunity arises
   
 - M = Mediocampista (Midfielder)
   * Moves: Any distance diagonally ONLY (must move diagonally)
@@ -242,8 +242,8 @@ MOVEMENT RULES:
 - Pieces CANNOT jump over other pieces (path must be clear)
 - Pieces CANNOT capture their own pieces
 - Pieces CANNOT end their move in their own goal area
-- Only CARRILERO, MEDIOCAMPISTA, and DELANTERO can score goals
-- DEFENSAS cannot score - they can only block and capture
+- ALL pieces (CARRILERO, MEDIOCAMPISTA, DELANTERO, and DEFENSA) can score goals
+- DEFENSAS have limited movement (1 square) so they're best for defense, but can score if positioned well
 
 OWNERS:
 - H = Home (Bot)
@@ -252,7 +252,7 @@ OWNERS:
 GOAL AREAS:
 - ⚽B = Your goal (row ${botGoalRow + 1}, columns D-E)
 - ⚽O = Opponent goal (row ${opponentGoalRow + 1}, columns D-E)
-- To score: Move a C, M, or F piece to opponent's goal area (⚽O)
+- To score: Move ANY piece (C, M, F, or D) to opponent's goal area (⚽O)
 `;
 
   // Analyze last goal received to learn from it
@@ -306,7 +306,8 @@ GOAL AREAS:
         for (let row = 0; row < 12; row++) {
           for (let col = 0; col < 8; col++) {
             const piece = state.board[row]?.[col];
-            if (piece && piece.owner === opponent && piece.type !== "defensa") {
+            if (piece && piece.owner === opponent) {
+              // All pieces can score, but defensas are less threatening due to limited movement
               // Check if piece is in goal column or advancing toward goal
               const distanceToGoal = botPlayer === "home" ? row : (11 - row);
               if ((col === goalCol || [2, 5].includes(col)) && distanceToGoal <= 5) {
@@ -402,7 +403,8 @@ DO NOT let opponent use the same pattern again!
         }
         
         // Pieces near opponent goal (within 4 rows)
-        if (distanceToOppGoal <= 4 && piece.type !== "defensa") {
+        // All pieces can score, but defensas are less effective offensively due to limited movement
+        if (distanceToOppGoal <= 4) {
           if (isBotPiece) piecesNearOpponentGoal.bot++;
           else piecesNearOpponentGoal.opp++;
         }
@@ -461,17 +463,17 @@ ${positionEvaluation}
 ${lastGoalAnalysis}
 
 RULES REMINDER:
-1. GOAL: Move a CARRILERO (C), MEDIOCAMPISTA (M), or DELANTERO (F) to opponent's goal area (⚽O at row ${opponentGoalRow + 1}, columns D-E)
+1. GOAL: Move ANY piece (CARRILERO C, MEDIOCAMPISTA M, DELANTERO F, or DEFENSA D) to opponent's goal area (⚽O at row ${opponentGoalRow + 1}, columns D-E)
 
 2. MOVEMENT RULES:
    - CARRILERO (C): 1-2 squares straight (horizontal/vertical only, NOT diagonal), path must be clear
-   - DEFENSA (D): Exactly 1 square any direction, CANNOT score goals
+   - DEFENSA (D): Exactly 1 square any direction, CAN score goals
    - MEDIOCAMPISTA (M): Any distance diagonally only, path must be clear
    - DELANTERO (F): Any distance straight OR diagonal, path must be clear
 
 3. CAPTURE: All pieces can capture opponent pieces by moving to their square. Cannot capture own pieces.
 
-4. DEFENSAS (D): Cannot score - use them ONLY for blocking opponent attacks and capturing threats near your goal
+4. DEFENSAS (D): Can score goals, but limited movement (1 square) makes them best for defense. Use them primarily for blocking opponent attacks and capturing threats near your goal, but they can score if positioned well
 
 5. DELANTEROS (F): Your most valuable attacking pieces - advance them toward opponent goal, but protect them from capture
 
@@ -2245,12 +2247,13 @@ DEFENSE IS CRITICAL:
 - A delantero can move from any column to goal columns D-E, so any delantero near your goal is dangerous!
 
 CRITICAL RULES FOR DEFENSAS (D):
-- Defensas (D) CAN ONLY MOVE TO:
-  * Block an opponent goal threat (position in front of goal or capture attacking piece)
-  * Capture an opponent piece
-- Defensas should NEVER move randomly or toward opponent goal
-- Defensas cannot score goals, so only use them defensively!
-- If a defensa move is available, it MUST block a goal or capture a piece
+- Defensas (D) are BEST USED FOR:
+  * Blocking opponent goal threats (position in front of goal or capture attacking piece)
+  * Capturing opponent pieces
+  * Defending your goal area
+- Defensas CAN score goals, but their limited movement (1 square) makes them less effective offensively
+- Prioritize defensive moves with defensas, but if they're well-positioned near opponent goal, they can score
+- If opponent has a goal threat, defensas should prioritize blocking/capturing over offensive moves
 
 LEARNING FROM OPPONENT GOALS:
 - If opponent just scored, analyze HOW they scored

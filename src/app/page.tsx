@@ -30,7 +30,7 @@ const gameRules = [
   {
     title: "🛡️ Defensas (4 piezas)",
     description:
-      "Pueden moverse 1 casilla en cualquier dirección (horizontal, vertical o diagonal). ⚠️ IMPORTANTE: Los defensas NO pueden marcar goles.",
+      "Pueden moverse 1 casilla en cualquier dirección (horizontal, vertical o diagonal). Pueden marcar goles.",
   },
   {
     title: "⚙️ Mediocampistas (4 piezas)",
@@ -50,7 +50,7 @@ const gameRules = [
   {
     title: "🎊 Marcar un Gol",
     description:
-      "Un gol se marca cuando una pieza (que no sea defensa) termina su movimiento en la portería del oponente. Después de un gol, el tablero se reinicia a las posiciones iniciales y el jugador que recibió el gol mueve primero en la nueva ronda.",
+      "Un gol se marca cuando cualquier pieza termina su movimiento en la portería del oponente. Todas las piezas pueden marcar goles. Después de un gol, el tablero se reinicia a las posiciones iniciales y el jugador que recibió el gol mueve primero en la nueva ronda.",
   },
 ];
 

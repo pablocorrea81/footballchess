@@ -113,7 +113,7 @@ export function LearnView() {
             <ul className="space-y-3 text-sm text-emerald-900">
               <li>
                 <span className="font-semibold">🛡️ Defensas</span>: 1 casilla
-                en cualquier dirección (como el rey). No pueden marcar gol.
+                en cualquier dirección (como el rey). Pueden marcar gol.
               </li>
               <li>
                 <span className="font-semibold">👤 Carrileros</span>: 1 o 2
@@ -181,14 +181,12 @@ export function LearnView() {
               ⚽ Cómo se marca un gol
             </h2>
             <p className="text-sm text-emerald-900 leading-relaxed">
-              Un gol se marca cuando una pieza que puede anotar{" "}
-              (carrilero, mediocampista o delantero) termina su movimiento{" "}
-              en una casilla de portería del oponente.
+              Un gol se marca cuando cualquier pieza termina su movimiento{" "}
+              en una casilla de portería del oponente. Todas las piezas pueden marcar goles.
             </p>
             <ol className="list-decimal space-y-2 pl-5 text-sm text-emerald-900">
               <li>
-                Avanza tus piezas ofensivas (mediocampistas y delanteros) hacia
-                la portería rival. No necesitas llegar de un solo movimiento;
+                Avanza tus piezas hacia la portería rival. No necesitas llegar de un solo movimiento;
                 piensa la jugada como una jugada armada en varios toques.
               </li>
               <li>
@@ -196,8 +194,8 @@ export function LearnView() {
                 hacia el arco y donde están las porterías.
               </li>
               <li>
-                Recuerda que los defensas no pueden marcar gol, pero son clave
-                para recuperar la pelota y proteger a tus delanteros.
+                Los defensas pueden marcar goles, pero su movimiento limitado (1 casilla)
+                los hace más útiles para proteger y recuperar la pelota.
               </li>
             </ol>
             <p className="text-sm text-emerald-900 leading-relaxed">
