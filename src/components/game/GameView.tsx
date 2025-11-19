@@ -616,6 +616,13 @@ export function GameView({
             away: payload.new.player_2_id,
           });
           const newWinnerId = payload.new.winner_id ?? null;
+          console.log("[GameView] Realtime update - winner_id changed:", {
+            oldWinnerId: winnerId,
+            newWinnerId,
+            status: payload.new.status,
+            isBotGame: payload.new.is_bot_game,
+            profileId,
+          });
           setWinnerId(newWinnerId);
           previousScoreRef.current = nextScore;
           
@@ -1074,6 +1081,17 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     const previousStatus = previousStatusRef.current;
     const previousWinnerId = previousWinnerIdRef.current;
     
+    console.log("[GameView] Monitoring game status - checking for victory/defeat", {
+      currentStatus,
+      previousStatus,
+      currentWinnerId,
+      previousWinnerId,
+      profileId,
+      isBotGame,
+      playerIds,
+      defeatAlertShown: defeatAlertShownRef.current,
+    });
+    
     // Check if game just finished
     const gameJustFinished = currentStatus === "finished" && previousStatus !== "finished";
     
@@ -1084,7 +1102,11 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     // For both multiplayer and bot games: if winner_id === profileId, the player won
     const playerWon = currentWinnerId === profileId;
     // Player lost if game is finished, there's a winner, and it's not the player
+    // Also check if it's a bot game and the bot won (bot wins when winner_id is the bot's player_id)
     const playerLost = currentStatus === "finished" && currentWinnerId !== null && currentWinnerId !== profileId;
+    
+    // Additional check for bot games: if bot won, player lost
+    const botWon = isBotGame && currentStatus === "finished" && currentWinnerId !== null && currentWinnerId !== profileId;
     
     // Show victory alert if game just finished and player won, or if winner just changed to player
     // Use ref to prevent showing multiple times (more reliable than state)
@@ -1134,7 +1156,10 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
     }
     
     // Show defeat alert if game just finished and player lost, or if winner just changed to opponent
-    if ((gameJustFinished || winnerJustChanged) && playerLost && !defeatAlertShownRef.current) {
+    // Also show if bot won (for bot games)
+    const shouldShowDefeatAlert = (gameJustFinished || winnerJustChanged) && (playerLost || botWon) && !defeatAlertShownRef.current;
+    
+    if (shouldShowDefeatAlert) {
       console.log("[GameView] Player lost the game! Showing defeat alert", {
         currentStatus,
         previousStatus,
@@ -1143,8 +1168,10 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         profileId,
         isBotGame,
         playerLost,
+        botWon,
         gameJustFinished,
         winnerJustChanged,
+        shouldShowDefeatAlert,
       });
       
       // Mark as shown to prevent showing again
