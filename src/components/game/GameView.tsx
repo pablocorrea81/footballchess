@@ -1679,12 +1679,12 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
         {/* Board - Left side on all screen sizes */}
         <div 
           ref={boardRef}
-          className="w-full overflow-auto md:overflow-visible order-1 md:order-1 md:h-full md:flex md:items-center md:justify-center relative"
+          className="w-full overflow-auto md:overflow-y-auto md:overflow-x-visible order-1 md:order-1 md:h-full relative"
         >
           <div 
             id="game-board-container"
             key={`board-${boardUpdateCounter}`}
-            className="w-full border border-white/20 shadow-2xl md:max-h-full md:overflow-hidden"
+            className="w-full border border-white/20 shadow-2xl"
           >
             {/* Column labels (A-H) */}
             <div
@@ -1693,11 +1693,11 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 gridTemplateColumns: `auto repeat(${BOARD_COLS}, 1fr)`,
               }}
             >
-              <div className="w-8 sm:w-10 md:w-10 lg:w-12 xl:w-14"></div>
+              <div className="w-8 sm:w-10 md:w-8 lg:w-10 xl:w-12"></div>
               {colIndices.map((actualCol) => (
                 <div
                   key={`col-label-${actualCol}`}
-                  className="flex h-8 sm:h-9 md:h-8 lg:h-10 xl:h-12 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-sm lg:text-base font-bold text-emerald-100 shadow-sm aspect-square"
+                  className="flex h-7 sm:h-8 md:h-7 lg:h-8 xl:h-10 items-center justify-center border-l border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-xs lg:text-sm font-bold text-emerald-100 shadow-sm aspect-square"
                 >
                   {getColumnLabelForDisplay(actualCol, playerRole)}
                 </div>
@@ -1723,7 +1723,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                 }}
               >
                 {/* Row label (1-12) */}
-                <div className="flex w-8 sm:w-10 md:w-10 lg:w-12 xl:w-14 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-sm lg:text-base font-bold text-emerald-100 shadow-sm">
+                <div className="flex w-8 sm:w-10 md:w-8 lg:w-10 xl:w-12 items-center justify-center border-r border-white/20 bg-emerald-950/80 text-xs sm:text-sm md:text-xs lg:text-sm font-bold text-emerald-100 shadow-sm">
                   {getRowLabelForDisplay(actualRow, playerRole)}
                 </div>
 
@@ -1841,7 +1841,7 @@ const badgeClass = (role: PlayerId, isStarting: boolean, isCurrentTurn: boolean)
                               currentTurnIsPlayer && cell.owner === playerRole && status === "in_progress" && !selection
                                 ? "md:ring-0 ring-4 ring-yellow-400/90 shadow-lg shadow-yellow-400/60 animate-pulse"
                                 : ""
-                            } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[50%] md:h-[50%] text-xl sm:text-2xl md:text-xl lg:text-2xl xl:text-3xl font-bold`}
+                            } w-[60%] h-[60%] sm:w-[50%] sm:h-[50%] md:w-[45%] md:h-[45%] text-xl sm:text-2xl md:text-lg lg:text-xl xl:text-2xl font-bold`}
                               style={{
                                 backgroundColor: hexToRgbString(colors.bg),
                                 borderColor: hexToRgbString(colors.border),
