@@ -77,6 +77,11 @@ ON CONFLICT (id) DO NOTHING;
 ALTER TABLE public.trophies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.player_trophies ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (to allow re-running migration)
+DROP POLICY IF EXISTS "Trophies are viewable by everyone" ON public.trophies;
+DROP POLICY IF EXISTS "Users can view their own trophies" ON public.player_trophies;
+DROP POLICY IF EXISTS "Service role can insert player trophies" ON public.player_trophies;
+
 -- RLS Policies for trophies (read-only for everyone)
 CREATE POLICY "Trophies are viewable by everyone" ON public.trophies
   FOR SELECT USING (true);
